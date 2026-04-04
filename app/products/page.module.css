@@ -1,25 +1,530 @@
-بناءً على التحديث الأخير الذي قمنا فيه بتحويل نظام الطلبات إلى 'سلة مشتريات' (حيث يُحفظ الطلب في Firestore مع مصفوفة items بدلاً من صنف واحد)، أحتاج الآن إلى تحديث صفحة 'قائمة الطلبات' (Orders List) لعرض تفاصيل هذه الأصناف بطريقة نظيفة.
+.container {
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  background-color: var(--bg-main);
+  min-height: 100vh;
+  color: var(--text-main);
+}
 
-المطلوب في صفحة الطلبات:
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
 
-1. تحديث جدول الطلبات الرئيسي:
+.title {
+  font-size: 1.8rem;
+  font-weight: bold;
+  background: linear-gradient(to right, #ffffff, #a5b4fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
-أضف عموداً جديداً في نهاية الجدول باسم 'الإجراءات' (Actions).
+.addButton {
+  background: linear-gradient(to right, #8b5cf6, #3b82f6);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
 
-ضع في هذا العمود زر 'عرض التفاصيل' (أيقونة عين 👁️ أو فاتورة 📄) لكل صف (طلب).
+.addButton:hover {
+  opacity: 0.9;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
 
-2. برمجة النافذة المنبثقة (Order Details Modal):
+.filtersSection {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
 
-قم بإنشاء نافذة منبثقة (Modal) بتصميم Dark Mode متناسق مع النظام، تظهر عند الضغط على زر 'عرض التفاصيل'.
+.filterSelect {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  outline: none;
+  font-family: inherit;
+}
 
-رأس النافذة (Header): يعرض نص 'تفاصيل الطلب' مع رقم الطلب أو المعرف الخاص به.
+.searchButton {
+  background-color: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
 
-قسم معلومات الزبون: عرض مرتب لبيانات العميل (اسم الزبون، رقم الهاتف، المحافظة، المنطقة).
+.tableControls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background-color: var(--surface);
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
 
-قسم جدول المشتريات (السلة): قم بعمل حلقة تكرار (Map) للمصفوفة items الموجودة داخل مستند الطلب، واعرضها في جدول صغير داخل النافذة.
+.actionsLeft {
+  display: flex;
+  gap: 0.5rem;
+}
 
-أعمدة جدول المشتريات: (اسم الصنف، الكمية المطلوبة، السعر المفرد، الإجمالي للصنف).
+.actionButton {
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+}
 
-تذييل النافذة (Footer): عرض 'المبلغ الكلي' للطلب بشكل بارز، وعرض 'الملاحظات' (إن وجدت)، مع توفير زر 'إغلاق' (Close) للنافذة.
+.actionButton:hover {
+  background-color: var(--border);
+}
 
-يرجى كتابة الكود الخاص بالـ Modal وربطه بحالة (State) للتحكم بفتحه وإغلاقه وتمرير بيانات الطلب المحدد إليه بدقة."
+.controlsRight {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.lengthControl, .searchControl {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+}
+
+.lengthSelect {
+  background-color: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.25rem;
+  border-radius: 4px;
+}
+
+.searchInput {
+  background-color: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  outline: none;
+}
+
+.tableContainer {
+  background-color: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: right;
+}
+
+.table th {
+  background-color: rgba(255, 255, 255, 0.02);
+  padding: 1rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.01);
+}
+
+/* Modal styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.modalTitle {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  color: var(--danger);
+}
+
+.modalTabs {
+  display: flex;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.tab {
+  padding: 1rem 1.5rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  color: var(--text-main);
+}
+
+.activeTab {
+  color: #8b5cf6;
+  border-bottom-color: #8b5cf6;
+}
+
+.modalBody {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input, .select, .textarea {
+  background-color: var(--bg-main);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+}
+
+.input:focus, .select:focus, .textarea:focus {
+  border-color: #8b5cf6;
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.pricesTab, .storesTab, .notesTab {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.unitsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.unitRow {
+  display: grid;
+  grid-template-columns: 40px 1.5fr 1fr 1fr 1fr;
+  gap: 1rem;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.02);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.unitColHeader {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.unitLabel {
+  display: flex;
+  flex-direction: column;
+}
+
+.unitInputCol {
+  display: flex;
+  justify-content: center;
+}
+
+.deleteUnitBtn {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.addUnitContainer {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.addUnitBtn {
+  background: none;
+  border: 1px dashed var(--border);
+  color: #8b5cf6;
+  padding: 0.75rem 2rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 600;
+  width: 100%;
+}
+
+.addUnitBtn:hover {
+  background-color: rgba(139, 92, 246, 0.1);
+  border-color: #8b5cf6;
+}
+
+.storeRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  background-color: rgba(255, 255, 255, 0.02);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.quantCol {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.quantSelect {
+  width: 40%;
+  background-color: var(--bg-main);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+}
+
+.quantInput {
+  flex: 1;
+  background-color: var(--bg-main);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+}
+
+.readOnlyInput {
+  background-color: var(--surface-hover);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.modalFooter {
+  padding: 1.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.saveButton {
+  background: linear-gradient(to right, #10B981, #059669);
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saveButton:hover {
+  opacity: 0.9;
+}
+
+/* Confirm Delete Modal */
+.confirmModal {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.confirmModalHeader {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.confirmModalTitle {
+  color: var(--danger);
+  font-weight: bold;
+}
+
+.confirmModalBody {
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.confirmModalFooter {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.confirmDeleteBtn {
+  background-color: var(--danger);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.cancelBtn {
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+/* Barcode */
+.barcodeInlineInput {
+  background-color: var(--bg-main);
+  border: 1px solid #8b5cf6;
+  color: var(--text-main);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  width: 120px;
+  outline: none;
+}
+
+.barcodeText {
+  cursor: pointer;
+  color: var(--text-main);
+  text-decoration: underline;
+  text-decoration-color: rgba(255,255,255,0.2);
+}
+
+.barcodeText:hover {
+  color: #8b5cf6;
+}
+
+.addBarcodeBtn {
+  background: none;
+  border: 1px dashed var(--border);
+  color: #8b5cf6;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.addBarcodeBtn:hover {
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+.printSticker {
+  background-color: white;
+  color: black;
+  padding: 10px;
+  width: 250px;
+  margin: 0 auto;
+  text-align: center;
+  border: 1px solid #ccc;
+}
+
+.stickerProductName {
+  font-weight: bold;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.stickerPrice {
+  margin-top: 5px;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.printModalOverlay {
+  z-index: 10000;
+}
