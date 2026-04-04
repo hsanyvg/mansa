@@ -1,0 +1,321 @@
+.container {
+  padding: 1.5rem;
+  background-color: var(--background);
+  min-height: 100vh;
+  color: var(--text-main);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--text-main);
+}
+
+.addButton {
+  background: linear-gradient(135deg, #10B981, #059669);
+  color: white;
+  border: none;
+  padding: 0.6rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
+  transition: all 0.2s ease;
+}
+
+.addButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 8px -1px rgba(16, 185, 129, 0.3);
+}
+
+.gridContainer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+@media (min-width: 900px) {
+  .gridContainer {
+    grid-template-columns: 1fr 1.5fr; /* Recipe builder takes up more space horizontally */
+  }
+}
+
+.section {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+}
+
+.sectionTitle {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: var(--text-main);
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
+}
+
+/* Form Styles */
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.label {
+  font-weight: bold;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  text-align: right;
+}
+
+.input, .select {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--background);
+  color: var(--text-main);
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.input:focus, .select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.input:disabled {
+  background-color: var(--surface-hover);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Recipe Builder Add Row */
+.recipeInputRow {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  align-items: flex-end;
+}
+
+.recipeIngredientSelect {
+  flex: 2;
+}
+
+.recipeQuantityInput {
+  flex: 1;
+}
+
+.addIngredientBtn {
+  background-color: var(--surface-hover);
+  color: var(--primary);
+  border: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.addIngredientBtn:hover {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* Table Styles */
+.tableContainer {
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th, .table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  color: var(--text-main);
+}
+
+.table th {
+  background-color: var(--surface-hover);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: transform 0.2s;
+  font-size: 1.1rem;
+}
+
+.deleteBtn:hover {
+  transform: scale(1.1);
+}
+
+/* Toast */
+.toastContainer {
+  position: fixed;
+  top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.toast {
+  background-color: var(--surface);
+  color: var(--text-main);
+  padding: 1rem 2rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 500;
+  animation: toastSlideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+.toastSuccess {
+  border-left: 4px solid #10B981;
+}
+
+.toastError {
+  border-left: 4px solid #ef4444;
+}
+
+@keyframes toastSlideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* --- Deletion Confirm Modal --- */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.confirmModal {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  color: var(--text-main);
+  animation: modalSlide 0.3s ease-out;
+}
+
+@keyframes modalSlide {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.confirmModalHeader {
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.15rem;
+  color: #ef4444;
+}
+
+.confirmModalBody {
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.confirmModalFooter {
+  padding: 1rem 1.5rem;
+  background-color: rgba(255, 255, 255, 0.02);
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.cancelBtn {
+  background-color: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.6rem 1.5rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.cancelBtn:hover {
+  background-color: var(--border);
+}
+
+.confirmDeleteBtn {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.5rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.confirmDeleteBtn:hover {
+  background-color: #dc2626;
+  transform: translateY(-1px);
+}

@@ -1,0 +1,381 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  background-color: transparent;
+  flex: 1;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--surface);
+  padding: 1rem 1.5rem;
+  border-top: 4px solid var(--primary);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.mainContent {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* Top Section: Store Dropdowns */
+.topSection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  background-color: rgba(255, 255, 255, 0.02);
+  padding: 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 350px;
+}
+
+.formGroup label {
+  font-weight: bold;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.selectInput {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--background);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394A3B8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: left 1rem top 50%;
+  background-size: 0.65rem auto;
+  transition: all 0.2s;
+}
+
+.selectInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-glow);
+}
+
+.selectInput.error {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.2) !important;
+}
+
+.transferIcon {
+  font-size: 2rem;
+  color: var(--primary);
+  opacity: 0.8;
+  margin-top: 1.5rem; /* Align with inputs */
+}
+
+/* Middle Section: Interactive Table */
+.tableSection {
+  min-height: 200px;
+}
+
+.placeholderBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.tableContainer {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--background);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: right;
+}
+
+.table th, .table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  background-color: var(--surface-hover);
+  font-weight: bold;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.table td {
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+/* History Section Styles */
+.historySection {
+  margin-top: 1rem;
+  border-top: 2px solid var(--border);
+  padding-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.historyHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.historyTitle {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: var(--primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.historyTitle::before {
+  content: '📜';
+  font-size: 1.4rem;
+}
+
+.dateFilterRow {
+  display: flex;
+  gap: 1.5rem;
+  background-color: rgba(255, 255, 255, 0.03);
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.dateGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dateGroup label {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dateInput {
+  background-color: var(--background);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.8rem;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  transition: all 0.2s;
+  color-scheme: dark; /* Forces native picker to be dark */
+  cursor: pointer;
+}
+
+.dateInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 5px var(--primary-glow);
+}
+
+.calendarTrigger {
+  background-color: var(--background);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 140px;
+  justify-content: space-between;
+}
+
+.calendarTrigger:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+
+.calendarIcon {
+  font-size: 1.2rem;
+  opacity: 0.8;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.badge {
+  background-color: rgba(16, 185, 129, 0.15); /* Success tint */
+  color: var(--success);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.qtyInput {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--surface);
+  color: var(--text-main);
+  width: 100%;
+  font-size: 1rem;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.qtyInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+
+/* Bottom Section */
+.bottomSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 2rem;
+}
+
+.notesGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.notesGroup label {
+  color: var(--text-muted);
+  font-weight: bold;
+}
+
+.textareaInput {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--background);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 1rem;
+  min-height: 80px;
+  resize: vertical;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.textareaInput:focus {
+  border-color: var(--primary);
+}
+
+.submitBtn {
+  background: linear-gradient(135deg, var(--primary) 0%, #6d28d9 100%);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: var(--radius-md);
+  font-weight: bold;
+  font-size: 1.15rem;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.2s;
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
+}
+
+.submitBtn:disabled {
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* --- Toast Notification Styles --- */
+.toastContainer {
+  position: fixed;
+  top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.toast {
+  background-color: var(--surface);
+  color: var(--text-main);
+  padding: 1rem 2rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: bold;
+  animation: toastSlideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+.toastSuccess {
+  border-left: 4px solid var(--success);
+}
+
+.toastError {
+  border-left: 4px solid var(--danger);
+}
+
+@keyframes toastSlideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}

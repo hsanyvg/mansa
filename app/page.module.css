@@ -1,0 +1,228 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.main {
+  flex: 1;
+  padding: 2rem;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.headerTitle {
+  font-size: 1.75rem;
+  font-weight: 800;
+  background: linear-gradient(to right, #fff, #a5b4fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--surface);
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.filterBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filterBtn:hover {
+  color: var(--text-main);
+}
+
+.filterBtn.active {
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.datePicker {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--surface-hover);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  margin-right: 1rem;
+}
+
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: minmax(140px, auto);
+  gap: 1.5rem;
+}
+
+.card {
+  background-color: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  border: 1px solid rgba(255,255,255,0.03);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.colSpan2 { grid-column: span 2; }
+.colSpan3 { grid-column: span 3; }
+.colSpan4 { grid-column: span 4; }
+.rowSpan2 { grid-row: span 2; }
+
+@media (max-width: 1200px) {
+  .dashboardGrid { grid-template-columns: repeat(2, 1fr); }
+  .colSpan2, .colSpan3, .colSpan4 { grid-column: span 2; }
+}
+
+@media (max-width: 768px) {
+  .dashboardGrid { grid-template-columns: 1fr; }
+  .colSpan2, .colSpan3, .colSpan4 { grid-column: span 1; }
+  .filters { flex-direction: column; width: 100%; align-items: stretch; }
+  .datePicker { margin-right: 0; margin-top: 0.5rem; justify-content: center; }
+}
+
+.cardHeader {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cardValue {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-top: auto;
+}
+
+.trend {
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.trend.up { color: var(--success); }
+.trend.down { color: var(--danger); }
+
+/* Custom elements inside cards */
+.chartArea {
+  margin-top: 1rem;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+}
+
+.progressBarContainer {
+  width: 100%;
+  height: 8px;
+  background-color: var(--surface-hover);
+  border-radius: 999px;
+  margin-top: 1rem;
+  overflow: hidden;
+  display: flex;
+}
+
+.progressSuccess { background: linear-gradient(90deg, #10B981, #34D399); }
+.progressDanger { background: linear-gradient(90deg, #F43F5E, #FB7185); }
+
+/* Employee List */
+.empList {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.empRow {
+  display: grid;
+  grid-template-columns: 100px 80px 1fr;
+  align-items: center;
+  gap: 1rem;
+}
+
+.empAvatar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.empAvatarIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--surface-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empOrders {
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.donutContainer {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donutText {
+  position: absolute;
+  text-align: center;
+}
+
+.donutValue {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+.donutLabel {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

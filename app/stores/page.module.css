@@ -1,0 +1,353 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  background-color: transparent;
+  flex: 1;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--surface);
+  padding: 1rem 1.5rem;
+  border-top: 4px solid var(--primary);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.addButton {
+  background-color: var(--success);
+  color: #ffffff;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  transition: background-color 0.2s;
+}
+
+.addButton:hover {
+  background-color: #0d9668;
+}
+
+.mainContent {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  padding: 1.5rem;
+}
+
+.controlsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.actionBtn {
+  background-color: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.actionBtn:hover {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--text-main);
+}
+
+.tableFilters {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.lengthControl {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.lengthSelect {
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  background-color: var(--background);
+  color: var(--text-main);
+}
+
+.searchControl {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.searchInput {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  width: 200px;
+  background-color: var(--background);
+  color: var(--text-main);
+}
+
+.searchInput:focus {
+  border-color: var(--primary);
+}
+
+.tableContainer {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+  background-color: var(--background);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: right;
+}
+
+.table th, .table td {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+}
+
+.table th {
+  background-color: var(--surface-hover);
+  font-weight: bold;
+  color: var(--text-main);
+  cursor: pointer;
+  position: relative;
+}
+
+.table th:hover {
+  background-color: var(--surface);
+}
+
+.sortIcon {
+  display: inline-flex;
+  flex-direction: column;
+  margin-right: 0.5rem;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.table td {
+  color: var(--text-main);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.storeValueHighlight {
+  background-color: #fca5a5; /* Reddish highlight from screenshot for some values */
+  color: #7f1d1d;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* Action Cell buttons (Edit / Delete / Details) */
+.actionsCell {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.editBtn, .deleteBtn, .detailsBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  color: white;
+  transition: opacity 0.2s;
+}
+
+.editBtn { background-color: #3b82f6; }
+.deleteBtn { background-color: #ef4444; }
+.detailsBtn { background-color: #f59e0b; /* Orange/Yellow from screenshot */ }
+
+.editBtn:hover, .deleteBtn:hover, .detailsBtn:hover {
+  opacity: 0.8;
+}
+
+
+.footerControls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.pagination {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pageBtn {
+  background-color: var(--surface);
+  border: none;
+  border-right: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  color: var(--text-main);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.pageBtn:last-child {
+  border-right: none;
+}
+
+.pageBtn:hover:not(.active) {
+  background-color: var(--surface-hover);
+}
+
+.pageBtn.active {
+  background-color: var(--primary);
+  color: #ffffff;
+}
+
+/* --- Details Modal Styles --- */
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start; /* Align closer to top */
+  justify-content: center;
+  padding-top: 3rem;
+  z-index: 1000;
+}
+
+/* Wider modal since it houses a full data table */
+.detailsModal {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  width: 1000px; 
+  max-width: 95vw;
+  max-height: 90vh; /* Prevent it from being taller than screen */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(-20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.detailsModalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 2rem;
+  background-color: var(--surface-hover);
+  border-bottom: 2px solid var(--primary); /* Thick blue line */
+}
+
+.detailsModalTitle {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 0;
+  flex: 1;
+}
+
+.detailsCloseBtn {
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  line-height: 1;
+}
+
+.detailsCloseBtn:hover {
+  background-color: var(--background);
+  color: var(--danger);
+}
+
+.detailsModalBody {
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* Scrollable inner body */
+  background-color: var(--surface);
+}
+
+.addStoreModal {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  width: 500px; 
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}

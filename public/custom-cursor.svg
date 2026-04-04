@@ -1,0 +1,13 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cursorGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE3D3" />
+      <stop offset="100%" stop-color="#EE977B" />
+    </linearGradient>
+    <filter id="cursorShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- Bubbly stemless arrowhead -->
+  <path d="M4 4 L9 24 L14 15 L25 11 Z" fill="url(#cursorGradient)" stroke="#FFFFFF" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" filter="url(#cursorShadow)"/>
+</svg>

@@ -1,0 +1,172 @@
+.layoutContainer {
+  display: flex;
+  min-height: 100vh;
+  background-image: radial-gradient(circle at top right, rgba(139, 92, 246, 0.1), transparent 40%),
+                    radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.1), transparent 40%);
+}
+
+.sidebar {
+  width: 250px;
+  background-color: #212529;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  z-index: 10;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar.closed {
+  width: 70px;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 0.5rem;
+}
+
+.sidebar.closed .sidebarHeader {
+  justify-content: center;
+  padding: 1rem 0;
+}
+
+.sidebar.closed .logoText {
+  display: none;
+}
+
+.toggleBtn {
+  background: none;
+  border: none;
+  color: #adb5bd;
+  cursor: pointer;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.toggleBtn:hover {
+  background-color: rgba(255,255,255,0.05);
+  color: #fff;
+}
+
+/* Hide text when collapsed */
+.sidebar.closed .menuItemIcon > span:first-child,
+.sidebar.closed .submenuItem > span:first-child,
+.sidebar.closed .menuItem > span:first-child {
+  display: none;
+}
+
+/* Center icons when collapsed */
+.sidebar.closed .menuItemIcon {
+  justify-content: center;
+  width: 100%;
+}
+.sidebar.closed .menuItem, .sidebar.closed .submenuItem {
+  padding: 0.75rem 0;
+  justify-content: center;
+}
+
+/* Hide chevron when collapsed */
+.sidebar.closed .menuItem > span:first-child {
+  display: none; /* Already covered but explicit */
+}
+.sidebar.closed .submenuIcon {
+  flex-shrink: 0;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  color: #adb5bd;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.menuItem:hover {
+  color: #ffffff;
+  background-color: rgba(255,255,255,0.05);
+}
+
+.menuItem.active, .menuItem:active {
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.3) 0%, rgba(139, 92, 246, 0.1) 100%);
+  box-shadow: inset 4px 0 0 var(--primary), 0 0 20px rgba(139, 92, 246, 0.4);
+  border-radius: 0 8px 8px 0;
+  margin-right: 4px;
+}
+
+.menuItemIcon {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.menuItemIcon span.icon {
+  font-size: 1.2rem;
+  opacity: 0.7;
+}
+
+.submenu {
+  background-color: #2c3034;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+  max-height: 0;
+}
+
+.sidebar.closed .submenu {
+  visibility: hidden;
+}
+
+.submenu.open {
+  max-height: 400px;
+}
+
+.submenuItem {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* Align to right for Arabic */
+  gap: 0.75rem;
+  padding: 0.75rem 2rem 0.75rem 1rem;
+  color: #adb5bd;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.submenuItem:hover {
+  color: #ffffff;
+  background-color: rgba(255,255,255,0.02);
+}
+
+.submenuItem.active, .submenuItem:active {
+  background-color: rgba(139, 92, 246, 0.15);
+  box-shadow: inset 0 0 12px rgba(139, 92, 246, 0.25);
+  color: #fff;
+  border-right: 3px solid rgba(139, 92, 246, 0.5);
+}
+
+.submenuIcon {
+  opacity: 0.6;
+  font-size: 1rem;
+}
+
+.contentWrapper {
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}

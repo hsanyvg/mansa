@@ -1,0 +1,464 @@
+.container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  padding: 2rem;
+  background-color: transparent;
+  flex: 1;
+  min-height: calc(100vh - 80px);
+}
+
+@media (min-width: 1024px) {
+  .container {
+    /* Right column: Form (smaller), Left column: Cart (larger) based on image, actually in image cart is left, form is right. Right is Form (RTL). */
+    grid-template-columns: minmax(400px, 1fr) minmax(500px, 1.5fr);
+    direction: rtl; /* Ensure RTL layout for grid */
+  }
+}
+
+/* ============== RIGHT COLUMN: FORM ============== */
+.formSection {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  height: 100%; /* Changed from fit-content to 100% to match cart height */
+  overflow-y: auto; /* Allow scrolling if screen is too small */
+}
+
+.formWrapperError {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2), 0 4px 15px rgba(0,0,0,0.3) !important;
+}
+
+.formGroup {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  gap: 1.5rem;
+}
+
+.label {
+  color: var(--text-main);
+  font-weight: bold;
+  font-size: 1rem;
+  width: 130px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.input, .select, .readOnlyInput {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--background);
+  color: var(--text-main);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s, background-color 0.2s;
+  text-align: right;
+  width: 100%;
+}
+
+.input:focus, .select:focus {
+  border-color: var(--primary);
+  background-color: var(--surface-hover);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.readOnlyInput {
+  background-color: rgba(255, 255, 255, 0.05); /* slightly different bg for read-only */
+  color: #10B981; /* green text for total amount to stand out */
+  font-weight: bold;
+  cursor: not-allowed;
+}
+
+.inputWrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.inputError {
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.25) !important;
+}
+
+.errorMessage {
+  color: #c084fc;
+  font-size: 0.8rem;
+  margin-top: 0.3rem;
+  position: absolute;
+  top: 100%;
+  right: 0;
+}
+
+/* Custom Searchable Dropdown */
+.searchableSelectContainer {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchableSelectContainer .input {
+  width: 100%;
+  padding-left: 2.5rem;
+}
+
+.selectArrow {
+  position: absolute;
+  left: 1rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
+.dropdownList {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: 0.25rem;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  list-style: none;
+  padding: 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.dropdownItem {
+  padding: 0.75rem 1rem;
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: right;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid var(--border);
+}
+
+.dropdownItem:last-child {
+  border-bottom: none;
+}
+
+.dropdownItem:hover {
+  background-color: var(--surface-hover);
+}
+
+.submitBtnContainer {
+  display: flex;
+  justify-content: flex-start; /* align buttons to the left in RTL */
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.submitBtn {
+  background-color: var(--primary);
+  color: #ffffff;
+  border: none;
+  padding: 0.75rem 2.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: bold;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.submitBtn:hover {
+  background-color: #2563eb;
+  opacity: 0.9;
+}
+
+.secondaryBtn {
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.secondaryBtn:hover {
+  background-color: var(--border);
+  color: white;
+}
+
+/* ============== LEFT COLUMN: CART ============== */
+.cartSection {
+  background-color: var(--background); /* dark grey/black area */
+  border: 2px solid #10B981; /* Green border matching the user's image */
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.cartHeaderContainer {
+  display: flex;
+  justify-content: center;
+  padding-top: 1rem;
+}
+
+.cartTitleBg {
+  background-color: #10B981;
+  color: #111;
+  padding: 0.5rem 3rem;
+  font-weight: bold;
+  font-size: 1.25rem;
+  border-radius: 4px;
+}
+
+.productSearchContainer {
+  padding: 1.5rem;
+  position: relative;
+}
+
+.productSearchInput {
+  width: 100%;
+  padding: 1rem 1rem 1rem 3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface);
+  color: var(--text-main);
+  font-size: 1.1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.productSearchInput:focus {
+  border-color: #10B981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.searchIcon {
+  position: absolute;
+  left: 2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.cartItemsContainer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 1.5rem 1.5rem 1.5rem;
+}
+
+.cartTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 0.5rem;
+}
+
+.cartTable th {
+  background-color: #10B981; /* Green table headers to match user's theme in the picture */
+  color: #111;
+  padding: 0.5rem;
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.95rem;
+}
+
+.cartTable th:first-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.cartTable th:last-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.cartTable td {
+  background-color: var(--surface);
+  padding: 0.8rem 0.5rem;
+  text-align: center;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  color: var(--text-main);
+}
+
+.cartTable td:first-child {
+  border-right: 1px solid var(--border);
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.cartTable td:last-child {
+  border-left: 1px solid var(--border);
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.qtyControl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.qtyBtn {
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.qtyBtn:hover {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.qtyInput {
+  width: 40px;
+  text-align: center;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.deleteBtn:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.emptyCart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+}
+
+.emptyCartIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.priceInput {
+  width: 90px;
+  text-align: center;
+  background: transparent;
+  border: 1px dashed transparent;
+  color: var(--text-main);
+  font-size: 1rem;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: border-color 0.2s;
+  -moz-appearance: textfield;
+}
+
+.priceInput::-webkit-outer-spin-button,
+.priceInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.priceInput:hover,
+.priceInput:focus {
+  border-color: #10B981;
+  outline: none;
+}
+
+/* Modal styling for alerts/success */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.notificationModal {
+  background-color: #27232C;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s ease-out;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  padding: 2rem;
+  text-align: center;
+}
+
+.notificationContent p {
+  color: white;
+  font-size: 1.1rem;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+.notificationBtn {
+  background-color: #F8D0F8;
+  color: #111;
+  border: none;
+  padding: 0.5rem 2rem;
+  border-radius: 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-self: flex-start;
+  margin-right: auto;
+  border: 4px solid #F8D0F8;
+  outline: 2px solid transparent;
+}
+
+.notificationBtn:hover {
+  transform: scale(1.05);
+  background-color: #EABDEA;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}

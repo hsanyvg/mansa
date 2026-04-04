@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap');
+
+:root {
+  --primary: #8B5CF6; /* Purple gradient start */
+  --primary-glow: rgba(139, 92, 246, 0.4);
+  --secondary: #EC4899; /* Pink accent */
+  --success: #10B981;
+  --danger: #F43F5E;
+  --background: #13131A; /* Deep dark background */
+  --surface: #1E1E28; /* Card background */
+  --surface-hover: #262633;
+  --border: rgba(255, 255, 255, 0.05);
+  --text-main: #FFFFFF;
+  --text-muted: #94A3B8;
+  --sidebar-width: 80px; /* Collapsed sidebar for more dashboard space */
+  --radius-lg: 24px;
+  --radius-md: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family: 'Cairo', sans-serif;
+  background-color: var(--background);
+  color: var(--text-main);
+  line-height: 1.6;
+  overflow-x: hidden;
+  cursor: url('/custom-cursor.svg') 4 4, auto;
+}
+
+button, a, select, input[type="button"], input[type="submit"], input[type="checkbox"], .dropdownItem {
+  cursor: url('/custom-pointer.svg') 12 4, pointer !important;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-hover);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Global Purple Glow for Active/Focused Elements */
+button:active, a:active, .menuItem:active, .submenuItem:active {
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.4) !important;
+  transform: scale(0.98);
+  transition: all 0.1s ease;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3) !important;
+}
