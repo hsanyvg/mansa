@@ -102,26 +102,20 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
         {/* Submenu for Persons */}
         <div className={`${styles.submenu} ${showPersons ? styles.open : ''}`}>
-          <div className={styles.submenuItem}>
+          <Link href="/customers" className={`${styles.submenuItem} ${pathname === '/customers' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>قائمة العملاء</span>
             <span className={styles.submenuIcon}>👥</span>
-          </div>
-          <div className={styles.submenuItem}>
-            <span>قائمة عملاء الأجل</span>
-            <span className={styles.submenuIcon}>📅</span>
-          </div>
-          <div className={styles.submenuItem}>
+          </Link>
+
+          <Link href="/suppliers" className={`${styles.submenuItem} ${pathname === '/suppliers' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>قائمة الموردين</span>
             <span className={styles.submenuIcon}>🚚</span>
-          </div>
+          </Link>
           <div className={styles.submenuItem}>
             <span>قائمة الموظفين</span>
             <span className={styles.submenuIcon}>👤</span>
           </div>
-          <div className={styles.submenuItem}>
-            <span>الشركاء</span>
-            <span className={styles.submenuIcon}>🐾</span>
-          </div>
+
           <div className={styles.submenuItem}>
             <span>المستخدمين</span>
             <span className={styles.submenuIcon}>👥</span>
@@ -161,10 +155,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>مرتجعات المبيعات</span>
             <span className={styles.submenuIcon}>↩️</span>
           </div>
-          <div className={styles.submenuItem}>
+          <Link href="/purchases" className={`${styles.submenuItem} ${pathname === '/purchases' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>فواتير المشتريات</span>
             <span className={styles.submenuIcon}>🗓️</span>
-          </div>
+          </Link>
           <div className={styles.submenuItem}>
             <span>مرتجعات المشتريات</span>
             <span className={styles.submenuIcon}>↩️</span>

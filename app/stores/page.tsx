@@ -10,6 +10,8 @@ export default function StoresPage() {
   const [entriesLength, setEntriesLength] = useState(25);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [storeToDelete, setStoreToDelete] = useState<{id: string, name: string} | null>(null);
   const [selectedStore, setSelectedStore] = useState<any>(null);
   const [editingStoreId, setEditingStoreId] = useState<string | null>(null);
 
@@ -54,13 +56,19 @@ export default function StoresPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`هل أنت متأكد من حذف ${name}؟\n(ملاحظة: حذف المخزن عملية لا يمكن التراجع عنها)`)) {
-      try {
-        await deleteDoc(doc(db, 'stores', id));
-      } catch (e) {
-        console.error("Error deleting store", e);
-      }
+  const handleDelete = (id: string, name: string) => {
+    setStoreToDelete({ id, name });
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!storeToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'stores', storeToDelete.id));
+      setShowDeleteModal(false);
+      setStoreToDelete(null);
+    } catch (e) {
+      console.error("Error deleting store", e);
     }
   };
 
@@ -356,6 +364,45 @@ export default function StoresPage() {
                 >
                   {editingStoreId ? 'تحديث' : 'حفظ'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.addStoreModal} style={{ maxWidth: '400px' }}>
+            <div className={styles.detailsModalHeader}>
+              <h2 className={styles.detailsModalTitle}>تأكيد الحذف</h2>
+              <button className={styles.detailsCloseBtn} onClick={() => setShowDeleteModal(false)}>×</button>
+            </div>
+            <div className={styles.detailsModalBody}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'center', paddingTop: '1rem' }}>
+                <p style={{ color: 'var(--text-main)', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                  هل أنت متأكد من حذف مخزن ({storeToDelete?.name})؟
+                </p>
+                <p style={{ color: '#ef4444', fontSize: '0.9rem' }}>
+                  (ملاحظة: حذف المخزن عملية لا يمكن التراجع عنها)
+                </p>
+                
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1.5rem' }}>
+                  <button 
+                    className={styles.addButton} 
+                    style={{ backgroundColor: '#ef4444', border: 'none', flex: 1, padding: '0.8rem', fontSize: '1rem' }}
+                    onClick={confirmDelete}
+                  >
+                    نعم، احذف المخزن
+                  </button>
+                  <button 
+                    className={styles.addButton} 
+                    style={{ backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)', flex: 1, padding: '0.8rem', fontSize: '1rem' }}
+                    onClick={() => setShowDeleteModal(false)}
+                  >
+                    إلغاء التراجع
+                  </button>
+                </div>
               </div>
             </div>
           </div>

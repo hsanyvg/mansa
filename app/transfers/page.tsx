@@ -25,6 +25,7 @@ export default function BulkTransferPage() {
   
   const [transferQuantities, setTransferQuantities] = useState<Record<string, number>>({});
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | null }>({ message: '', type: null });
+  const [expandedTransferId, setExpandedTransferId] = useState<string | null>(null);
 
   // Custom Date UI Helpers
   const parseDateToParts = (dateStr: string) => {
@@ -358,6 +359,7 @@ export default function BulkTransferPage() {
                   <th>إلى مخزن</th>
                   <th>عدد الأصناف</th>
                   <th>ملاحظات</th>
+                  <th style={{width: '90px', textAlign: 'center'}}>تفاصيل</th>
                 </tr>
               </thead>
               <tbody>
@@ -366,16 +368,62 @@ export default function BulkTransferPage() {
                     const sourceName = stores.find(s => s.id === t.sourceStoreId)?.name || 'غير معروف';
                     const targetName = stores.find(s => s.id === t.destinationStoreId)?.name || 'غير معروف';
                     const date = t.createdAt?.toDate ? t.createdAt.toDate().toLocaleString('en-GB') : '...';
+                    const isExpanded = expandedTransferId === t.id;
                     
                     return (
-                      <tr key={t.id}>
-                        <td>{idx + 1}</td>
-                        <td style={{ direction: 'ltr', textAlign: 'right' }}>{date}</td>
-                        <td style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{sourceName}</td>
-                        <td style={{ color: 'var(--success)', fontWeight: 'bold' }}>{targetName}</td>
-                        <td>{t.items?.length || 0} صنف</td>
-                        <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{t.notes || '-'}</td>
-                      </tr>
+                      <React.Fragment key={t.id}>
+                        <tr style={{ background: isExpanded ? 'rgba(255,255,255,0.05)' : 'transparent' }}>
+                          <td>{idx + 1}</td>
+                          <td style={{ direction: 'ltr', textAlign: 'right' }}>{date}</td>
+                          <td style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{sourceName}</td>
+                          <td style={{ color: 'var(--success)', fontWeight: 'bold' }}>{targetName}</td>
+                          <td>{t.items?.length || 0} صنف</td>
+                          <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{t.notes || '-'}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button 
+                              onClick={() => setExpandedTransferId(isExpanded ? null : t.id)}
+                              style={{
+                                background: isExpanded ? 'var(--bg-main)' : 'var(--surface-hover)', 
+                                border: '1px solid var(--border)', color: 'var(--text-main)', 
+                                padding: '0.4rem 0.7rem', borderRadius: '6px', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem',
+                                margin: '0 auto', transition: 'all 0.2s'
+                              }}
+                            >
+                              👁️ {isExpanded ? 'اخفاء' : 'عرض'}
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && t.items && (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '0 2rem 1.5rem 2rem', borderBottom: '1px solid var(--border)' }}>
+                              <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px', padding: '1rem', marginTop: '0.5rem', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)' }}>
+                                <h4 style={{ color: '#a855f7', marginBottom: '0.8rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span>📦</span> البضاعة المحولة في هذه العملية
+                                </h4>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95rem' }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: '1px solid #374151', color: 'var(--text-muted)' }}>
+                                      <th style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>اسم الصنف</th>
+                                      <th style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>الكمية المُحوّلة</th>
+                                      <th style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>وحدة القياس</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {t.items.map((item: any, i: number) => (
+                                      <tr key={i} style={{ borderBottom: '1px solid #1f2937' }}>
+                                        <td style={{ padding: '0.6rem 1rem', color: 'var(--text-main)' }}>{item.name}</td>
+                                        <td style={{ padding: '0.6rem 1rem', color: '#10b981', fontWeight: 'bold' }}>{item.qty}</td>
+                                        <td style={{ padding: '0.6rem 1rem', color: '#9ca3af' }}>{item.unit}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 ) : (

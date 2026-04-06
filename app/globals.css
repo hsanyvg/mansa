@@ -70,3 +70,13 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--primary) !important;
   box-shadow: 0 0 10px rgba(139, 92, 246, 0.3) !important;
 }
+
+select {
+  background-color: var(--surface);
+  color: var(--text-main);
+}
+
+select option {
+  background-color: #1a1a24;
+  color: #ffffff;
+}

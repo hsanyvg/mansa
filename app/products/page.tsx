@@ -34,6 +34,7 @@ export default function ProductsPage() {
   };
 
   const [categoriesDb, setCategoriesDb] = useState<any[]>([]);
+  const [selectedPage, setSelectedPage] = useState('');
   const [selectedMainCat, setSelectedMainCat] = useState('');
   const [selectedSubCat, setSelectedSubCat] = useState('');
   const [filterMainCat, setFilterMainCat] = useState('');
@@ -41,6 +42,7 @@ export default function ProductsPage() {
   
   const [availableUnits, setAvailableUnits] = useState<{id: string, name: string}[]>([]);
   const [storesDb, setStoresDb] = useState<any[]>([]);
+  const [pagesStoresDb, setPagesStoresDb] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [productStock, setProductStock] = useState<Record<string, { quantity: number, unit: string }>>({});
 
@@ -123,14 +125,18 @@ export default function ProductsPage() {
 
   // Handle auto-selection for the Add Product modal
   useEffect(() => {
-    if (categoriesDb.length > 0 && !selectedMainCat && !editingProductId) {
-      const firstCat = categoriesDb[0];
-      setSelectedMainCat(firstCat.id);
-      if (firstCat.subcategories && firstCat.subcategories.length > 0) {
-        setSelectedSubCat(firstCat.subcategories[0].id);
-      }
+    if (pagesStoresDb.length > 0 && !selectedPage && !editingProductId) {
+      setSelectedPage(''); // Don't auto-select to force them to choose.
     }
-  }, [categoriesDb, selectedMainCat, editingProductId]);
+  }, [pagesStoresDb, selectedPage, editingProductId]);
+
+  // Fetch pages_stores from Firebase
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+      setPagesStoresDb(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+    return () => unsub();
+  }, []);
 
   // Fetch real units from Firebase
   useEffect(() => {
@@ -160,15 +166,16 @@ export default function ProductsPage() {
     return () => unsub();
   }, []);
 
+  const handlePageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedPage(e.target.value);
+    setSelectedMainCat('');
+    setSelectedSubCat('');
+  };
+
   const handleMainCatChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const mainId = e.target.value;
     setSelectedMainCat(mainId);
-    const mainObj = categoriesDb.find(c => c.id === mainId);
-    if (mainObj && mainObj.subcategories.length > 0) {
-      setSelectedSubCat(mainObj.subcategories[0].id);
-    } else {
-      setSelectedSubCat('');
-    }
+    setSelectedSubCat('');
   };
 
   const activeMainCatObj = categoriesDb.find(c => c.id === selectedMainCat);
@@ -186,6 +193,9 @@ export default function ProductsPage() {
       model: prod.model || '',
       notes: prod.notes || ''
     });
+    
+    const catObj = categoriesDb.find(c => c.id === prod.categoryId);
+    setSelectedPage(catObj ? catObj.pageId : '');
     setSelectedMainCat(prod.categoryId || '');
     setSelectedSubCat(prod.subcategoryId || '');
     if (prod.units && prod.units.length > 0) {
@@ -222,6 +232,14 @@ export default function ProductsPage() {
     try {
       if (!formData.name) {
         alert("يرجى إدخال اسم الصنف");
+        return;
+      }
+      if (!selectedPage) {
+        alert("يرجى إختيار البيج");
+        return;
+      }
+      if (!selectedMainCat) {
+        alert("يرجى إختيار فئة رئيسية");
         return;
       }
 
@@ -265,6 +283,7 @@ export default function ProductsPage() {
         { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
         { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
       ]);
+      setSelectedPage('');
       setSelectedMainCat('');
       setSelectedSubCat('');
       setProductStock({});
@@ -333,6 +352,7 @@ export default function ProductsPage() {
             { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
             { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
           ]);
+          setSelectedPage('');
           setSelectedMainCat('');
           setSelectedSubCat('');
           setProductStock({});
@@ -355,9 +375,17 @@ export default function ProductsPage() {
             }}
           >
             <option value="">كل الفئات الرئيسية</option>
-            {categoriesDb.map(cat => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
-            ))}
+            {pagesStoresDb.map(page => {
+              const pageCats = categoriesDb.filter(c => c.pageId === page.id);
+              if (pageCats.length === 0) return null;
+              return (
+                <optgroup key={page.id} label={page.name}>
+                  {pageCats.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
 
           <select 
@@ -593,16 +621,27 @@ export default function ProductsPage() {
                     <input type="number" className={styles.input} value={formData.reorderLevel} onChange={(e) => setFormData({...formData, reorderLevel: Number(e.target.value)})} />
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.label}>فئة رئيسية</label>
-                    <select className={styles.select} value={selectedMainCat} onChange={handleMainCatChange}>
-                      <option value="" disabled hidden>إختر فئة رئيسية</option>
-                      {categoriesDb.map(cat => (<option key={cat.id} value={cat.id}>{cat.name}</option>))}
+                    <label className={styles.label}>البيج</label>
+                    <select className={styles.select} value={selectedPage} onChange={handlePageChange}>
+                      <option value="" disabled hidden>إختر البيج</option>
+                      {pagesStoresDb.map(page => (
+                        <option key={page.id} value={page.id}>{page.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.label}>فئة فرعية</label>
+                    <label className={styles.label}>فئة رئيسية</label>
+                    <select className={styles.select} value={selectedMainCat} onChange={handleMainCatChange}>
+                      <option value="" disabled hidden>إختر فئة رئيسية</option>
+                      {categoriesDb.filter(c => c.pageId === selectedPage).map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label}>فئة فرعية (إختياري)</label>
                     <select className={styles.select} value={selectedSubCat} onChange={(e) => setSelectedSubCat(e.target.value)}>
-                      <option value="" disabled hidden>إختر فئة فرعية</option>
+                      <option value="">بدون فئة فرعية</option>
                       {availableSubCats.map((sub: any) => (<option key={sub.id} value={sub.id}>{sub.name}</option>))}
                     </select>
                   </div>

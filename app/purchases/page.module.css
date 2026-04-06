@@ -1,0 +1,291 @@
+/* app/purchases/page.module.css */
+.container {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  background-color: var(--bg-main);
+  min-height: calc(100vh - 64px);
+}
+
+/* Left Side - Inventory Search & Cart */
+.mainSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-sm);
+}
+
+.searchHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.searchBox {
+  position: relative;
+  width: 400px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: white;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.5;
+}
+
+.productDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: #1e1e30;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  margin-top: 5px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.productItem {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.productItem:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.cartTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cartTable th {
+  text-align: right;
+  padding: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cartTable td {
+  padding: 1rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.qtyInput, .priceInput {
+  width: 80px;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: white;
+  text-align: center;
+}
+
+.unitSelect {
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: white;
+}
+
+.removeBtn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Right Side - Invoice Info & Totals */
+.invoiceInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.select, .input {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: white;
+}
+
+.totals {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 1.5rem;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.totalLabel {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.totalValue {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--accent-primary);
+}
+
+.debtRow {
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.debtValue {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fb7185;
+}
+
+.saveBtn {
+  width: 100%;
+  padding: 1rem;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-weight: 700;
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 5px 15px rgba(139, 92, 246, 0.3);
+  transition: all 0.2s;
+}
+
+.saveBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4);
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.supplierDebtBadge {
+  background: rgba(251, 113, 133, 0.15);
+  color: #fb7185;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-right: 0.5rem;
+}
+
+/* Modal for Successful Save */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #1a1a2e;
+  padding: 2.5rem;
+  border-radius: var(--radius-xl);
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modalIcon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.modalTitle {
+  font-size: 1.5rem;
+  color: white;
+  margin-bottom: 1rem;
+}
+
+.modalBtn {
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 4rem;
+  opacity: 0.3;
+}
+
+.emptyIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}

@@ -26,10 +26,12 @@ export default function CategoriesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [pagesStores, setPagesStores] = useState<PageStore[]>([]);
   const [categories, setCategories] = useState<MainCategory[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   
   // Expanded states
   const [expandedPageId, setExpandedPageId] = useState<string | null>(null);
   const [expandedMainCatId, setExpandedMainCatId] = useState<string | null>(null);
+  const [expandedSubCatId, setExpandedSubCatId] = useState<string | null>(null);
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
@@ -38,6 +40,9 @@ export default function CategoriesPage() {
   const [targetMainId, setTargetMainId] = useState<string | null>(null);
   const [targetSubId, setTargetSubId] = useState<string | null>(null);
   const [inputName, setInputName] = useState('');
+  
+  const [hasSubCategory, setHasSubCategory] = useState(false);
+  const [inputSubName, setInputSubName] = useState('');
 
   // Delete Modal states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -62,8 +67,24 @@ export default function CategoriesPage() {
       setCategories(processed);
     });
     
-    return () => { unsubPages(); unsubCats(); };
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    
+    return () => { unsubPages(); unsubCats(); unsubProducts(); };
   }, []);
+
+  const getProductQuantity = (prod: any) => {
+    if (prod.totalBaseQuantity !== undefined) return prod.totalBaseQuantity;
+    let total = 0;
+    if (prod.stock && prod.units && prod.units.length > 0) {
+      Object.values(prod.stock).forEach((s: any) => {
+        const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+        total += (Number(s.quantity) || 0) * uMul;
+      });
+    }
+    return total;
+  };
 
   const showToastMsg = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -84,7 +105,11 @@ export default function CategoriesPage() {
         await updateDoc(doc(db, 'pages_stores', targetPageId), { name: inputName });
         showToastMsg("تم التعديل بنجاح");
       } else if (modalMode === 'addMain' && targetPageId) {
-        await addDoc(collection(db, 'categories'), { name: inputName, pageId: targetPageId, subcategories: [] });
+        let subs: SubCategory[] = [];
+        if (hasSubCategory && inputSubName.trim()) {
+          subs.push({ id: Date.now().toString(), name: inputSubName.trim() });
+        }
+        await addDoc(collection(db, 'categories'), { name: inputName, pageId: targetPageId, subcategories: subs });
         setExpandedPageId(targetPageId);
         showToastMsg("تم إضافة الفئة الرئيسية بنجاح");
       } else if (modalMode === 'editMain' && targetMainId) {
@@ -118,7 +143,7 @@ export default function CategoriesPage() {
   const openAddPageModal = () => { setModalMode('addPage'); setInputName(''); setShowModal(true); };
   const openEditPageModal = (id: string, name: string) => { setModalMode('editPage'); setTargetPageId(id); setInputName(name); setShowModal(true); };
   
-  const openAddMainModal = (pageId: string) => { setModalMode('addMain'); setTargetPageId(pageId); setInputName(''); setShowModal(true); };
+  const openAddMainModal = (pageId: string) => { setModalMode('addMain'); setTargetPageId(pageId); setInputName(''); setHasSubCategory(false); setInputSubName(''); setShowModal(true); };
   const openEditMainModal = (id: string, name: string) => { setModalMode('editMain'); setTargetMainId(id); setInputName(name); setShowModal(true); };
   
   const openAddSubModal = (mainId: string) => { setModalMode('addSub'); setTargetMainId(mainId); setInputName(''); setShowModal(true); };
@@ -255,19 +280,76 @@ export default function CategoriesPage() {
                             </div>
                           </div>
 
-                          {/* Level 3: Sub Categories Area */}
+                          {/* Level 3: Sub Categories Area + Main Cat Items */}
                           {isMainExpanded && (
                             <div className={styles.subCatsContainer}>
-                              <ul className={styles.subList}>
-                                {mainCat.subcategories.map(subCat => (
-                                  <li key={subCat.id} className={styles.subItem}>
-                                    <span>↳ {subCat.name}</span>
-                                    <div className={styles.subItemActions}>
-                                      <button onClick={() => openEditSubModal(mainCat.id, subCat.id, subCat.name)} className={styles.textBtn}>تعديل</button>
-                                      <button onClick={() => clickDeleteSub(mainCat.id, subCat.id, subCat.name)} className={styles.textBtnDelete}>حذف</button>
+                              {/* Show items directly under Main Category */}
+                              {(() => {
+                                const directProducts = products.filter(p => p.categoryId === mainCat.id && !p.subcategoryId);
+                                if (directProducts.length > 0) {
+                                  return (
+                                    <div style={{ marginBottom: '1rem', background: 'var(--surface)', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                      <h5 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.4rem' }}>أصناف مباشرة في {mainCat.name}</h5>
+                                      <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                                        <tbody>
+                                          {directProducts.map(prod => (
+                                             <tr key={prod.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                               <td style={{ padding: '0.4rem', color: 'var(--text-main)' }}>{prod.name}</td>
+                                               <td style={{ padding: '0.4rem', textAlign: 'left', color: '#10b981', fontWeight: 'bold' }}>الكمية: {getProductQuantity(prod)}</td>
+                                             </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
                                     </div>
-                                  </li>
-                                ))}
+                                  );
+                                }
+                                return null;
+                              })()}
+
+                              {/* Show Sub Categories */}
+                              <ul className={styles.subList}>
+                                {mainCat.subcategories.map(subCat => {
+                                  const isSubExpanded = expandedSubCatId === subCat.id;
+                                  const subProducts = products.filter(p => p.subcategoryId === subCat.id);
+                                  
+                                  return (
+                                    <li 
+                                      key={subCat.id} 
+                                      className={styles.subItem} 
+                                      onClick={() => setExpandedSubCatId(isSubExpanded ? null : subCat.id)}
+                                      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
+                                    >
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                        <span style={{ fontWeight: isSubExpanded ? 'bold' : 'normal', color: isSubExpanded ? 'var(--primary)' : 'inherit' }}>
+                                          {isSubExpanded ? '▼' : '▶'} {subCat.name} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({subProducts.length} أصناف)</span>
+                                        </span>
+                                        <div className={styles.subItemActions}>
+                                          <button onClick={(e) => { e.stopPropagation(); openEditSubModal(mainCat.id, subCat.id, subCat.name); }} className={styles.textBtn}>تعديل</button>
+                                          <button onClick={(e) => { e.stopPropagation(); clickDeleteSub(mainCat.id, subCat.id, subCat.name); }} className={styles.textBtnDelete}>حذف</button>
+                                        </div>
+                                      </div>
+                                      
+                                      {isSubExpanded && (
+                                        <div style={{ marginTop: '0.5rem', background: '#111827', padding: '0.5rem', borderRadius: '4px', border: '1px dashed #374151' }}>
+                                          {subProducts.length === 0 ? (
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>لا توجد أصناف في هذا الفرع.</div>
+                                          ) : (
+                                            <table style={{ width: '100%', fontSize: '0.9rem', color: 'var(--text-main)', borderCollapse: 'collapse' }}>
+                                              <tbody>
+                                                {subProducts.map(prod => (
+                                                   <tr key={prod.id} style={{ borderBottom: '1px solid #1f2937' }}>
+                                                     <td style={{ padding: '0.4rem', paddingLeft: '1rem' }}>{prod.name}</td>
+                                                     <td style={{ padding: '0.4rem', textAlign: 'left', color: '#10b981', fontWeight: 'bold' }}>الكمية: {getProductQuantity(prod)}</td>
+                                                   </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          )}
+                                        </div>
+                                      )}
+                                    </li>
+                                  );
+                                })}
                               </ul>
                               <button className={styles.addSubBtnSmall} onClick={() => openAddSubModal(mainCat.id)}>
                                 + إضافة فئة فرعية
@@ -317,6 +399,35 @@ export default function CategoriesPage() {
                   autoFocus
                 />
               </div>
+
+              {modalMode === 'addMain' && (
+                <div style={{ marginTop: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input 
+                      type="checkbox" 
+                      id="hasSubCatCheck" 
+                      checked={hasSubCategory} 
+                      onChange={(e) => setHasSubCategory(e.target.checked)} 
+                      style={{ width: '1.2rem', height: '1.2rem', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="hasSubCatCheck" style={{ cursor: 'pointer', color: 'var(--text-main)' }}>هل توجد فئة فرعية؟</label>
+                  </div>
+                  
+                  {hasSubCategory && (
+                    <div className={styles.formGroup} style={{ marginTop: '0.5rem' }}>
+                      <label className={styles.label}>اسم الفئة الفرعية اليمنى لحفظها</label>
+                      <input 
+                        type="text" 
+                        className={styles.input}
+                        value={inputSubName}
+                        onChange={(e) => setInputSubName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                        placeholder="أدخل اسم الفئة الفرعية..."
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.saveButton} onClick={handleSave}>حفظ</button>

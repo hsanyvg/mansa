@@ -17,10 +17,12 @@ export default function CompositeProductsPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [compositeProducts, setCompositeProducts] = useState<any[]>([]);
+  const [pagesStoresDb, setPagesStoresDb] = useState<any[]>([]);
 
   // Form State - Final Product Details (Right Section)
   const [productDetails, setProductDetails] = useState({
     name: '',
+    pageId: '',
     categoryId: '',
     subcategoryId: '',
     sellingPrice: 0,
@@ -86,6 +88,14 @@ export default function CompositeProductsPage() {
     return () => unsub();
   }, []);
 
+  // Fetch pages_stores from Firebase
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+      setPagesStoresDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
+
   // Handle Adding Ingredient to Recipe
   const handleAddIngredient = () => {
     if (!selectedIngredientId) {
@@ -125,6 +135,14 @@ export default function CompositeProductsPage() {
       alert("يرجى إدخال اسم المنتج التجميعي");
       return;
     }
+    if (!productDetails.pageId) {
+      alert("يرجى إختيار البيج");
+      return;
+    }
+    if (!productDetails.categoryId) {
+      alert("يرجى إختيار الفئة الرئيسية");
+      return;
+    }
     if (recipeItems.length === 0) {
       alert("يجب إضافة مادة أولية واحدة على الأقل في الوصفة");
       return;
@@ -143,6 +161,7 @@ export default function CompositeProductsPage() {
 
       const payload = {
         name: productDetails.name,
+        pageId: productDetails.pageId,
         categoryId: productDetails.categoryId,
         subcategoryId: productDetails.subcategoryId,
         sellingPrice: productDetails.sellingPrice,
@@ -153,6 +172,7 @@ export default function CompositeProductsPage() {
           name: item.name,
           quantityNeeded: item.quantityNeeded
         })),
+        isComposite: true,
         createdAt: serverTimestamp()
       };
 
@@ -163,6 +183,7 @@ export default function CompositeProductsPage() {
       // Reset Form
       setProductDetails({
         name: '',
+        pageId: '',
         categoryId: '',
         subcategoryId: '',
         sellingPrice: 0,
@@ -207,6 +228,26 @@ export default function CompositeProductsPage() {
     setProductDetails(prev => ({ ...prev, estimatedCost: totalCost }));
   }, [recipeItems, products]);
 
+  const calculateAvailableBundles = (cp: any) => {
+    if (!cp.composition || cp.composition.length === 0) return 0;
+    let minBundles = Infinity;
+    
+    for (const comp of cp.composition) {
+      const prod = products.find(p => p.id === comp.itemId);
+      if (!prod) return 0;
+      
+      let totalStock = 0;
+      if (prod.stock) {
+        for (const storeId in prod.stock) {
+           totalStock += prod.stock[storeId].quantity || 0;
+        }
+      }
+      const canMake = Math.floor(totalStock / comp.quantityNeeded);
+      if (canMake < minBundles) minBundles = canMake;
+    }
+    
+    return minBundles === Infinity ? 0 : minBundles;
+  };
 
   return (
     <div className={styles.container}>
@@ -238,28 +279,43 @@ export default function CompositeProductsPage() {
           </div>
 
           <div className={styles.formGroup}>
-            <label className={styles.label}>الفئة الرئيسية</label>
+            <label className={styles.label}>البيج <span style={{color: 'red'}}>*</span></label>
+            <select 
+              className={styles.select}
+              value={productDetails.pageId}
+              onChange={(e) => setProductDetails({...productDetails, pageId: e.target.value, categoryId: '', subcategoryId: ''})}
+            >
+              <option value="" disabled hidden>إختر البيج</option>
+              {pagesStoresDb.map(page => (
+                <option key={page.id} value={page.id}>{page.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label}>الفئة الرئيسية <span style={{color: 'red'}}>*</span></label>
             <select 
               className={styles.select}
               value={productDetails.categoryId}
               onChange={(e) => setProductDetails({...productDetails, categoryId: e.target.value, subcategoryId: ''})}
+              disabled={!productDetails.pageId}
             >
               <option value="" disabled hidden>إختر الفئة</option>
-              {categories.map(cat => (
+              {categories.filter(c => c.pageId === productDetails.pageId).map(cat => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
           </div>
 
           <div className={styles.formGroup}>
-            <label className={styles.label}>الفئة الفرعية</label>
+            <label className={styles.label}>الفئة الفرعية (إختياري)</label>
             <select 
               className={styles.select}
               value={productDetails.subcategoryId}
               onChange={(e) => setProductDetails({...productDetails, subcategoryId: e.target.value})}
-              disabled={availableSubcategories.length === 0}
+              disabled={!productDetails.categoryId || availableSubcategories.length === 0}
             >
-              <option value="" disabled hidden>إختر الفئة الفرعية</option>
+              <option value="">بدون فئة فرعية</option>
               {availableSubcategories.map((sub: any) => (
                 <option key={sub.id} value={sub.id}>{sub.name}</option>
               ))}
@@ -406,10 +462,12 @@ export default function CompositeProductsPage() {
             <thead>
               <tr>
                 <th>#</th>
+                <th>البيج</th>
                 <th>اسم المنتج التجميعي</th>
                 <th>سعر البيع</th>
                 <th>التكلفة</th>
                 <th>عدد المواد الأولية</th>
+                <th>الكمية المتوفرة (بكج)</th>
                 <th style={{ width: '80px', textAlign: 'center' }}>إجراء</th>
               </tr>
             </thead>
@@ -424,10 +482,21 @@ export default function CompositeProductsPage() {
                 compositeProducts.map((cp, index) => (
                   <tr key={cp.id}>
                     <td>{index + 1}</td>
+                    <td style={{ color: 'var(--primary)', fontWeight: 'bold' }}>
+                      {pagesStoresDb.find(p => p.id === cp.pageId)?.name || '---'}
+                    </td>
                     <td style={{ fontWeight: 'bold' }}>{cp.name}</td>
                     <td style={{ color: '#10B981', fontWeight: 'bold' }}>{cp.sellingPrice ? new Intl.NumberFormat('en-US').format(cp.sellingPrice) + ' د.ع' : '---'}</td>
                     <td style={{ color: '#ef4444', fontWeight: 'bold' }}>{cp.cost ? new Intl.NumberFormat('en-US').format(cp.cost) + ' د.ع' : '0'}</td>
                     <td>{cp.composition?.length || 0} مواد</td>
+                    <td>
+                      <span style={{ 
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#34d399', 
+                        padding: '0.25rem 0.75rem', borderRadius: '1rem', fontWeight: 'bold'
+                      }}>
+                        {calculateAvailableBundles(cp)} بكج
+                      </span>
+                    </td>
                     <td style={{ textAlign: 'center' }}>
                       <button className={styles.deleteBtn} onClick={() => handleDeleteComposite(cp.id, cp.name)} title="حذف">
                         🗑️

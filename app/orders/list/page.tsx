@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
 import { db } from '../../../lib/firebase';
-import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc } from 'firebase/firestore';
 
 export default function OrdersListPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -42,6 +42,16 @@ export default function OrdersListPage() {
     addDate: '',
     addTime: ''
   });
+
+  // Status Configuration
+  const statusMap: Record<string, { label: string, color: string, bg: string }> = {
+    'pending': { label: 'قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
+    'processing': { label: 'جاري التجهيز', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
+    'shipped': { label: 'تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
+    'delivered': { label: 'مكتمل', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'cancelled': { label: 'ملغي/مسترجع', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+    'new': { label: 'جديد', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' }
+  };
 
   // Fetch Orders from Firestore
   useEffect(() => {
@@ -108,7 +118,8 @@ export default function OrdersListPage() {
     const phone = (order.customerPhone || order.phone || '').toLowerCase();
     const total = (order.formattedTotal || '').toString().toLowerCase();
     const rawTotal = (order.totalAmount || order.price || '').toString().toLowerCase();
-    const status = (order.status || '').toLowerCase();
+    const statusKey = (order.status || 'pending').toLowerCase();
+    const statusLabel = statusMap[statusKey]?.label.toLowerCase() || statusKey;
     const aDate = (order.addDate || '').toLowerCase();
     const aTime = (order.addTime || '').toLowerCase();
 
@@ -119,7 +130,7 @@ export default function OrdersListPage() {
       gov.includes(columnFilters.governorate.toLowerCase()) &&
       phone.includes(columnFilters.phone.toLowerCase()) &&
       (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase())) &&
-      status.includes(columnFilters.status.toLowerCase()) &&
+      (statusKey.includes(columnFilters.status.toLowerCase()) || statusLabel.includes(columnFilters.status.toLowerCase())) &&
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
       aTime.includes(columnFilters.addTime.toLowerCase())
     );
@@ -158,16 +169,131 @@ export default function OrdersListPage() {
     if (!editingOrder) return;
     setIsUpdating(true);
     try {
+      const oldOrder = orders.find(o => o.id === editingOrder.id);
       const orderRef = doc(db, 'orders', editingOrder.id);
-      await updateDoc(orderRef, {
-        customerName: editingOrder.customerName,
-        phone: editingOrder.phone,
-        governorate: editingOrder.governorate,
-        region: editingOrder.region,
-        notes: editingOrder.notes,
-        status: editingOrder.status
+      const batch = writeBatch(db);
+
+      batch.update(orderRef, {
+        customerName: editingOrder.customerName || '',
+        customerPhone: editingOrder.customerPhone || editingOrder.phone || '',
+        governorate: editingOrder.governorate || '',
+        region: editingOrder.region || '',
+        notes: editingOrder.notes || '',
+        status: editingOrder.status || 'pending'
       });
-      setNotificationModal({ show: true, message: 'تم تحديث بيانات الطلب بنجاح' });
+
+      // Handle Stock Logic if status changed
+      if (oldOrder && oldOrder.status !== editingOrder.status) {
+        const isNowCancelled = editingOrder.status === 'cancelled' || editingOrder.status === 'returned';
+        const wasCancelled = oldOrder.status === 'cancelled' || oldOrder.status === 'returned';
+
+        const updateStockForOrderItems = async (items: any[], operation: 'add' | 'subtract') => {
+          for (const item of items) {
+            if (item.isComposite && item.composition) {
+              for (const comp of item.composition) {
+                const rawProdRef = doc(db, 'products', comp.itemId);
+                const rawSnap = await getDoc(rawProdRef);
+                if (rawSnap.exists()) {
+                  const rawData = rawSnap.data();
+                  let stock = { ...rawData.stock };
+                  let qtyToChange = comp.quantityNeeded * item.quantity;
+                  
+                  if (operation === 'add') {
+                    const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+                    if (!stock[firstStoreKey]) {
+                       stock[firstStoreKey] = { quantity: qtyToChange, unit: rawData.units?.[0]?.type || 'قطعة' };
+                    } else {
+                       stock[firstStoreKey].quantity += qtyToChange;
+                    }
+                  } else { // subtract
+                    let remainingToDeduct = qtyToChange;
+                    for (const storeId in stock) {
+                      if (remainingToDeduct <= 0) break;
+                      if (stock[storeId].quantity > 0) {
+                        const deductAmount = Math.min(stock[storeId].quantity, remainingToDeduct);
+                        stock[storeId].quantity -= deductAmount;
+                        remainingToDeduct -= deductAmount;
+                      }
+                    }
+                    if (remainingToDeduct > 0) {
+                      const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+                      if (!stock[firstStoreKey]) {
+                        stock[firstStoreKey] = { quantity: -remainingToDeduct, unit: rawData.units?.[0]?.type || 'قطعة' };
+                      } else {
+                        stock[firstStoreKey].quantity -= remainingToDeduct;
+                      }
+                    }
+                  }
+                  
+                  // Update totalBaseQuantity
+                  let newTotalBaseQuantity = 0;
+                  Object.values(stock).forEach((s: any) => {
+                    const uMul = rawData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                    newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+                  });
+
+                  batch.update(rawProdRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+                }
+              }
+            } else {
+              const prodRef = doc(db, 'products', item.productId);
+              const prodSnap = await getDoc(prodRef);
+              if (prodSnap.exists()) {
+                const prodData = prodSnap.data();
+                let stock = { ...prodData.stock };
+                let qtyToChange = item.quantity;
+
+                if (operation === 'add') {
+                  const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+                  if (!stock[firstStoreKey]) {
+                     stock[firstStoreKey] = { quantity: qtyToChange, unit: prodData.units?.[0]?.type || 'قطعة' };
+                  } else {
+                     stock[firstStoreKey].quantity += qtyToChange;
+                  }
+                } else { // subtract
+                  let remainingToDeduct = qtyToChange;
+                  for (const storeId in stock) {
+                    if (remainingToDeduct <= 0) break;
+                    if (stock[storeId].quantity > 0) {
+                      const deductAmount = Math.min(stock[storeId].quantity, remainingToDeduct);
+                      stock[storeId].quantity -= deductAmount;
+                      remainingToDeduct -= deductAmount;
+                    }
+                  }
+                  if (remainingToDeduct > 0) {
+                    const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+                    if (!stock[firstStoreKey]) {
+                      stock[firstStoreKey] = { quantity: -remainingToDeduct, unit: prodData.units?.[0]?.type || 'قطعة' };
+                    } else {
+                      stock[firstStoreKey].quantity -= remainingToDeduct;
+                    }
+                  }
+                }
+
+                // Update totalBaseQuantity
+                let newTotalBaseQuantity = 0;
+                Object.values(stock).forEach((s: any) => {
+                  const uMul = prodData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                  newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+                });
+
+                batch.update(prodRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+              }
+            }
+          }
+        };
+
+        if (isNowCancelled && !wasCancelled) {
+          // Action: RESTOCK (+ quantity)
+          await updateStockForOrderItems(oldOrder.items || [], 'add');
+        } else if (!isNowCancelled && wasCancelled) {
+          // Action: DEDUCT (- quantity)
+          await updateStockForOrderItems(oldOrder.items || [], 'subtract');
+        }
+      }
+
+      await batch.commit();
+      setNotificationModal({ show: true, message: 'تم تحديث بيانات الطلب والمخزون بنجاح' });
       setEditingOrder(null);
     } catch (error) {
       console.error("Error updating order:", error);
@@ -320,10 +446,11 @@ export default function OrdersListPage() {
                   <td style={{ color: '#10B981', fontWeight: 'bold' }}>{order.formattedTotal} د.ع</td>
                   <td>
                     <span style={{ 
-                      backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', 
-                      padding: '0.25rem 0.75rem', borderRadius: '1rem', fontSize: '0.85rem'
+                      backgroundColor: statusMap[order.status || 'pending']?.bg || 'rgba(148, 163, 184, 0.15)', 
+                      color: statusMap[order.status || 'pending']?.color || '#94a3b8', 
+                      padding: '0.35rem 1rem', borderRadius: '1.5rem', fontSize: '0.85rem', fontWeight: 'bold'
                     }}>
-                      {order.status || 'جديد'}
+                      {statusMap[order.status || 'pending']?.label || 'جديد'}
                     </span>
                   </td>
                   <td>
@@ -466,7 +593,13 @@ export default function OrdersListPage() {
                 </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label}>رقم الهاتف</label>
-                  <input type="text" className={styles.input} value={editingOrder.phone || editingOrder.customerPhone || ''} onChange={e => setEditingOrder({...editingOrder, phone: e.target.value})} required />
+                  <input 
+                    type="text" 
+                    className={styles.input} 
+                    value={editingOrder.customerPhone || editingOrder.phone || ''} 
+                    onChange={e => setEditingOrder({...editingOrder, customerPhone: e.target.value, phone: e.target.value})} 
+                    required 
+                  />
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <div className={styles.formGroup} style={{ flex: 1, position: 'relative' }}>
@@ -518,7 +651,7 @@ export default function OrdersListPage() {
                     <option value="processing">جاري التجهيز (processing)</option>
                     <option value="shipped">مشحون (shipped)</option>
                     <option value="delivered">مكتمل (delivered)</option>
-                    <option value="cancelled">ملغي (cancelled)</option>
+                    <option value="cancelled">ملغي/مسترجع (cancelled/returned)</option>
                   </select>
                 </div>
                 <div className={styles.formGroup}>

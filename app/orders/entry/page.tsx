@@ -4,7 +4,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import styles from './page.module.css';
 import { db } from '../../../lib/firebase';
-import { collection, onSnapshot, doc, writeBatch, serverTimestamp, getDoc } from 'firebase/firestore';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  writeBatch, 
+  serverTimestamp, 
+  getDoc, 
+  query as fsQuery, 
+  where, 
+  getDocs,
+  limit 
+} from 'firebase/firestore';
 
 interface Product {
   id: string;
@@ -31,12 +42,25 @@ export default function OrderEntryPage() {
     notes: ''
   });
 
+  const [customerHistory, setCustomerHistory] = useState<{
+    count: number;
+    totalSpent: number;
+    returns: number;
+    deliveredCount: number;
+    lastProfile?: any;
+  } | null>(null);
+  const [isSearchingHistory, setIsSearchingHistory] = useState(false);
+  const [ordersMatches, setOrdersMatches] = useState<any[]>([]);
+
+  const [customersDb, setCustomersDb] = useState<any[]>([]);
+  const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
+
   const [showGovDropdown, setShowGovDropdown] = useState(false);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [notificationModal, setNotificationModal] = useState({ show: false, message: '' });
 
-  // POS State (Left side)
-  const [products, setProducts] = useState<Product[]>([]);
+  const [baseProducts, setBaseProducts] = useState<Product[]>([]);
+  const [compositeProductsData, setCompositeProductsData] = useState<any[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
@@ -53,10 +77,164 @@ export default function OrderEntryPage() {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
-      setProducts(pData);
+      setBaseProducts(pData);
     });
     return () => unsub();
   }, []);
+
+  // Fetch composite products
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'composite_products'), (snapshot) => {
+      const cData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCompositeProductsData(cData);
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch customers
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
+      setCustomersDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch customer history when phone is 11 digits
+  useEffect(() => {
+    const phone = formData.customerPhone.trim();
+    const name = formData.customerName.trim().toLowerCase();
+    
+    // Smart Lookup: If name matches an official record exactly, we treat it as identifying the customer.
+    const officialMatch = customersDb.find(c => c.name.toLowerCase() === name);
+    const searchPhone = officialMatch ? officialMatch.phone : (phone.length === 11 ? phone : null);
+
+    if (searchPhone) {
+      const fetchHistory = async () => {
+        setIsSearchingHistory(true);
+        try {
+          // 1. Query Orders
+          const qOrders = fsQuery(collection(db, 'orders'), where('customerPhone', '==', searchPhone));
+          const snapOrders = await getDocs(qOrders);
+          
+          let count = 0;
+          let totalSpent = 0;
+          let returns = 0;
+          let deliveredCount = 0;
+
+          snapOrders.forEach(doc => {
+            const data = doc.data();
+            count++;
+            if (data.status === 'delivered') {
+              totalSpent += (data.totalAmount || 0);
+              deliveredCount++;
+            }
+            if (data.status === 'cancelled' || data.status === 'returned') {
+              returns++;
+            }
+          });
+
+          // 2. Query Profile
+          const qCust = fsQuery(collection(db, 'customers'), where('phone', '==', searchPhone));
+          const snapCust = await getDocs(qCust);
+          let lastProfile = null;
+          if (!snapCust.empty) {
+            lastProfile = snapCust.docs[0].data();
+          }
+
+          setCustomerHistory({ count, totalSpent, returns, deliveredCount, lastProfile });
+        } catch (err) {
+          console.error("Error fetching history:", err);
+        } finally {
+          setIsSearchingHistory(false);
+        }
+      };
+      fetchHistory();
+    } else {
+      setCustomerHistory(null);
+    }
+  }, [formData.customerPhone, customersDb]);
+
+  useEffect(() => {
+    const phoneQuery = formData.customerPhone.trim();
+
+    if (phoneQuery.length < 10) {
+      setOrdersMatches([]);
+      return;
+    }
+
+    const searchOrders = async () => {
+      try {
+        const matches: any[] = [];
+        
+        // Search by Phone ONLY
+        const qPhone = fsQuery(
+          collection(db, 'orders'), 
+          where('customerPhone', '>=', phoneQuery), 
+          where('customerPhone', '<=', phoneQuery + '\uf8ff'),
+          limit(5)
+        );
+        const snapPhone = await getDocs(qPhone);
+        snapPhone.forEach(doc => {
+          const d = doc.data();
+          matches.push({
+            id: 'ord-' + doc.id,
+            name: d.customerName,
+            phone: d.customerPhone,
+            province: d.governorate,
+            area: d.region,
+            source: 'order'
+          });
+        });
+
+        setOrdersMatches(matches);
+      } catch (err) {
+        console.error("Phone search error:", err);
+      }
+    };
+
+    const timer = setTimeout(searchOrders, 300); // Simple debounce
+    return () => clearTimeout(timer);
+  }, [formData.customerPhone]);
+
+  // Merge products and dynamically calculate available bundles
+  const products = React.useMemo(() => {
+    const merged = [...baseProducts];
+    
+    compositeProductsData.forEach(cp => {
+      // Calculate max available bundles
+      let minBundles = Infinity;
+      if (cp.composition && cp.composition.length > 0) {
+        for (const comp of cp.composition) {
+          const prod = baseProducts.find(p => p.id === comp.itemId);
+          if (!prod) { minBundles = 0; break; }
+          
+          let totalStock = 0;
+          if (prod.stock) {
+            for (const storeId in prod.stock) {
+              totalStock += prod.stock[storeId].quantity || 0;
+            }
+          }
+          const canMake = Math.floor(totalStock / comp.quantityNeeded);
+          if (canMake < minBundles) minBundles = canMake;
+        }
+      } else {
+        minBundles = 0;
+      }
+      if (minBundles === Infinity) minBundles = 0;
+
+      merged.push({
+        id: cp.id,
+        name: cp.name,
+        barcode: '', // Currently composite products might not have barcodes
+        units: [{ selling: cp.sellingPrice || 0, type: 'بكج' }],
+        stock: { 'virtual_store': { quantity: minBundles, unit: 'بكج' } },
+        isComposite: true,
+        composition: cp.composition || []
+      } as any);
+    });
+    
+    return merged;
+  }, [baseProducts, compositeProductsData]);
 
   // Form Handlers
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -65,7 +243,60 @@ export default function OrderEntryPage() {
       ...prev,
       [name]: value
     }));
+    if (name === 'customerPhone') {
+      setShowPhoneDropdown(true);
+    }
   };
+
+  const handleSelectCustomer = (customer: any) => {
+    setFormData({
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      governorate: customer.province || '',
+      region: customer.area || '',
+      notes: customer.notes || ''
+    });
+    setShowPhoneDropdown(false);
+    // History Effect will trigger automatically because phone matches
+  };
+
+  const applyHistoricalData = () => {
+    if (customerHistory?.lastProfile) {
+      const p = customerHistory.lastProfile;
+      setFormData(prev => ({
+        ...prev,
+        customerName: p.name || prev.customerName,
+        governorate: p.province || prev.governorate,
+        region: p.area || prev.region,
+        notes: p.notes || prev.notes
+      }));
+    } else if (customerHistory?.count && customerHistory.count > 0) {
+       // If no profile in 'customers' collection, try to find an order with the same phone to get Name/Address
+       // This is a fallback if the customer wasn't explicitly saved to the 'customers' collection.
+       // However, the user mainly wants auto-fill from recognized data.
+    }
+  };
+
+
+
+  const filteredCustomersByPhone = React.useMemo(() => {
+    const phoneQuery = (formData.customerPhone || '').trim();
+    if (phoneQuery.length < 10) return [];
+
+    const list: any[] = [];
+    const customersMatched = customersDb
+      .filter(c => c.phone.includes(phoneQuery))
+      .map(c => ({ ...c, source: 'customer' }));
+    list.push(...customersMatched);
+
+    ordersMatches.forEach(om => {
+      if (om.phone.includes(phoneQuery) && !list.find(item => item.phone === om.phone)) {
+        list.push(om);
+      }
+    });
+
+    return list;
+  }, [customersDb, ordersMatches, formData.customerPhone]);
 
   const isPhoneInvalid = (formData.customerPhone.length > 0 && formData.customerPhone.length !== 11) || 
                          (hasAttemptedSubmit && formData.customerPhone.length !== 11);
@@ -189,13 +420,18 @@ export default function OrderEntryPage() {
         region: formData.region,
         notes: formData.notes,
         totalAmount: totalAmount,
-        items: cart.map(item => ({
-          productId: item.id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice
-        })),
+        items: cart.map(item => {
+          const p = item.product as any;
+          return {
+            productId: item.id,
+            productName: item.product.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            total: item.quantity * item.unitPrice,
+            isComposite: p.isComposite || false,
+            composition: p.composition || null
+          };
+        }),
         date: serverTimestamp(),
         status: 'pending' // Default status
       };
@@ -204,37 +440,88 @@ export default function OrderEntryPage() {
 
       // 2. Deduct Stock from Products
       for (const item of cart) {
-        const prodRef = doc(db, 'products', item.product.id);
-        const prodSnap = await getDoc(prodRef);
-        
-        if (prodSnap.exists()) {
-          const prodData = prodSnap.data();
-          let stock = { ...prodData.stock };
-          let remainingToDeduct = item.quantity;
+        const productData = item.product as any;
 
-          // Attempt to deduct from available stores sequentially
-          for (const storeId in stock) {
-            if (remainingToDeduct <= 0) break;
-            if (stock[storeId].quantity > 0) {
-              const deductAmount = Math.min(stock[storeId].quantity, remainingToDeduct);
-              stock[storeId].quantity -= deductAmount;
-              remainingToDeduct -= deductAmount;
+        // --- Handle Composite Products (BOM) ---
+        if (productData.isComposite && productData.composition) {
+          for (const component of productData.composition) {
+            const rawProdRef = doc(db, 'products', component.itemId);
+            const rawSnap = await getDoc(rawProdRef);
+            
+            if (rawSnap.exists()) {
+              const rawData = rawSnap.data();
+              let stock = { ...rawData.stock };
+              let remainingToDeduct = component.quantityNeeded * item.quantity;
+              
+              for (const storeId in stock) {
+                if (remainingToDeduct <= 0) break;
+                if (stock[storeId].quantity > 0) {
+                  const deductAmount = Math.min(stock[storeId].quantity, remainingToDeduct);
+                  stock[storeId].quantity -= deductAmount;
+                  remainingToDeduct -= deductAmount;
+                }
+              }
+              
+              if (remainingToDeduct > 0) {
+                const firstStoreKey = Object.keys(stock)[0];
+                if (firstStoreKey) {
+                  stock[firstStoreKey].quantity -= remainingToDeduct;
+                } else {
+                  stock['default_store'] = { quantity: -remainingToDeduct, unit: rawData.units?.[0]?.type || 'قطعة' };
+                }
+              }
+
+              // Update totalBaseQuantity
+              let newTotalBaseQuantity = 0;
+              Object.values(stock).forEach((s: any) => {
+                const uMul = rawData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+              });
+
+              batch.update(rawProdRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
             }
           }
+        } 
+        // --- Handle Regular Products ---
+        else {
+          const prodRef = doc(db, 'products', item.product.id);
+          const prodSnap = await getDoc(prodRef);
+          
+          if (prodSnap.exists()) {
+            const prodData = prodSnap.data();
+            let stock = { ...prodData.stock };
+            let remainingToDeduct = item.quantity;
 
-          // If there's still quantity to deduct, it means they oversold. 
-          // We can optionally force one store into negative, or leave it. We'll deduct from the first store available or create one.
-          if (remainingToDeduct > 0) {
-            const firstStoreKey = Object.keys(stock)[0];
-            if (firstStoreKey) {
-              stock[firstStoreKey].quantity -= remainingToDeduct;
-            } else {
-               // Fallback if stock object was empty
-               stock['default_store'] = { quantity: -remainingToDeduct, unit: prodData.units?.[0]?.type || 'قطعة' };
+            // Attempt to deduct from available stores sequentially
+            for (const storeId in stock) {
+              if (remainingToDeduct <= 0) break;
+              if (stock[storeId].quantity > 0) {
+                const deductAmount = Math.min(stock[storeId].quantity, remainingToDeduct);
+                stock[storeId].quantity -= deductAmount;
+                remainingToDeduct -= deductAmount;
+              }
             }
-          }
 
-          batch.update(prodRef, { stock });
+            // If there's still quantity to deduct, it means they oversold. 
+            if (remainingToDeduct > 0) {
+              const firstStoreKey = Object.keys(stock)[0];
+              if (firstStoreKey) {
+                stock[firstStoreKey].quantity -= remainingToDeduct;
+              } else {
+                 // Fallback if stock object was empty
+                 stock['default_store'] = { quantity: -remainingToDeduct, unit: prodData.units?.[0]?.type || 'قطعة' };
+              }
+            }
+
+            // Update totalBaseQuantity
+            let newTotalBaseQuantity = 0;
+            Object.values(stock).forEach((s: any) => {
+              const uMul = prodData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+              newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+            });
+
+            batch.update(prodRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+          }
         }
       }
 
@@ -260,9 +547,9 @@ export default function OrderEntryPage() {
   return (
     <div className={styles.container}>
       
-      {/* RIGHT COLUMN: FORM (Appears right in RTL because it is first in DOM) */}
-      <div className={`${styles.formSection} ${hasGlobalError ? styles.formWrapperError : ''}`}>
-        <form onSubmit={handleSubmit}>
+      <div className={styles.mainLayout}>
+        <div className={`${styles.formSection} ${hasGlobalError ? styles.formWrapperError : ''}`}>
+          <form onSubmit={handleSubmit}>
           
           <div className={styles.formGroup}>
             <label className={styles.label}>اسم الزبون</label>
@@ -274,23 +561,59 @@ export default function OrderEntryPage() {
               value={formData.customerName}
               onChange={handleChange}
               onKeyDown={(e) => handleKeyDownForm(e, 'customerPhone')}
+              autoComplete="off"
             />
           </div>
 
           <div className={styles.formGroup}>
             <label className={styles.label}>هاتف الزبون</label>
-            <div className={styles.inputWrapper}>
-              <input 
-                id="customerPhone"
-                type="text" 
-                name="customerPhone"
-                className={getInputClass('customerPhone')} 
-                value={formData.customerPhone}
-                onChange={handleChange}
-                onKeyDown={(e) => handleKeyDownForm(e, 'governorate')}
-              />
-              {isPhoneInvalid && (
-                <span className={styles.errorMessage}>يجب أن يتكون رقم الهاتف من 11 رقماً</span>
+            <div className={styles.searchableSelectContainer}>
+              <div className={styles.inputWrapper}>
+                <input 
+                  id="customerPhone"
+                  type="text" 
+                  name="customerPhone"
+                  className={getInputClass('customerPhone')} 
+                  value={formData.customerPhone}
+                  onChange={handleChange}
+                  onFocus={() => setShowPhoneDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowPhoneDropdown(false), 200)}
+                  onKeyDown={(e) => handleKeyDownForm(e, 'governorate')}
+                  autoComplete="off"
+                />
+                {isPhoneInvalid && (
+                  <span className={styles.errorMessage}>يجب أن يتكون رقم الهاتف من 11 رقماً</span>
+                )}
+              </div>
+              {showPhoneDropdown && formData.customerPhone.trim().length >= 10 && filteredCustomersByPhone.length > 0 && (
+                <ul className={styles.dropdownList}>
+                  {filteredCustomersByPhone.length > 0 ? (
+                    filteredCustomersByPhone.map((customer: any) => (
+                    <li 
+                      key={customer.id} 
+                      className={styles.dropdownItem}
+                      onClick={() => handleSelectCustomer(customer)}
+                    >
+                      <div className={styles.customerRow}>
+                        <div className={styles.customerMain}>
+                          <span className={styles.custName}>{customer.name}</span>
+                          <span className={styles.custPhone}>{customer.phone}</span>
+                        </div>
+                        <div className={styles.customerBadges}>
+                          {customer.source === 'customer' ? (
+                            <span className={`${styles.sourceBadge} ${styles.badgeRecord}`}>سجل</span>
+                          ) : (
+                            <span className={`${styles.sourceBadge} ${styles.badgeOrder}`}>أرشيف</span>
+                          )}
+                          {customer.tag && <span className={styles.custTag}>({customer.tag})</span>}
+                        </div>
+                      </div>
+                    </li>
+                    ))
+                  ) : (
+                    <li className={styles.dropdownItem} style={{ color: 'var(--text-muted)' }}>لا توجد نتائج مطابقة في سجل العملاء</li>
+                  )}
+                </ul>
               )}
             </div>
           </div>
@@ -385,7 +708,81 @@ export default function OrderEntryPage() {
             </Link>
           </div>
 
-        </form>
+          </form>
+        </div>
+
+        {/* Customer Info Card (Left of the form) */}
+        {customerHistory && (
+          <div className={styles.customerInfoCard}>
+            <div className={styles.cardHeader}>
+              <span className={styles.cardIcon}>👤</span>
+              <h3>معلومات الزبون</h3>
+            </div>
+            
+            <div className={styles.statsGrid}>
+              <div className={styles.statItem}>
+                <span className={styles.statIcon} style={{ background: 'rgba(59, 130, 246, 0.1)' }}>📦</span>
+                <div className={styles.statInfo}>
+                  <span className={styles.statLabel}>إجمالي الطلبات</span>
+                  <span className={styles.statValue}>{customerHistory.count}</span>
+                </div>
+              </div>
+
+              <div className={styles.statItem}>
+                <span className={styles.statIcon} style={{ background: 'rgba(16, 185, 129, 0.1)' }}>✅</span>
+                <div className={styles.statInfo}>
+                  <span className={styles.statLabel}>ناجحة</span>
+                  <span className={`${styles.statValue} ${styles.successText}`}>{customerHistory.deliveredCount}</span>
+                </div>
+              </div>
+              
+              <div className={styles.statItem}>
+                <span className={styles.statIcon} style={{ background: 'rgba(239, 68, 68, 0.1)' }}>❌</span>
+                <div className={styles.statInfo}>
+                  <span className={styles.statLabel}>راجعة</span>
+                  <span className={`${styles.statValue} ${styles.failText}`}>{customerHistory.returns}</span>
+                </div>
+              </div>
+
+              <div className={styles.statItem}>
+                <span className={styles.statIcon} style={{ background: 'rgba(251, 191, 36, 0.1)' }}>📈</span>
+                <div className={styles.statInfo}>
+                  <span className={styles.statLabel}>نسبة الاستلام</span>
+                  <span className={styles.statValue} style={{ color: '#fbbf24' }}>
+                    {customerHistory.count > 0 
+                      ? Math.round((customerHistory.deliveredCount / customerHistory.count) * 100) 
+                      : 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.totalSpentSection}>
+               <span className={styles.statLabel}>إجمالي الإنفاق (المستلم)</span>
+               <span className={styles.totalSpentValue}>{new Intl.NumberFormat('en-US').format(customerHistory.totalSpent)} د.ع</span>
+            </div>
+
+            {customerHistory.returns > 0 && (
+              <div className={styles.returnWarning}>
+                <span className={styles.warningIcon}>⚠️</span>
+                <span>تحذير: لديه {customerHistory.returns} طلبات مرتجعة سابقاً!</span>
+              </div>
+            )}
+
+            {customerHistory.lastProfile && (
+              <div className={styles.autoFillPrompt}>
+                <p>هل تود تعبئة البيانات تلقائياً؟</p>
+                <button 
+                  type="button" 
+                  className={styles.autoFillBtn}
+                  onClick={applyHistoricalData}
+                >
+                  نعم، تعبئة الآن ✨
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* LEFT COLUMN: CART (POS UI) */}
