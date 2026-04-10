@@ -39,7 +39,8 @@ export default function OrderEntryPage() {
     customerPhone: '',
     governorate: '',
     region: '',
-    notes: ''
+    notes: '',
+    paymentMethod: 'كاش عند التوصيل'
   });
 
   const [customerHistory, setCustomerHistory] = useState<{
@@ -62,6 +63,8 @@ export default function OrderEntryPage() {
   const [baseProducts, setBaseProducts] = useState<Product[]>([]);
   const [compositeProductsData, setCompositeProductsData] = useState<any[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +82,17 @@ export default function OrderEntryPage() {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
       setBaseProducts(pData);
     });
+    return () => unsub();
+  }, []);
+
+  // Fetch employees
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'employees'), (snapshot) => {
+      const empData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setEmployees(empData.filter((e: any) => e.isActive));
+    });
+    const savedEmpId = localStorage.getItem('selectedEmployeeId');
+    if (savedEmpId) setSelectedEmployeeId(savedEmpId);
     return () => unsub();
   }, []);
 
@@ -249,15 +263,28 @@ export default function OrderEntryPage() {
   };
 
   const handleSelectCustomer = (customer: any) => {
-    setFormData({
+    setFormData(prev => ({
+      ...prev,
       customerName: customer.name,
       customerPhone: customer.phone,
       governorate: customer.province || '',
       region: customer.area || '',
-      notes: customer.notes || ''
-    });
+      notes: customer.notes || prev.notes
+    }));
     setShowPhoneDropdown(false);
     // History Effect will trigger automatically because phone matches
+  };
+
+  const handleAddReplaceNote = () => {
+    setFormData(prev => {
+      const tag = "استبدال هذا الطلب";
+      const currentNotes = prev.notes || "";
+      if (currentNotes.includes(tag)) return prev; // Avoid duplicates
+      return {
+        ...prev,
+        notes: currentNotes ? `${currentNotes}\n${tag}` : tag
+      };
+    });
   };
 
   const applyHistoricalData = () => {
@@ -393,6 +420,11 @@ export default function OrderEntryPage() {
     setHasAttemptedSubmit(true);
     
     // Validation
+    if (!selectedEmployeeId) {
+      alert("يرجى اختيار الموظف مُدخل الطلب أولاً.");
+      return;
+    }
+
     if (
       formData.customerName.trim() === '' ||
       formData.customerPhone.length !== 11 ||
@@ -412,13 +444,18 @@ export default function OrderEntryPage() {
       const batch = writeBatch(db);
       const newOrderRef = doc(collection(db, 'orders'));
 
+      const emp = employees.find(e => e.id === selectedEmployeeId);
+
       // 1. Save Order Document
       const orderData = {
+        employeeId: selectedEmployeeId,
+        employeeName: emp?.name || 'مجهول',
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         governorate: formData.governorate,
         region: formData.region,
         notes: formData.notes,
+        paymentMethod: formData.paymentMethod,
         totalAmount: totalAmount,
         items: cart.map(item => {
           const p = item.product as any;
@@ -533,7 +570,12 @@ export default function OrderEntryPage() {
       // Reset State
       setHasAttemptedSubmit(false);
       setFormData({
-        customerName: '', customerPhone: '', governorate: '', region: '', notes: ''
+        customerName: '', 
+        customerPhone: '', 
+        governorate: '', 
+        region: '', 
+        notes: '',
+        paymentMethod: 'كاش عند التوصيل'
       });
       setCart([]);
       setSearchQuery('');
@@ -551,6 +593,24 @@ export default function OrderEntryPage() {
         <div className={`${styles.formSection} ${hasGlobalError ? styles.formWrapperError : ''}`}>
           <form onSubmit={handleSubmit}>
           
+          <div className={styles.formGroup} style={{ marginBottom: '1.5rem', background: 'rgba(139, 92, 246, 0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+            <label className={styles.label} style={{ color: '#c4b5fd' }}>الموظف مُدخل الطلب *</label>
+            <select 
+              className={styles.input}
+              value={selectedEmployeeId}
+              onChange={(e) => {
+                setSelectedEmployeeId(e.target.value);
+                localStorage.setItem('selectedEmployeeId', e.target.value);
+              }}
+              required
+            >
+              <option value="">-- اختر اسمك --</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className={styles.formGroup}>
             <label className={styles.label}>اسم الزبون</label>
             <input 
@@ -688,14 +748,36 @@ export default function OrderEntryPage() {
           </div>
 
           <div className={styles.formGroup}>
-            <label className={styles.label}>الملاحظات</label>
-            <input 
-              id="notes"
-              type="text" 
+            <label className={styles.label}>طريقة الدفع</label>
+            <select 
+              name="paymentMethod"
+              className={styles.input}
+              value={formData.paymentMethod}
+              onChange={handleChange}
+            >
+              <option value="كاش عند التوصيل">كاش عند التوصيل</option>
+              <option value="حوالة زين كاش">حوالة زين كاش</option>
+              <option value="حوالة بنكية">حوالة بنكية</option>
+            </select>
+          </div>
+
+          <div className={styles.formGroup}>
+            <div className={styles.labelWithAction}>
+              <label className={styles.label}>ملاحظات الطلب</label>
+              <button 
+                type="button" 
+                className={styles.replaceBtn}
+                onClick={handleAddReplaceNote}
+              >
+                🔄 استبدال
+              </button>
+            </div>
+            <textarea 
               name="notes"
-              className={styles.input} 
+              className={styles.textarea} 
               value={formData.notes}
               onChange={handleChange}
+              rows={3}
             />
           </div>
 

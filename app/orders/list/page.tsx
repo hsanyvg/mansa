@@ -23,6 +23,10 @@ export default function OrdersListPage() {
   const [editingOrder, setEditingOrder] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showGovDropdownEdit, setShowGovDropdownEdit] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
+  const [activeTab, setActiveTab] = useState('all'); 
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
 
   const governoratesList = [
     "بغداد", "البصرة", "نينوى (الموصل)", "أربيل", "النجف", "ذي قار (الناصرية)",
@@ -40,7 +44,8 @@ export default function OrdersListPage() {
     totalAmount: '',
     status: '',
     addDate: '',
-    addTime: ''
+    addTime: '',
+    employeeName: ''
   });
 
   // Status Configuration
@@ -109,7 +114,25 @@ export default function OrdersListPage() {
     setColumnFilters(prev => ({ ...prev, [column]: value }));
   };
 
-  const filteredOrders = orders.filter(order => {
+  const activeOrders = orders.filter(o => !o.isArchived);
+  const archivedOrdersList = orders.filter(o => o.isArchived);
+
+  const phoneCounts = activeOrders.reduce((acc, order) => {
+    const ph = (order.customerPhone || order.phone || '').trim();
+    if (ph) acc[ph] = (acc[ph] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const duplicateOrdersList = activeOrders.filter(order => {
+    const ph = (order.customerPhone || order.phone || '').trim();
+    return ph && phoneCounts[ph] > 1;
+  });
+
+  const baseList = activeTab === 'archived' ? archivedOrdersList 
+                 : activeTab === 'duplicates' ? duplicateOrdersList 
+                 : activeOrders;
+
+  const filteredOrders = baseList.filter(order => {
     // We slice the ID exactly how it's displayed to match the user's visual search
     const displayId = order.id.slice(-6).toLowerCase();
     const idStr = order.id.toLowerCase();
@@ -122,6 +145,9 @@ export default function OrdersListPage() {
     const statusLabel = statusMap[statusKey]?.label.toLowerCase() || statusKey;
     const aDate = (order.addDate || '').toLowerCase();
     const aTime = (order.addTime || '').toLowerCase();
+    const region = (order.region || '').toLowerCase();
+    const notes = (order.notes || '').toLowerCase();
+    const empName = (order.employeeName || '').toLowerCase();
 
     // Column Filters
     const matchesColumn = (
@@ -132,7 +158,8 @@ export default function OrdersListPage() {
       (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase())) &&
       (statusKey.includes(columnFilters.status.toLowerCase()) || statusLabel.includes(columnFilters.status.toLowerCase())) &&
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
-      aTime.includes(columnFilters.addTime.toLowerCase())
+      aTime.includes(columnFilters.addTime.toLowerCase()) &&
+      empName.includes(columnFilters.employeeName.toLowerCase())
     );
 
     // Global Filter
@@ -141,7 +168,8 @@ export default function OrdersListPage() {
     const productNames = (order.items || []).map((item: any) => (item.productName || '').toLowerCase());
     
     const matchesGlobal = searchLower === '' || [
-      idStr, displayId, custName, gov, phone, total, rawTotal, status, aDate, aTime, ...productNames
+      idStr, displayId, custName, gov, region, phone, total, rawTotal, 
+      statusKey, statusLabel, aDate, aTime, empName, notes, ...productNames
     ].some(field => field.includes(searchLower));
 
     return matchesColumn && matchesGlobal;
@@ -162,6 +190,231 @@ export default function OrdersListPage() {
     setNotificationModal({ show: true, message: `تم ترحيل ${selectedOrderIds.length} طلبات إلى شركة ${companyName} بنجاح!` });
     setShowCompanyModal(false);
     setSelectedOrderIds([]); // Clear selection after routing
+  };
+
+  const handleArchiveSelected = async () => {
+    if (selectedOrderIds.length === 0) {
+      setNotificationModal({ show: true, message: 'يرجى تحديد طلبات للأرشفة.' });
+      return;
+    }
+    
+    setIsUpdating(true);
+    try {
+      const batch = writeBatch(db);
+      selectedOrderIds.forEach(id => {
+        const orderRef = doc(db, 'orders', id);
+        batch.update(orderRef, { isArchived: true });
+      });
+      await batch.commit();
+      setSelectedOrderIds([]);
+      setNotificationModal({ show: true, message: `تم أرشفة ${selectedOrderIds.length} طلبات بنجاح!` });
+    } catch (error) {
+       console.error("Error archiving orders:", error);
+       setNotificationModal({ show: true, message: 'حدث خطأ أثناء الأرشفة.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRestoreSelected = async () => {
+    if (selectedOrderIds.length === 0) {
+      setNotificationModal({ show: true, message: 'يرجى تحديد طلبات للاستعادة.' });
+      return;
+    }
+    
+    setIsUpdating(true);
+    try {
+      const batch = writeBatch(db);
+      selectedOrderIds.forEach(id => {
+        const orderRef = doc(db, 'orders', id);
+        batch.update(orderRef, { isArchived: false });
+      });
+      await batch.commit();
+      setSelectedOrderIds([]);
+      setNotificationModal({ show: true, message: `تم استعادة ${selectedOrderIds.length} طلبات بنجاح!` });
+    } catch (error) {
+       console.error("Error restoring orders:", error);
+       setNotificationModal({ show: true, message: 'حدث خطأ أثناء الاستعادة الجماعية.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRestoreOrder = async (orderId: string) => {
+    setIsUpdating(true);
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, { isArchived: false });
+      setNotificationModal({ show: true, message: 'تم استعادة الطلب بنجاح!' });
+    } catch (error) {
+      console.error("Error restoring order:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء الاستعادة.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const confirmDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    
+    setIsUpdating(true);
+    try {
+      const batch = writeBatch(db);
+      const orderRef = doc(db, 'orders', orderToDelete.id);
+      
+      // If order is not cancelled or returned, we should return items to stock
+      const isCancelled = orderToDelete.status === 'cancelled' || orderToDelete.status === 'returned';
+      
+      if (!isCancelled && orderToDelete.items && orderToDelete.items.length > 0) {
+        for (const item of orderToDelete.items) {
+          if (item.isComposite && item.composition) {
+            for (const comp of item.composition) {
+              const rawProdRef = doc(db, 'products', comp.itemId);
+              const rawSnap = await getDoc(rawProdRef);
+              if (rawSnap.exists()) {
+                const rawData = rawSnap.data();
+                let stock = { ...rawData.stock };
+                let qtyToAdd = comp.quantityNeeded * item.quantity;
+                
+                // Return stock to first available store
+                const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+                if (!stock[firstStoreKey]) {
+                  stock[firstStoreKey] = { quantity: qtyToAdd, unit: rawData.units?.[0]?.type || 'قطعة' };
+                } else {
+                  stock[firstStoreKey].quantity += qtyToAdd;
+                }
+
+                // Update totalBaseQuantity
+                let newTotalBaseQuantity = 0;
+                Object.values(stock).forEach((s: any) => {
+                  const uMul = rawData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                  newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+                });
+
+                batch.update(rawProdRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+              }
+            }
+          } else if (item.productId) {
+            const prodRef = doc(db, 'products', item.productId);
+            const prodSnap = await getDoc(prodRef);
+            if (prodSnap.exists()) {
+              const prodData = prodSnap.data();
+              let stock = { ...prodData.stock };
+              let qtyToAdd = item.quantity;
+
+              const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+              if (!stock[firstStoreKey]) {
+                stock[firstStoreKey] = { quantity: qtyToAdd, unit: prodData.units?.[0]?.type || 'قطعة' };
+              } else {
+                stock[firstStoreKey].quantity += qtyToAdd;
+              }
+
+              // Update totalBaseQuantity
+              let newTotalBaseQuantity = 0;
+              Object.values(stock).forEach((s: any) => {
+                const uMul = prodData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+              });
+
+              batch.update(prodRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+            }
+          }
+        }
+      }
+
+      // Delete the order document
+      batch.delete(orderRef);
+      await batch.commit();
+      
+      setOrderToDelete(null);
+      setNotificationModal({ show: true, message: 'تم حذف الطلب وإعادة المواد للمخزن (إن وجدت) بنجاح!' });
+    } catch (error) {
+      console.error("Error deleting order:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء حذف الطلب.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const confirmBulkDelete = async () => {
+    if (selectedOrderIds.length === 0) return;
+    
+    setIsUpdating(true);
+    try {
+      const batch = writeBatch(db);
+      const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
+      
+      // Process each order for stock reversal
+      for (const orderItem of selectedOrdersData) {
+        const orderRef = doc(db, 'orders', orderItem.id);
+        const isCancelled = orderItem.status === 'cancelled' || orderItem.status === 'returned';
+        
+        if (!isCancelled && orderItem.items && orderItem.items.length > 0) {
+          for (const item of orderItem.items) {
+            if (item.isComposite && item.composition) {
+              for (const comp of item.composition) {
+                const rawProdRef = doc(db, 'products', comp.itemId);
+                const rawSnap = await getDoc(rawProdRef);
+                if (rawSnap.exists()) {
+                  const rawData = rawSnap.data();
+                  let stock = { ...rawData.stock };
+                  let qtyToAdd = comp.quantityNeeded * item.quantity;
+                  
+                  const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+                  if (!stock[firstStoreKey]) {
+                    stock[firstStoreKey] = { quantity: qtyToAdd, unit: rawData.units?.[0]?.type || 'قطعة' };
+                  } else {
+                    stock[firstStoreKey].quantity += qtyToAdd;
+                  }
+
+                  let newTotalBaseQuantity = 0;
+                  Object.values(stock).forEach((s: any) => {
+                    const uMul = rawData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                    newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+                  });
+
+                  batch.update(rawProdRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+                }
+              }
+            } else if (item.productId) {
+              const prodRef = doc(db, 'products', item.productId);
+              const prodSnap = await getDoc(prodRef);
+              if (prodSnap.exists()) {
+                const prodData = prodSnap.data();
+                let stock = { ...prodData.stock };
+                let qtyToAdd = item.quantity;
+
+                const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+                if (!stock[firstStoreKey]) {
+                  stock[firstStoreKey] = { quantity: qtyToAdd, unit: prodData.units?.[0]?.type || 'قطعة' };
+                } else {
+                  stock[firstStoreKey].quantity += qtyToAdd;
+                }
+
+                let newTotalBaseQuantity = 0;
+                Object.values(stock).forEach((s: any) => {
+                  const uMul = prodData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                  newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+                });
+
+                batch.update(prodRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+              }
+            }
+          }
+        }
+        batch.delete(orderRef);
+      }
+      
+      await batch.commit();
+      setSelectedOrderIds([]);
+      setShowBulkDeleteModal(false);
+      setNotificationModal({ show: true, message: `تم حذف ${selectedOrdersData.length} طلبات بنجاح وإعادة المواد للمخزن.` });
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء الحذف الجماعي.' });
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const saveOrderUpdates = async (e: React.FormEvent) => {
@@ -317,17 +570,92 @@ export default function OrdersListPage() {
             initialPreset={dateFilter} 
             onApply={(val: string) => setDateFilter(val)} 
           />
-          <button className={styles.routeButton} onClick={() => {
-            if (selectedOrderIds.length === 0) {
-              setNotificationModal({ show: true, message: 'يرجى تحديد طلب واحد على الأقل لترحيله.' });
-              return;
-            }
-            setShowCompanyModal(true);
-          }}>
-            <span>ترحيل الطلبات</span>
-            <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
-          </button>
+          
+          {activeTab !== 'archived' ? (
+            <>
+              <button className={styles.routeButton} onClick={() => {
+                if (selectedOrderIds.length === 0) {
+                  setNotificationModal({ show: true, message: 'يرجى تحديد طلب واحد على الأقل لترحيله.' });
+                  return;
+                }
+                setShowCompanyModal(true);
+              }}>
+                <span>ترحيل الطلبات</span>
+                <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
+              </button>
+
+              <button 
+                className={styles.routeButton} 
+                onClick={handleArchiveSelected}
+                style={{ backgroundColor: '#64748b', boxShadow: '0 4px 12px rgba(100, 116, 139, 0.3)' }}
+              >
+                <span>أرشفة المحددة</span>
+                <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
+              </button>
+
+              {selectedOrderIds.length > 0 && (
+                <button 
+                  className={styles.routeButton} 
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  style={{ backgroundColor: '#ef4444', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)' }}
+                >
+                  <span>حذف المحددة</span>
+                  <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button 
+                className={styles.routeButton} 
+                onClick={handleRestoreSelected}
+                style={{ backgroundColor: '#10b981', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}
+              >
+                <span>استعادة الطلبات</span>
+                <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
+              </button>
+
+              {selectedOrderIds.length > 0 && (
+                <button 
+                  className={styles.routeButton} 
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  style={{ backgroundColor: '#ef4444', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)' }}
+                >
+                  <span>حذف النهائي</span>
+                  <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
+                </button>
+              )}
+            </>
+          )}
         </div>
+      </div>
+
+      {/* Tabs Section */}
+      <div className={styles.tabsContainer}>
+        <button 
+          className={`${styles.tabButton} ${activeTab === 'all' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('all')}
+        >
+          📦 كافة الطلبات
+          {activeOrders.length > 0 && (
+            <span className={styles.badgeGreen}>{activeOrders.length}</span>
+          )}
+        </button>
+        <button 
+          className={`${styles.tabButton} ${activeTab === 'duplicates' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('duplicates')}
+        >
+          ⚠️ الطلبات المكررة
+          {duplicateOrdersList.length > 0 && (
+            <span className={styles.badge}>{duplicateOrdersList.length}</span>
+          )}
+        </button>
+        <button 
+          className={`${styles.tabButton} ${activeTab === 'archived' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('archived')}
+        >
+          📁 الطلبات المؤرشفة
+        </button>
       </div>
 
       {/* Table Top Controls */}
@@ -412,6 +740,12 @@ export default function OrdersListPage() {
               </th>
               <th>
                 <div className={styles.thContent}>
+                  <span>الموظف</span>
+                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.employeeName} onChange={(e) => handleFilterChange('employeeName', e.target.value)} />
+                </div>
+              </th>
+              <th>
+                <div className={styles.thContent}>
                   <span>الإجراءات</span>
                   <input type="text" className={styles.colFilterInput} disabled style={{ visibility: 'hidden' }} />
                 </div>
@@ -445,13 +779,31 @@ export default function OrdersListPage() {
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>
                   <td style={{ color: '#10B981', fontWeight: 'bold' }}>{order.formattedTotal} د.ع</td>
                   <td>
-                    <span style={{ 
-                      backgroundColor: statusMap[order.status || 'pending']?.bg || 'rgba(148, 163, 184, 0.15)', 
-                      color: statusMap[order.status || 'pending']?.color || '#94a3b8', 
-                      padding: '0.35rem 1rem', borderRadius: '1.5rem', fontSize: '0.85rem', fontWeight: 'bold'
-                    }}>
-                      {statusMap[order.status || 'pending']?.label || 'جديد'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ 
+                        backgroundColor: statusMap[order.status || 'pending']?.bg || 'rgba(148, 163, 184, 0.15)', 
+                        color: statusMap[order.status || 'pending']?.color || '#94a3b8', 
+                        padding: '0.35rem 1rem', borderRadius: '1.5rem', fontSize: '0.85rem', fontWeight: 'bold'
+                      }}>
+                        {statusMap[order.status || 'pending']?.label || 'جديد'}
+                      </span>
+                      {order.isPaidToStaff && (
+                        <span style={{ 
+                          backgroundColor: 'rgba(16, 185, 129, 0.1)', 
+                          color: '#10b981', 
+                          padding: '0.2rem 0.6rem', 
+                          borderRadius: '0.5rem', 
+                          fontSize: '0.75rem', 
+                          fontWeight: 'bold',
+                          border: '1px solid rgba(16, 185, 129, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem'
+                        }}>
+                          ✔️ مدفوع للصافي
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem' }}>
@@ -459,6 +811,7 @@ export default function OrdersListPage() {
                       <span style={{ color: 'var(--text-muted)' }}>{order.addTime}</span>
                     </div>
                   </td>
+                  <td style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{order.employeeName || '---'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button 
@@ -476,6 +829,30 @@ export default function OrdersListPage() {
                       >
                         ✏️
                       </button>
+                      <button 
+                        className={styles.actionButton} 
+                        title="حذف الطلب"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOrderToDelete(order);
+                        }}
+                        style={{ borderColor: '#ef4444', color: '#ef4444' }}
+                      >
+                        🗑️
+                      </button>
+                      {activeTab === 'archived' && (
+                        <button 
+                           className={styles.actionButton} 
+                           title="استعادة الطلب"
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             handleRestoreOrder(order.id);
+                           }}
+                           style={{ borderColor: '#10b981', color: '#10b981' }}
+                         >
+                           🔄
+                         </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -522,6 +899,15 @@ export default function OrdersListPage() {
                 <div className={styles.detailsItem}>
                   <span className={styles.detailsLabel}>تاريخ وتوقت الطلب</span>
                   <span className={styles.detailsValue}>{selectedOrder.addDate} - {selectedOrder.addTime}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>الموظف المسؤول</span>
+                  <span className={styles.detailsValue}>
+                    {selectedOrder.employeeName || '---'}
+                    {selectedOrder.isPaidToStaff && (
+                      <span style={{ color: '#10b981', fontSize: '0.8rem', marginRight: '0.5rem' }}>(✔️ تم دفع العمولة)</span>
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -743,6 +1129,88 @@ export default function OrdersListPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {orderToDelete && (
+        <div className={styles.modalOverlay} style={{ zIndex: 1200 }}>
+          <div className={styles.modal} style={{ maxWidth: '400px', textAlign: 'center' }}>
+            <div className={styles.modalHeader}>
+              <h2 style={{ color: '#ef4444' }}>⚠️ تأكيد الحذف</h2>
+              <button className={styles.closeButton} onClick={() => setOrderToDelete(null)}>×</button>
+            </div>
+            <div className={styles.modalBody} style={{ padding: '2rem' }}>
+              <p>هل أنت متأكد من رغبتك في حذف الطلب رقم:</p>
+              <h3 style={{ margin: '1rem 0', color: 'var(--accent-primary)' }}>#{orderToDelete.id.slice(-6).toUpperCase()}</h3>
+              <p style={{ fontSize: '0.9rem', opacity: 0.7 }}>باسم الزبون: <strong>{orderToDelete.customerName}</strong></p>
+              <p style={{ marginTop: '1rem', color: '#fbbf24', fontSize: '0.85rem' }}>
+                سيتم إعادة المواد المرتبطة بهذا الطلب إلى المخزن تلقائياً.
+              </p>
+            </div>
+            <div className={styles.modalFooter} style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button 
+                className={styles.submitButton} 
+                style={{ background: '#ef4444' }}
+                onClick={confirmDeleteOrder}
+                disabled={isUpdating}
+              >
+                {isUpdating ? 'جاري الحذف...' : 'نعم، حذف'}
+              </button>
+              <button 
+                className={styles.cancelButton} 
+                onClick={() => setOrderToDelete(null)}
+                disabled={isUpdating}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className={styles.modalOverlay} style={{ zIndex: 1200 }}>
+          <div className={styles.modal} style={{ maxWidth: '450px', textAlign: 'center' }}>
+            <div className={styles.modalHeader}>
+              <h2 style={{ color: '#ef4444' }}>🔴 تأكيد الحذف الجماعي</h2>
+              <button className={styles.closeButton} onClick={() => setShowBulkDeleteModal(false)}>×</button>
+            </div>
+            <div className={styles.modalBody} style={{ padding: '2rem' }}>
+              <p style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>هل أنت متأكد من رغبتك في حذف:</p>
+              <div style={{ 
+                background: 'rgba(239, 68, 68, 0.1)', 
+                padding: '1.5rem', 
+                borderRadius: '12px',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                marginBottom: '1.5rem'
+              }}>
+                <span style={{ fontSize: '2.5rem', fontWeight: '900', color: '#ef4444' }}>{selectedOrderIds.length}</span>
+                <p style={{ fontWeight: 'bold', marginTop: '0.5rem' }}>طلبات محددة</p>
+              </div>
+              <p style={{ fontSize: '0.9rem', color: '#fbbf24' }}>
+                سيتم حذف هذه الطلبات نهائياً من النظام وإعادة جميع المواد المرتبطة بها إلى المخزن تلقائياً. هذه العملية لا يمكن التراجع عنها.
+              </p>
+            </div>
+            <div className={styles.modalFooter} style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button 
+                className={styles.submitButton} 
+                style={{ background: '#ef4444', flex: 1 }}
+                onClick={confirmBulkDelete}
+                disabled={isUpdating}
+              >
+                {isUpdating ? 'جاري الحذف...' : 'نعم، احذف الكل'}
+              </button>
+              <button 
+                className={styles.cancelButton} 
+                style={{ flex: 1 }}
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={isUpdating}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

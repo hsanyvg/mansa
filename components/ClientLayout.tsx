@@ -111,10 +111,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>قائمة الموردين</span>
             <span className={styles.submenuIcon}>🚚</span>
           </Link>
-          <div className={styles.submenuItem}>
+          <Link href="/employees" className={`${styles.submenuItem} ${pathname === '/employees' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>قائمة الموظفين</span>
             <span className={styles.submenuIcon}>👤</span>
-          </div>
+          </Link>
 
           <div className={styles.submenuItem}>
             <span>المستخدمين</span>
@@ -143,18 +143,15 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
         {/* Submenu for Invoices */}
         <div className={`${styles.submenu} ${showInvoices ? styles.open : ''}`}>
-          <div className={styles.submenuItem}>
+          <Link href="/sales-invoices" className={`${styles.submenuItem} ${pathname === '/sales-invoices' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>فواتير المبيعات</span>
             <span className={styles.submenuIcon}>📈</span>
-          </div>
-          <div className={styles.submenuItem}>
-            <span>تفاصيل المبيعات</span>
-            <span className={styles.submenuIcon}>🔍</span>
-          </div>
-          <div className={styles.submenuItem}>
+          </Link>
+
+          <Link href="/sales-returns" className={`${styles.submenuItem} ${pathname === '/sales-returns' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>مرتجعات المبيعات</span>
             <span className={styles.submenuIcon}>↩️</span>
-          </div>
+          </Link>
           <Link href="/purchases" className={`${styles.submenuItem} ${pathname === '/purchases' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>فواتير المشتريات</span>
             <span className={styles.submenuIcon}>🗓️</span>
