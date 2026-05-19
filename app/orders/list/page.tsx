@@ -5,6 +5,7 @@ import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
 import { db } from '../../../lib/firebase';
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction } from 'firebase/firestore';
+import { createJenniShipment } from '../../../lib/jenni-api';
 
 export default function OrdersListPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -12,6 +13,9 @@ export default function OrdersListPage() {
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [dateFilter, setDateFilter] = useState('الكل'); // Modified to show All conceptually first
   const [globalSearch, setGlobalSearch] = useState('');
+  
+  const [isSendingToDelivery, setIsSendingToDelivery] = useState(false);
+  const currentUserId = 'default_tenant';
   
   // Custom Modals
   const [notificationModal, setNotificationModal] = useState({ show: false, message: '' });
@@ -282,11 +286,64 @@ export default function OrdersListPage() {
 
   const isAllSelected = filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length;
 
-  const handleCompanySelection = (companyName: string) => {
-    // In a real app we'd batch update in Firestore here
-    setNotificationModal({ show: true, message: `تم ترحيل ${selectedOrderIds.length} طلبات إلى شركة ${companyName} بنجاح!` });
-    setShowCompanyModal(false);
-    setSelectedOrderIds([]); // Clear selection after routing
+  const handleCompanySelection = async (companyName: string) => {
+    if (selectedOrderIds.length === 0) return;
+    
+    setIsSendingToDelivery(true);
+    try {
+      const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
+      let successCount = 0;
+      let failCount = 0;
+      let lastError = '';
+
+      for (const orderData of selectedOrdersData) {
+        if (orderData.status === 'shipped' || orderData.status === 'delivered') {
+           failCount++;
+           lastError = 'الطلب مشحون أو مكتمل مسبقاً';
+           continue;
+        }
+
+        try {
+          const response = await createJenniShipment(orderData, currentUserId);
+          const shipmentId = response?.shipment_id || response?.data?.shipment_id || response?.id || '';
+
+          const batch = writeBatch(db);
+          const orderRef = doc(db, 'orders', orderData.id);
+          
+          batch.update(orderRef, {
+             status: 'shipped',
+             shipmentCompany: companyName,
+             jenniShipmentId: shipmentId,
+             updatedAt: serverTimestamp()
+          });
+
+          await syncStockForStatusChange(orderData.items || [], orderData.status, 'shipped', batch);
+          await batch.commit();
+          successCount++;
+        } catch (err: any) {
+          console.error("Failed to send order", orderData.id, err);
+          failCount++;
+          lastError = err.message;
+        }
+      }
+
+      setShowCompanyModal(false);
+      setSelectedOrderIds([]);
+      
+      if (failCount === 0) {
+        setNotificationModal({ show: true, message: '✅ تم إرسال الطلب لشركة التوصيل بنجاح!' });
+      } else if (successCount > 0) {
+        setNotificationModal({ show: true, message: `✅ تم إرسال ${successCount} بنجاح. ❌ فشل ${failCount}. السبب: ${lastError}` });
+      } else {
+        setNotificationModal({ show: true, message: `❌ فشل الإرسال: ${lastError}` });
+      }
+
+    } catch (error: any) {
+      console.error(error);
+      setNotificationModal({ show: true, message: `❌ حدث خطأ: ${error.message || 'فشل الاتصال'}` });
+    } finally {
+      setIsSendingToDelivery(false);
+    }
   };
 
   const handleArchiveSelected = async () => {
@@ -1715,17 +1772,32 @@ export default function OrdersListPage() {
             
             <div className={styles.modalBody}>
               <div className={styles.companyList}>
-                {/* Simulated Companies */}
-                <div className={styles.companyCard} onClick={() => handleCompanySelection('زاجل')}>
-                  <div className={styles.companyInfo}>
-                    <div className={styles.companyIcon}>🚚</div>
-                    <div className={styles.companyDetails}>
-                      <span className={styles.companyName}>شركة زاجل للشحن</span>
-                      <span className={styles.companyDesc}>توصيل سريع لكل المحافظات</span>
+                <button 
+                  className={styles.companyCard} 
+                  onClick={() => handleCompanySelection('Jenni Logistics')}
+                  disabled={isSendingToDelivery}
+                  style={{ 
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', 
+                    cursor: isSendingToDelivery ? 'not-allowed' : 'pointer', 
+                    width: '100%', textAlign: 'right', display: 'flex', 
+                    justifyContent: 'space-between', alignItems: 'center', 
+                    opacity: isSendingToDelivery ? 0.5 : 1, padding: '1rem', borderRadius: '12px',
+                    fontFamily: 'inherit'
+                  }}
+                >
+                  <div className={styles.companyInfo} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>🚚</div>
+                    <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Jenni Logistics (نظام قسورة)</span>
+                      <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
                     </div>
                   </div>
-                  <div className={styles.routeIcon}>➔</div>
-                </div>
+                  {isSendingToDelivery ? (
+                    <div style={{ width: '20px', height: '20px', border: '2px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                  ) : (
+                    <div className={styles.routeIcon} style={{ color: '#fff' }}>➔</div>
+                  )}
+                </button>
 
                 <div className={styles.companyCard} onClick={() => handleCompanySelection('أرامكس')}>
                   <div className={styles.companyInfo}>

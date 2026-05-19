@@ -32,10 +32,20 @@ export default function ApiIntegrationsPage() {
   // Connection feedback
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Delivery Integration States
+  const [deliveryUsername, setDeliveryUsername] = useState('');
+  const [deliveryPassword, setDeliveryPassword] = useState('');
+  const [deliverySystemCode, setDeliverySystemCode] = useState('');
+  const [isDeliveryLinked, setIsDeliveryLinked] = useState(false);
+  const [isDeliveryManagerOpen, setIsDeliveryManagerOpen] = useState(false);
+  
+  // TODO: Update this when real Auth is implemented
+  const currentUserId = 'default_tenant'; 
+
   // Real-time listener for accounts
   useEffect(() => {
     const accountsRef = collection(db, 'meta_api_accounts');
-    const unsubscribe = onSnapshot(accountsRef, (snapshot) => {
+    const unsubscribeMeta = onSnapshot(accountsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -47,7 +57,24 @@ export default function ApiIntegrationsPage() {
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    // Delivery Integration listener
+    const deliveryRef = doc(db, 'users', currentUserId, 'integrations', 'delivery');
+    const unsubscribeDelivery = onSnapshot(deliveryRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setDeliveryUsername(data.username || '');
+        setDeliveryPassword(data.password || '');
+        setDeliverySystemCode(data.systemCode || '');
+        setIsDeliveryLinked(!!data.username && !!data.password);
+      } else {
+        setIsDeliveryLinked(false);
+      }
+    });
+
+    return () => {
+      unsubscribeMeta();
+      unsubscribeDelivery();
+    };
   }, []);
 
   const handleOpenManager = () => {
@@ -191,6 +218,43 @@ export default function ApiIntegrationsPage() {
     }
   };
 
+  const handleSaveDelivery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'users', currentUserId, 'integrations', 'delivery');
+      await setDoc(docRef, {
+        username: deliveryUsername,
+        password: deliveryPassword, // NOTE: In production, password should be encrypted
+        systemCode: deliverySystemCode,
+        updatedAt: new Date()
+      }, { merge: true });
+      alert('تم حفظ إعدادات شركة التوصيل بنجاح!');
+      setIsDeliveryManagerOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء الحفظ');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUnlinkDelivery = async () => {
+    if (!window.confirm('هل أنت متأكد من رغبتك في إلغاء الربط مع شركة التوصيل؟')) return;
+    try {
+      const docRef = doc(db, 'users', currentUserId, 'integrations', 'delivery');
+      await deleteDoc(docRef);
+      setDeliveryUsername('');
+      setDeliveryPassword('');
+      setDeliverySystemCode('');
+      alert('تم إلغاء الربط بنجاح.');
+      setIsDeliveryManagerOpen(false);
+    } catch(err) {
+      console.error(err);
+      alert('حدث خطأ أثناء إلغاء الربط');
+    }
+  };
+
   const activeAccountsCount = metaAccounts.filter(a => a.isActive).length;
 
   return (
@@ -247,6 +311,31 @@ export default function ApiIntegrationsPage() {
             <div className={styles.cardFooter}>
               <button className={styles.btnConfig} onClick={handleOpenManager}>
                 ⚙️ {metaAccounts.length > 0 ? 'إدارة الحسابات المربوطة' : 'إعداد الاتصال'}
+              </button>
+            </div>
+          </div>
+
+          {/* Delivery Integration Card */}
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div className={styles.cardIcon}>🚚</div>
+              <span className={`${styles.statusText} ${isDeliveryLinked ? styles.statusActive : styles.statusInactive}`}>
+                {isDeliveryLinked ? 'مربوط نشط' : 'غير متصل'}
+              </span>
+            </div>
+            
+            <div className={styles.cardBody}>
+              <div className={styles.cardInfo}>
+                <h3>شركة التوصيل (Jenni Logistics)</h3>
+              </div>
+              <p className={styles.cardDesc}>
+                ربط حسابك مع شركة التوصيل لإرسال الطلبات مباشرة عند التأكيد وتتبع الحالة آلياً داخل المنصة.
+              </p>
+            </div>
+
+            <div className={styles.cardFooter}>
+              <button className={styles.btnConfig} onClick={() => setIsDeliveryManagerOpen(true)}>
+                ⚙️ {isDeliveryLinked ? 'إدارة الربط' : 'إعداد الاتصال'}
               </button>
             </div>
           </div>
@@ -439,6 +528,68 @@ export default function ApiIntegrationsPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Manager Modal */}
+      {isDeliveryManagerOpen && (
+        <div className={styles.overlay} onClick={() => setIsDeliveryManagerOpen(false)}>
+          <div className={styles.modal} style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalTitle}>🚚 ربط شركة التوصيل (Jenni)</div>
+              <button className={styles.closeBtn} onClick={() => setIsDeliveryManagerOpen(false)}>&times;</button>
+            </div>
+            
+            <form onSubmit={handleSaveDelivery}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>رمز النظام (System Code)</label>
+                <input 
+                  type="text" 
+                  className={styles.input} 
+                  value={deliverySystemCode} 
+                  onChange={(e) => setDeliverySystemCode(e.target.value)} 
+                  placeholder="مثال: TAJER_123"
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>اسم المستخدم (Username)</label>
+                <input 
+                  type="text" 
+                  className={styles.input} 
+                  value={deliveryUsername} 
+                  onChange={(e) => setDeliveryUsername(e.target.value)} 
+                  placeholder="ادخل اسم المستخدم لشركة التوصيل"
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>كلمة المرور (Password)</label>
+                <input 
+                  type="password" 
+                  className={styles.input} 
+                  value={deliveryPassword} 
+                  onChange={(e) => setDeliveryPassword(e.target.value)} 
+                  placeholder="ادخل كلمة المرور"
+                  required
+                />
+                <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
+                  ملاحظة أمنية: يتم حماية البيانات وفق معايير Firebase، وسيتم استخدامها تلقائياً لإرسال الطلبات.
+                </p>
+              </div>
+
+              <div className={styles.actions}>
+                {isDeliveryLinked && (
+                  <button type="button" className={styles.btnDelete} onClick={handleUnlinkDelivery} disabled={isSaving}>
+                    إلغاء الربط
+                  </button>
+                )}
+                <button type="submit" className={styles.btnSave} disabled={isSaving} style={{ marginLeft: 'auto' }}>
+                  {isSaving ? 'جاري الحفظ...' : '💾 حفظ وإغلاق'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
