@@ -35,7 +35,7 @@ export default function CategoriesPage() {
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'addPage' | 'editPage' | 'addMain' | 'editMain' | 'addSub' | 'editSub'>('addPage');
+  const [modalMode, setModalMode] = useState<'addPage' | 'editPage' | 'addMain' | 'editMain' | 'addSub' | 'editSub' | 'addProduct'>('addPage');
   const [targetPageId, setTargetPageId] = useState<string | null>(null);
   const [targetMainId, setTargetMainId] = useState<string | null>(null);
   const [targetSubId, setTargetSubId] = useState<string | null>(null);
@@ -131,6 +131,25 @@ export default function CategoriesPage() {
           await updateDoc(doc(db, 'categories', targetMainId), { subcategories });
           showToastMsg("تم التعديل بنجاح");
         }
+      } else if (modalMode === 'addProduct' && targetMainId) {
+        await addDoc(collection(db, 'products'), {
+          name: inputName.trim(),
+          categoryId: targetMainId,
+          subcategoryId: targetSubId || "",
+          barcode: "",
+          model: "",
+          trackingCode: "",
+          notes: "",
+          reorderLevel: 10,
+          units: [
+            { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 }
+          ],
+          stock: {},
+          totalBaseQuantity: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        showToastMsg("تم إضافة الصنف بنجاح");
       }
     } catch (error) {
       console.error("Error saving document: ", error);
@@ -148,6 +167,7 @@ export default function CategoriesPage() {
   
   const openAddSubModal = (mainId: string) => { setModalMode('addSub'); setTargetMainId(mainId); setInputName(''); setShowModal(true); };
   const openEditSubModal = (mainId: string, subId: string, name: string) => { setModalMode('editSub'); setTargetMainId(mainId); setTargetSubId(subId); setInputName(name); setShowModal(true); };
+  const openAddProductModal = (mainId: string, subId: string) => { setModalMode('addProduct'); setTargetMainId(mainId); setTargetSubId(subId); setInputName(''); setShowModal(true); };
 
   const closeModal = () => {
     setShowModal(false);
@@ -330,7 +350,10 @@ export default function CategoriesPage() {
                                       </div>
                                       
                                       {isSubExpanded && (
-                                        <div style={{ marginTop: '0.5rem', background: '#111827', padding: '0.5rem', borderRadius: '4px', border: '1px dashed #374151' }}>
+                                        <div 
+                                          style={{ marginTop: '0.5rem', background: '#111827', padding: '0.5rem', borderRadius: '4px', border: '1px dashed #374151' }}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
                                           {subProducts.length === 0 ? (
                                             <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>لا توجد أصناف في هذا الفرع.</div>
                                           ) : (
@@ -345,6 +368,12 @@ export default function CategoriesPage() {
                                               </tbody>
                                             </table>
                                           )}
+                                          <button 
+                                            className={styles.addProductBtnSmall}
+                                            onClick={(e) => { e.stopPropagation(); openAddProductModal(mainCat.id, subCat.id); }}
+                                          >
+                                            ➕ إضافة صنف في هذا الفرع
+                                          </button>
                                         </div>
                                       )}
                                     </li>
@@ -383,7 +412,8 @@ export default function CategoriesPage() {
                  modalMode === 'editPage' ? 'تعديل البيج/المحل' :
                  modalMode === 'addMain' ? 'إضافة فئة رئيسية' :
                  modalMode === 'editMain' ? 'تعديل الفئة الرئيسية' :
-                 modalMode === 'addSub' ? 'إضافة فئة فرعية' : 'تعديل الفئة الفرعية'}
+                 modalMode === 'addSub' ? 'إضافة فئة فرعية' :
+                 modalMode === 'addProduct' ? 'إضافة صنف جديد (منتج)' : 'تعديل الفئة الفرعية'}
               </h2>
               <button className={styles.closeButton} onClick={closeModal}>×</button>
             </div>

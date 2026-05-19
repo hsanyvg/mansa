@@ -11,10 +11,12 @@ import {
   writeBatch, 
   serverTimestamp, 
   getDoc, 
+  setDoc,
   query as fsQuery, 
   where, 
   getDocs,
-  limit 
+  limit,
+  runTransaction
 } from 'firebase/firestore';
 
 interface Product {
@@ -40,7 +42,8 @@ export default function OrderEntryPage() {
     governorate: '',
     region: '',
     notes: '',
-    paymentMethod: 'كاش عند التوصيل'
+    paymentMethod: 'كاش عند التوصيل',
+    fbLoginId: ''
   });
 
   const [customerHistory, setCustomerHistory] = useState<{
@@ -68,6 +71,9 @@ export default function OrderEntryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  const [categoriesDb, setCategoriesDb] = useState<any[]>([]);
+  const [pagesDb, setPagesDb] = useState<any[]>([]);
 
   const governoratesList = [
     "بغداد", "البصرة", "نينوى (الموصل)", "أربيل", "النجف", "ذي قار (الناصرية)",
@@ -113,6 +119,22 @@ export default function OrderEntryPage() {
     return () => unsub();
   }, []);
 
+  // Fetch categories to filter search results
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
+      setCategoriesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch pages_stores to filter search results
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+      setPagesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
+
   // Fetch customer history when phone is 11 digits
   useEffect(() => {
     const phone = formData.customerPhone.trim();
@@ -120,7 +142,7 @@ export default function OrderEntryPage() {
     
     // Smart Lookup: If name matches an official record exactly, we treat it as identifying the customer.
     const officialMatch = customersDb.find(c => c.name.toLowerCase() === name);
-    const searchPhone = officialMatch ? officialMatch.phone : (phone.length === 11 ? phone : null);
+    const searchPhone = officialMatch ? officialMatch.phone : (phone.length >= 10 ? phone : null);
 
     if (searchPhone) {
       const fetchHistory = async () => {
@@ -251,7 +273,7 @@ export default function OrderEntryPage() {
   }, [baseProducts, compositeProductsData]);
 
   // Form Handlers
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -325,8 +347,13 @@ export default function OrderEntryPage() {
     return list;
   }, [customersDb, ordersMatches, formData.customerPhone]);
 
-  const isPhoneInvalid = (formData.customerPhone.length > 0 && formData.customerPhone.length !== 11) || 
-                         (hasAttemptedSubmit && formData.customerPhone.length !== 11);
+  const isValidPhoneNumber = (phone: string) => {
+    const cleaned = phone.replace(/\s+/g, '');
+    return /^(\+?\d{10,15})$/.test(cleaned);
+  };
+
+  const isPhoneInvalid = (formData.customerPhone.length > 0 && !isValidPhoneNumber(formData.customerPhone)) || 
+                         (hasAttemptedSubmit && !isValidPhoneNumber(formData.customerPhone));
 
   const isFieldInvalid = (fieldName: keyof typeof formData) => {
     if (!hasAttemptedSubmit) return false;
@@ -388,6 +415,22 @@ export default function OrderEntryPage() {
   const filteredProducts = products.filter(p => {
     if (!searchQuery) return false;
     const query = searchQuery.toLowerCase();
+    
+    const pNameClean = p.name?.trim().toLowerCase();
+    if (!pNameClean) return false;
+
+    // Filter out Category, Subcategory or Page names so only real items (products) show up
+    const isPageName = pagesDb.some(page => page.name?.trim().toLowerCase() === pNameClean);
+    if (isPageName) return false;
+
+    const isMainCatName = categoriesDb.some(cat => cat.name?.trim().toLowerCase() === pNameClean);
+    if (isMainCatName) return false;
+
+    const isSubCatName = categoriesDb.some(cat => 
+      cat.subcategories?.some((sub: any) => sub.name?.trim().toLowerCase() === pNameClean)
+    );
+    if (isSubCatName) return false;
+
     const nameMatch = p.name?.toLowerCase().includes(query);
     const barcodeMatch = p.barcode?.toLowerCase() === query;
     return nameMatch || barcodeMatch;
@@ -427,7 +470,7 @@ export default function OrderEntryPage() {
 
     if (
       formData.customerName.trim() === '' ||
-      formData.customerPhone.length !== 11 ||
+      !isValidPhoneNumber(formData.customerPhone) ||
       formData.governorate.trim() === '' ||
       formData.region.trim() === ''
     ) {
@@ -441,12 +484,63 @@ export default function OrderEntryPage() {
     }
 
     try {
+      // 0. Generate Numeric Sequential ID
+      const counterRef = doc(db, 'metadata', 'orderCounter');
+      const nextId = await runTransaction(db, async (transaction) => {
+        const counterSnap = await transaction.get(counterRef);
+        let currentId = 100000; // Start numeric IDs from 100,000
+        if (counterSnap.exists()) {
+          currentId = counterSnap.data().lastId;
+        }
+        const newId = currentId + 1;
+        transaction.set(counterRef, { lastId: newId }, { merge: true });
+        return newId;
+      });
+
       const batch = writeBatch(db);
-      const newOrderRef = doc(collection(db, 'orders'));
+      const newOrderRef = doc(db, 'orders', nextId.toString());
 
       const emp = employees.find(e => e.id === selectedEmployeeId);
 
-      // 1. Save Order Document
+      let isOrderBackordered = false;
+
+      // 1. Determine if order is backordered
+      for (const item of cart) {
+        const productData = item.product as any;
+        if (productData.isComposite && productData.composition) {
+          for (const component of productData.composition) {
+            const rawProdRef = doc(db, 'products', component.itemId);
+            const rawSnap = await getDoc(rawProdRef);
+            if (rawSnap.exists()) {
+              const rawData = rawSnap.data();
+              let totalAvailable = 0;
+              Object.values(rawData.stock || {}).forEach((s: any) => {
+                 const uMul = rawData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                 totalAvailable += ((Number(s.quantity) || 0) - (Number(s.reserved) || 0)) * uMul;
+              });
+              if (totalAvailable < component.quantityNeeded * item.quantity) {
+                 isOrderBackordered = true;
+              }
+            }
+          }
+        } else {
+           const prodRef = doc(db, 'products', item.product.id);
+           const prodSnap = await getDoc(prodRef);
+           if (prodSnap.exists()) {
+              const prodData = prodSnap.data();
+              let totalAvailable = 0;
+              Object.values(prodData.stock || {}).forEach((s: any) => {
+                 const uMul = prodData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                 totalAvailable += ((Number(s.quantity) || 0) - (Number(s.reserved) || 0)) * uMul;
+              });
+              if (totalAvailable < item.quantity) {
+                 isOrderBackordered = true;
+              }
+           }
+        }
+      }
+
+      // 2. Save Order Document
       const orderData = {
         employeeId: selectedEmployeeId,
         employeeName: emp?.name || 'مجهول',
@@ -456,6 +550,7 @@ export default function OrderEntryPage() {
         region: formData.region,
         notes: formData.notes,
         paymentMethod: formData.paymentMethod,
+        fbLoginId: formData.fbLoginId,
         totalAmount: totalAmount,
         items: cart.map(item => {
           const p = item.product as any;
@@ -470,12 +565,14 @@ export default function OrderEntryPage() {
           };
         }),
         date: serverTimestamp(),
-        status: 'pending' // Default status
+        status: isOrderBackordered ? 'backordered' : 'pending',
+
+        is_settled: false
       };
 
       batch.set(newOrderRef, orderData);
 
-      // 2. Deduct Stock from Products
+      // 3. Reserve Stock for Products
       for (const item of cart) {
         const productData = item.product as any;
 
@@ -488,34 +585,16 @@ export default function OrderEntryPage() {
             if (rawSnap.exists()) {
               const rawData = rawSnap.data();
               let stock = { ...rawData.stock };
-              let remainingToDeduct = component.quantityNeeded * item.quantity;
+              let remainingToReserve = component.quantityNeeded * item.quantity;
               
-              for (const storeId in stock) {
-                if (remainingToDeduct <= 0) break;
-                if (stock[storeId].quantity > 0) {
-                  const deductAmount = Math.min(stock[storeId].quantity, remainingToDeduct);
-                  stock[storeId].quantity -= deductAmount;
-                  remainingToDeduct -= deductAmount;
-                }
-              }
-              
-              if (remainingToDeduct > 0) {
-                const firstStoreKey = Object.keys(stock)[0];
-                if (firstStoreKey) {
-                  stock[firstStoreKey].quantity -= remainingToDeduct;
-                } else {
-                  stock['default_store'] = { quantity: -remainingToDeduct, unit: rawData.units?.[0]?.type || 'قطعة' };
-                }
+              const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+              if (!stock[firstStoreKey]) {
+                 stock[firstStoreKey] = { quantity: 0, reserved: remainingToReserve, unit: rawData.units?.[0]?.type || 'قطعة' };
+              } else {
+                 stock[firstStoreKey].reserved = (stock[firstStoreKey].reserved || 0) + remainingToReserve;
               }
 
-              // Update totalBaseQuantity
-              let newTotalBaseQuantity = 0;
-              Object.values(stock).forEach((s: any) => {
-                const uMul = rawData.units?.find((u: any) => u.type === s.unit)?.count || 1;
-                newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
-              });
-
-              batch.update(rawProdRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+              batch.update(rawProdRef, { stock });
             }
           }
         } 
@@ -527,43 +606,45 @@ export default function OrderEntryPage() {
           if (prodSnap.exists()) {
             const prodData = prodSnap.data();
             let stock = { ...prodData.stock };
-            let remainingToDeduct = item.quantity;
+            let remainingToReserve = item.quantity;
 
-            // Attempt to deduct from available stores sequentially
-            for (const storeId in stock) {
-              if (remainingToDeduct <= 0) break;
-              if (stock[storeId].quantity > 0) {
-                const deductAmount = Math.min(stock[storeId].quantity, remainingToDeduct);
-                stock[storeId].quantity -= deductAmount;
-                remainingToDeduct -= deductAmount;
-              }
+            const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+            if (!stock[firstStoreKey]) {
+               stock[firstStoreKey] = { quantity: 0, reserved: remainingToReserve, unit: prodData.units?.[0]?.type || 'قطعة' };
+            } else {
+               stock[firstStoreKey].reserved = (stock[firstStoreKey].reserved || 0) + remainingToReserve;
             }
 
-            // If there's still quantity to deduct, it means they oversold. 
-            if (remainingToDeduct > 0) {
-              const firstStoreKey = Object.keys(stock)[0];
-              if (firstStoreKey) {
-                stock[firstStoreKey].quantity -= remainingToDeduct;
-              } else {
-                 // Fallback if stock object was empty
-                 stock['default_store'] = { quantity: -remainingToDeduct, unit: prodData.units?.[0]?.type || 'قطعة' };
-              }
-            }
-
-            // Update totalBaseQuantity
-            let newTotalBaseQuantity = 0;
-            Object.values(stock).forEach((s: any) => {
-              const uMul = prodData.units?.find((u: any) => u.type === s.unit)?.count || 1;
-              newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
-            });
-
-            batch.update(prodRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+            batch.update(prodRef, { stock });
           }
         }
       }
 
       // Commit Batch
       await batch.commit();
+
+      // --- Trigger Meta CAPI Webhook for each product ---
+      try {
+        const orderId = newOrderRef.id;
+        for (const item of cart) {
+          fetch('/api/webhooks/meta-purchase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              productId: item.id,
+              value: item.quantity * item.unitPrice,
+              currency: 'IQD',
+              phone: formData.customerPhone,
+              firstName: formData.customerName.split(' ')[0] || formData.customerName,
+              state: formData.governorate,
+              externalId: orderId,
+              fb_login_id: formData.fbLoginId
+            })
+          }).catch(err => console.error("Webhook trigger error:", err));
+        }
+      } catch (webhookErr) {
+        console.error("Failed to trigger webhook:", webhookErr);
+      }
 
       setNotificationModal({ show: true, message: 'تم حفظ الطلب وتحديث المخزون بنجاح!' });
       
@@ -575,7 +656,8 @@ export default function OrderEntryPage() {
         governorate: '', 
         region: '', 
         notes: '',
-        paymentMethod: 'كاش عند التوصيل'
+        paymentMethod: 'كاش عند التوصيل',
+        fbLoginId: ''
       });
       setCart([]);
       setSearchQuery('');
@@ -642,7 +724,7 @@ export default function OrderEntryPage() {
                   autoComplete="off"
                 />
                 {isPhoneInvalid && (
-                  <span className={styles.errorMessage}>يجب أن يتكون رقم الهاتف من 11 رقماً</span>
+                  <span className={styles.errorMessage}>يجب أن يتكون رقم الهاتف من 10 إلى 15 رقماً</span>
                 )}
               </div>
               {showPhoneDropdown && formData.customerPhone.trim().length >= 10 && filteredCustomersByPhone.length > 0 && (
@@ -732,7 +814,21 @@ export default function OrderEntryPage() {
               className={getInputClass('region')} 
               value={formData.region}
               onChange={handleChange}
+              onKeyDown={(e) => handleKeyDownForm(e, 'fbLoginId')}
+            />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label}>معرف زبون فيسبوك (PSID) - اختياري</label>
+            <input 
+              id="fbLoginId"
+              type="text" 
+              name="fbLoginId"
+              className={styles.input} 
+              value={formData.fbLoginId}
+              onChange={handleChange}
               onKeyDown={(e) => handleKeyDownForm(e, 'notes')}
+              placeholder="أدخل المعرف إذا توفر..."
             />
           </div>
 

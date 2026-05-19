@@ -37,6 +37,7 @@ export default function ProductsPage() {
   const [selectedPage, setSelectedPage] = useState('');
   const [selectedMainCat, setSelectedMainCat] = useState('');
   const [selectedSubCat, setSelectedSubCat] = useState('');
+  const [filterPage, setFilterPage] = useState('');
   const [filterMainCat, setFilterMainCat] = useState('');
   const [filterSubCat, setFilterSubCat] = useState('');
   
@@ -44,7 +45,7 @@ export default function ProductsPage() {
   const [storesDb, setStoresDb] = useState<any[]>([]);
   const [pagesStoresDb, setPagesStoresDb] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
-  const [productStock, setProductStock] = useState<Record<string, { quantity: number, unit: string }>>({});
+  const [productStock, setProductStock] = useState<Record<string, { quantity: number, unit: string, reserved?: number }>>({});
 
   // Form State
   const [formData, setFormData] = useState({
@@ -52,6 +53,7 @@ export default function ProductsPage() {
     reorderLevel: 10,
     barcode: '97X1NBrPq8q',
     model: '',
+    trackingCode: '',
     notes: ''
   });
 
@@ -181,9 +183,6 @@ export default function ProductsPage() {
   const activeMainCatObj = categoriesDb.find(c => c.id === selectedMainCat);
   const availableSubCats = activeMainCatObj ? activeMainCatObj.subcategories : [];
 
-  const filterMainCatObj = categoriesDb.find(c => c.id === filterMainCat);
-  const filterAvailableSubCats = filterMainCatObj ? filterMainCatObj.subcategories : [];
-
   const handleEditProduct = (prod: any) => {
     setEditingProductId(prod.id);
     setFormData({
@@ -191,6 +190,7 @@ export default function ProductsPage() {
       reorderLevel: prod.reorderLevel || 10,
       barcode: prod.barcode || '',
       model: prod.model || '',
+      trackingCode: prod.trackingCode || '',
       notes: prod.notes || ''
     });
     
@@ -253,12 +253,19 @@ export default function ProductsPage() {
       }));
       const totalBaseQuantity = calculateTotalBaseQuantity(warehousesArray, mappedUnitsForUtils);
 
+      const updatedProductStock = { ...productStock };
+      for (const storeId in updatedProductStock) {
+        if (updatedProductStock[storeId].reserved === undefined) {
+          updatedProductStock[storeId].reserved = 0;
+        }
+      }
+
       const productPayload = {
         ...formData,
         categoryId: selectedMainCat,
         subcategoryId: selectedSubCat,
         units: units,
-        stock: productStock,
+        stock: updatedProductStock,
         totalBaseQuantity: totalBaseQuantity,
         updatedAt: serverTimestamp()
       };
@@ -276,7 +283,7 @@ export default function ProductsPage() {
 
       setShowAddModal(false);
       // Reset form
-      setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', notes: '' });
+      setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
       setEditingProductId(null);
       setUnits([
         { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
@@ -346,7 +353,7 @@ export default function ProductsPage() {
         <h1 className={styles.title}>قائمة الأصناف</h1>
         <button className={styles.addButton} onClick={() => {
           setEditingProductId(null);
-          setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', notes: '' });
+          setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
           setUnits([
             { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
             { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
@@ -364,8 +371,23 @@ export default function ProductsPage() {
 
       {/* Main Content Area */}
       <main>
-        {/* Top Filters (matching screenshot: 3 columns) */}
+        {/* Top Filters (3 columns: Page, Main Category, Subcategory) */}
         <div className={styles.filtersSection}>
+          <select 
+            className={styles.filterSelect} 
+            value={filterPage}
+            onChange={(e) => {
+              setFilterPage(e.target.value);
+              setFilterMainCat('');
+              setFilterSubCat('');
+            }}
+          >
+            <option value="">كل البيجات</option>
+            {pagesStoresDb.map(page => (
+              <option key={page.id} value={page.id}>{page.name}</option>
+            ))}
+          </select>
+
           <select 
             className={styles.filterSelect} 
             value={filterMainCat}
@@ -375,17 +397,11 @@ export default function ProductsPage() {
             }}
           >
             <option value="">كل الفئات الرئيسية</option>
-            {pagesStoresDb.map(page => {
-              const pageCats = categoriesDb.filter(c => c.pageId === page.id);
-              if (pageCats.length === 0) return null;
-              return (
-                <optgroup key={page.id} label={page.name}>
-                  {pageCats.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </optgroup>
-              );
-            })}
+            {categoriesDb
+              .filter(c => !filterPage || c.pageId === filterPage)
+              .map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
           </select>
 
           <select 
@@ -394,13 +410,46 @@ export default function ProductsPage() {
             onChange={(e) => setFilterSubCat(e.target.value)}
           >
             <option value="">كل الفئات الفرعية</option>
-            {filterAvailableSubCats.map((sub: any) => (
-              <option key={sub.id} value={sub.id}>{sub.name}</option>
-            ))}
+            {(() => {
+              if (filterMainCat) {
+                const mainCatObj = categoriesDb.find(c => c.id === filterMainCat);
+                return (mainCatObj?.subcategories || []).map((sub: any) => (
+                  <option key={sub.id} value={sub.id}>{sub.name}</option>
+                ));
+              }
+              if (filterPage) {
+                return categoriesDb
+                  .filter(c => c.pageId === filterPage)
+                  .flatMap(c => c.subcategories || [])
+                  .map((sub: any) => (
+                    <option key={sub.id} value={sub.id}>{sub.name}</option>
+                  ));
+              }
+              return categoriesDb
+                .flatMap(c => c.subcategories || [])
+                .map((sub: any) => (
+                  <option key={sub.id} value={sub.id}>{sub.name}</option>
+                ));
+            })()}
           </select>
 
-          <button className={styles.searchButton}>
-            بحث
+          <button 
+            className={styles.actionButton} 
+            style={{ 
+              backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+              borderColor: 'rgba(239, 68, 68, 0.4)', 
+              color: '#f87171',
+              padding: '0.75rem 1.5rem',
+              fontWeight: '600'
+            }}
+            onClick={() => {
+              setFilterPage('');
+              setFilterMainCat('');
+              setFilterSubCat('');
+              setSearchTerm('');
+            }}
+          >
+            ❌ إلغاء الفلترة
           </button>
         </div>
 
@@ -451,7 +500,9 @@ export default function ProductsPage() {
                 <th>فئة فرعية</th>
                 <th>التكلفة</th>
                 <th>البيع</th>
-                <th>الكمية</th>
+                <th>الفعلي</th>
+                <th>المحجوز</th>
+                <th>المتاح</th>
                 <th>قيمة المخزون</th>
                 <th>العملية</th>
               </tr>
@@ -459,12 +510,31 @@ export default function ProductsPage() {
             <tbody>
               {(() => {
                 const filtered = products.filter(prod => {
+                  const pNameClean = prod.name?.trim().toLowerCase();
+                  if (!pNameClean) return false;
+
+                  // Exclude structural names (Page, Category, Subcategory)
+                  const isPageName = pagesStoresDb.some(page => page.name?.trim().toLowerCase() === pNameClean);
+                  if (isPageName) return false;
+
+                  const isMainCatName = categoriesDb.some(cat => cat.name?.trim().toLowerCase() === pNameClean);
+                  if (isMainCatName) return false;
+
+                  const isSubCatName = categoriesDb.some(cat => 
+                    cat.subcategories?.some((sub: any) => sub.name?.trim().toLowerCase() === pNameClean)
+                  );
+                  if (isSubCatName) return false;
+
                   const matchesSearch = prod.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                         prod.barcode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                                         prod.model?.toLowerCase().includes(searchTerm.toLowerCase());
+                  const matchesPage = filterPage ? (
+                    prod.pageId === filterPage || 
+                    categoriesDb.find(c => c.id === prod.categoryId)?.pageId === filterPage
+                  ) : true;
                   const matchesMainCat = filterMainCat ? prod.categoryId === filterMainCat : true;
                   const matchesSubCat = filterSubCat ? prod.subcategoryId === filterSubCat : true;
-                  return matchesSearch && matchesMainCat && matchesSubCat;
+                  return matchesSearch && matchesPage && matchesMainCat && matchesSubCat;
                 });
 
                 if (filtered.length === 0) {
@@ -564,6 +634,88 @@ export default function ProductsPage() {
                           );
                         })()}
                       </td>
+                      <td style={{ fontWeight: 'bold', direction: 'rtl', verticalAlign: 'middle', color: '#f97316' }}>
+                        {(() => {
+                          let totalReserved = 0;
+                          let mappedUnits: any[] = [];
+                          
+                          if (prod.stock && prod.units && prod.units.length > 0) {
+                            Object.values(prod.stock).forEach((s: any) => {
+                              const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                              totalReserved += (Number(s.reserved) || 0) * uMul;
+                            });
+                            mappedUnits = prod.units.map((u: any) => ({
+                              name: u.type,
+                              multiplier: Number(u.count) || 1
+                            }));
+                          } else {
+                            return <span>---</span>;
+                          }
+
+                          const balances = getInventoryBalances(totalReserved, mappedUnits);
+                          
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
+                              {balances.map((balanceStr: string, idx: number) => (
+                                <span 
+                                  key={idx} 
+                                  style={{
+                                    fontSize: idx === 0 ? '0.95rem' : '0.85rem',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {balanceStr}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td style={{ fontWeight: 'bold', direction: 'rtl', verticalAlign: 'middle', color: '#3b82f6' }}>
+                        {(() => {
+                          let totalQty = prod.totalBaseQuantity || 0;
+                          let totalReserved = 0;
+                          let mappedUnits: any[] = [];
+                          
+                          if (prod.stock && prod.units && prod.units.length > 0) {
+                            if (prod.totalBaseQuantity === undefined) {
+                               Object.values(prod.stock).forEach((s: any) => {
+                                 const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                                 totalQty += (Number(s.quantity) || 0) * uMul;
+                               });
+                            }
+                            Object.values(prod.stock).forEach((s: any) => {
+                              const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                              totalReserved += (Number(s.reserved) || 0) * uMul;
+                            });
+                            mappedUnits = prod.units.map((u: any) => ({
+                              name: u.type,
+                              multiplier: Number(u.count) || 1
+                            }));
+                          } else {
+                            return <span>---</span>;
+                          }
+
+                          const available = totalQty - totalReserved;
+                          const balances = getInventoryBalances(available, mappedUnits);
+                          
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
+                              {balances.map((balanceStr: string, idx: number) => (
+                                <span 
+                                  key={idx} 
+                                  style={{
+                                    fontSize: idx === 0 ? '0.95rem' : '0.85rem',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {balanceStr}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td style={{ color: '#10B981', fontWeight: 'bold' }}>
                         {(() => {
                           let totalValue = 0;
@@ -652,6 +804,10 @@ export default function ProductsPage() {
                   <div className={styles.formGroup}>
                     <label className={styles.label}>الموديل</label>
                     <input type="text" className={styles.input} value={formData.model} onChange={(e) => setFormData({...formData, model: e.target.value})} />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label}>كود التتبع الإعلاني (CPO)</label>
+                    <input type="text" className={styles.input} value={formData.trackingCode} onChange={(e) => setFormData({...formData, trackingCode: e.target.value})} placeholder="مثال: SVA, SW1" />
                   </div>
                 </div>
               )}

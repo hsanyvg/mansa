@@ -14,7 +14,8 @@ import {
   writeBatch,
   where,
   getDocs,
-  deleteDoc
+  deleteDoc,
+  addDoc
 } from 'firebase/firestore';
 
 interface Employee {
@@ -37,7 +38,17 @@ export default function EmployeesPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'management' | 'payroll' | 'attendance'>('management');
+  const [activeTab, setActiveTab] = useState<'management' | 'payroll' | 'attendance' | 'deductions'>('management');
+
+  // Deductions State
+  const [deductionsList, setDeductionsList] = useState<any[]>([]);
+  const [deductionForm, setDeductionForm] = useState({
+    employeeId: '',
+    amount: '',
+    reason: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
 
   // Attendance State
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
@@ -82,6 +93,7 @@ export default function EmployeesPage() {
   const [loadingPayroll, setLoadingPayroll] = useState(false);
   const [ordersSnapshot, setOrdersSnapshot] = useState<any[]>([]);
   const [overridesSnapshot, setOverridesSnapshot] = useState<any[]>([]);
+  const [deductionsSnapshot, setDeductionsSnapshot] = useState<any[]>([]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -196,6 +208,55 @@ export default function EmployeesPage() {
       showToastMsg("حدث خطأ أثناء الحذف", "error");
     }
   };
+
+  const handleSaveDeduction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deductionForm.employeeId || !deductionForm.amount || !deductionForm.reason) {
+      showToastMsg("يرجى تعبئة الحقول الإجبارية", "error");
+      return;
+    }
+    
+    try {
+      const emp = employees.find(e => e.id === deductionForm.employeeId);
+      await addDoc(collection(db, 'deductions'), {
+        ...deductionForm,
+        employeeName: emp?.name || '',
+        amount: parseFloat(deductionForm.amount),
+        createdAt: serverTimestamp()
+      });
+      showToastMsg("تم حفظ الخصم بنجاح");
+      setDeductionForm({
+        employeeId: '',
+        amount: '',
+        reason: '',
+        date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+    } catch (err) {
+      console.error(err);
+      showToastMsg("حدث خطأ أثناء الحفظ", "error");
+    }
+  };
+
+  const handleDeleteDeduction = async (id: string) => {
+    if (!window.confirm("هل أنت متأكد من حذف هذا الخصم؟")) return;
+    try {
+      await deleteDoc(doc(db, 'deductions', id));
+      showToastMsg("تم حذف الخصم بنجاح");
+    } catch (err) {
+      console.error(err);
+      showToastMsg("حدث خطأ أثناء الحذف", "error");
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'deductions') return;
+    const q = query(collection(db, 'deductions'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setDeductionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [activeTab]);
 
 
 
@@ -337,6 +398,22 @@ export default function EmployeesPage() {
     });
   }, [dateRange, activeTab]);
 
+  useEffect(() => {
+    if (activeTab === 'management') return;
+    
+    const deductionsQ = query(
+      collection(db, 'deductions'),
+      where('date', '>=', dateRange.start.toISOString().split('T')[0]),
+      where('date', '<=', dateRange.end.toISOString().split('T')[0])
+    );
+
+    return onSnapshot(deductionsQ, (snap) => {
+      setDeductionsSnapshot(snap.docs);
+    }, (error) => {
+      console.error("Deductions Snapshot Error:", error);
+    });
+  }, [dateRange, activeTab]);
+
   // --- Global Payroll & Attendance Calculation Effect ---
   useEffect(() => {
     if (activeTab === 'management') return;
@@ -353,6 +430,7 @@ export default function EmployeesPage() {
         proRatedBase: 0,
         eligibleDays: 0,
         deductions: 0,
+        manualDeductions: 0,
         netDue: 0,
         unpaidOrderIds: [] as string[]
       };
@@ -441,15 +519,21 @@ export default function EmployeesPage() {
           payrollMap[emp.id].deductions = Math.round(dailyRate * absentCount);
       }
 
+      let manualDeductionsSum = 0;
+      deductionsSnapshot.filter(d => d.data().employeeId === emp.id).forEach(doc => {
+        manualDeductionsSum += (Number(doc.data().amount) || 0);
+      });
+      payrollMap[emp.id].manualDeductions = manualDeductionsSum;
+
       let baseToUse = emp.paymentType !== 'commission' ? payrollMap[emp.id].proRatedBase : 0;
       let comm = emp.paymentType !== 'salary' ? payrollMap[emp.id].payableCommission : 0;
-      payrollMap[emp.id].netDue = baseToUse + comm - payrollMap[emp.id].deductions;
+      payrollMap[emp.id].netDue = baseToUse + comm - payrollMap[emp.id].deductions - manualDeductionsSum;
       if (payrollMap[emp.id].netDue < 0) payrollMap[emp.id].netDue = 0;
     });
 
     setGlobalPayrollData(payrollMap);
     setLoadingPayroll(false);
-  }, [activeTab, dateRange, employees, ordersSnapshot, overridesSnapshot]);
+  }, [activeTab, dateRange, employees, ordersSnapshot, overridesSnapshot, deductionsSnapshot]);
 
   const handlePaySalary = async (empId: string) => {
     const pData = globalPayrollData[empId];
@@ -657,12 +741,19 @@ export default function EmployeesPage() {
         >
           سجل الحضور والغياب
         </button>
+        <button 
+          className={`${styles.tabButton} ${activeTab === 'deductions' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('deductions')}
+        >
+          الخصومات
+        </button>
       </div>
 
       <header className={styles.header}>
         <h1 className={styles.title}>
           {activeTab === 'management' ? 'قائمة الموظفين' : 
-           activeTab === 'payroll' ? 'الرواتب والعمولات' : 'سجل الغيابات والحضور'}
+           activeTab === 'payroll' ? 'الرواتب والعمولات' : 
+           activeTab === 'deductions' ? 'خصومات الموظفين' : 'سجل الغيابات والحضور'}
         </h1>
         
         {activeTab === 'management' ? (
@@ -704,7 +795,7 @@ export default function EmployeesPage() {
         </section>
       )}
 
-      {activeTab === 'management' ? (
+      {activeTab === 'management' && (
         <main className={styles.tableContainer}>
           <table className={styles.table}>
             <thead>
@@ -748,7 +839,9 @@ export default function EmployeesPage() {
             </tbody>
           </table>
         </main>
-      ) : (
+      )}
+
+      {activeTab === 'payroll' && (
         <main className={styles.tableContainer}>
           {loadingPayroll ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>جاري معالجة الكشوفات...</div>
@@ -779,9 +872,14 @@ export default function EmployeesPage() {
                       </td>
                       <td>{pData.deliveredOrdersCount} طلب</td>
                       <td style={{ color: '#fbbf24' }}>{formatCurrency(pData.payableCommission)}</td>
-                      <td style={{ color: pData.deductions > 0 ? '#ef4444' : 'inherit' }}>
-                        {formatCurrency(pData.deductions)} 
-                        <span style={{ fontSize: '0.8rem', opacity: 0.6, marginRight: '4px' }}>({pData.absentDays} يوم)</span>
+                      <td style={{ color: (pData.deductions + pData.manualDeductions) > 0 ? '#ef4444' : 'inherit' }}>
+                        {formatCurrency(pData.deductions + pData.manualDeductions)} 
+                        {pData.absentDays > 0 && (
+                          <span style={{ fontSize: '0.8rem', opacity: 0.6, marginRight: '4px' }}>({pData.absentDays} يوم غياب)</span>
+                        )}
+                        {pData.manualDeductions > 0 && (
+                          <span style={{ fontSize: '0.8rem', opacity: 0.6, marginRight: '4px' }}>+ يدوي</span>
+                        )}
                       </td>
                       <td style={{ color: '#10b981', fontWeight: 'bold' }}>{formatCurrency(pData.netDue)}</td>
                       <td>
@@ -797,8 +895,136 @@ export default function EmployeesPage() {
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr style={{ background: 'rgba(255,255,255,0.03)', fontWeight: 'bold' }}>
+                  <td colSpan={3} style={{ textAlign: 'left', padding: '1rem' }}>الإجمالي الكلي:</td>
+                  <td style={{ color: '#ef4444' }}>
+                    {formatCurrency(employees.reduce((sum, emp) => sum + (globalPayrollData[emp.id]?.deductions || 0) + (globalPayrollData[emp.id]?.manualDeductions || 0), 0))}
+                  </td>
+                  <td style={{ color: '#10b981', fontSize: '1.1rem' }}>
+                    {formatCurrency(employees.reduce((sum, emp) => sum + (globalPayrollData[emp.id]?.netDue || 0), 0))}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           )}
+        </main>
+      )}
+
+      {activeTab === 'deductions' && (
+        <main className={styles.mainContent}>
+          <div className={styles.deductionFormContainer} style={{ background: 'var(--surface)', padding: '2rem', borderRadius: '12px', marginBottom: '2rem', border: '1px solid var(--border)' }}>
+            <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-main)', fontSize: '1.25rem' }}>تسجيل خصم جديد</h2>
+            <form onSubmit={handleSaveDeduction} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              
+              <div className={styles.formGroup}>
+                <label>اسم الموظف</label>
+                <select 
+                  className={styles.input}
+                  value={deductionForm.employeeId}
+                  onChange={(e) => setDeductionForm({...deductionForm, employeeId: e.target.value})}
+                  required
+                >
+                  <option value="">-- اختر الموظف --</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>مبلغ الخصم (د.ع)</label>
+                <input 
+                  type="number"
+                  className={styles.input}
+                  min="0"
+                  value={deductionForm.amount}
+                  onChange={(e) => setDeductionForm({...deductionForm, amount: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>تاريخ الخصم</label>
+                <input 
+                  type="date"
+                  className={styles.input}
+                  value={deductionForm.date}
+                  onChange={(e) => setDeductionForm({...deductionForm, date: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>سبب الخصم</label>
+                <input 
+                  type="text"
+                  className={styles.input}
+                  placeholder="مثال: تأخير، غياب، خطأ في طلب..."
+                  value={deductionForm.reason}
+                  onChange={(e) => setDeductionForm({...deductionForm, reason: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup} style={{ gridColumn: '1 / -1' }}>
+                <label>ملاحظات إضافية (اختياري)</label>
+                <textarea 
+                  className={styles.input}
+                  rows={2}
+                  value={deductionForm.notes}
+                  onChange={(e) => setDeductionForm({...deductionForm, notes: e.target.value})}
+                ></textarea>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button type="submit" className={styles.payButton} style={{ padding: '0.75rem 2rem' }}>حفظ الخصم</button>
+              </div>
+            </form>
+          </div>
+
+          <div className={styles.tableContainer}>
+            <h2 style={{ marginBottom: '1rem', padding: '0 1rem', color: 'var(--text-main)', fontSize: '1.25rem' }}>الخصومات المسجلة</h2>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>تاريخ الخصم</th>
+                  <th>اسم الموظف</th>
+                  <th>السبب</th>
+                  <th>المبلغ</th>
+                  <th>ملاحظات</th>
+                  <th>العمليات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deductionsList.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>لا توجد خصومات مسجلة</td>
+                  </tr>
+                ) : (
+                  deductionsList.map((d) => (
+                    <tr key={d.id}>
+                      <td>{d.date}</td>
+                      <td style={{ fontWeight: 'bold' }}>{d.employeeName}</td>
+                      <td>{d.reason}</td>
+                      <td style={{ color: '#ef4444', fontWeight: 'bold' }}>{formatCurrency(d.amount)}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{d.notes || '-'}</td>
+                      <td>
+                        <button 
+                          onClick={() => handleDeleteDeduction(d.id)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.5rem', borderRadius: '4px' }}
+                          title="حذف الخصم"
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </main>
       )}
 

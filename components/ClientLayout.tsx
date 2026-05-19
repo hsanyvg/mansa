@@ -82,7 +82,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>إذن تحويل</span>
             <span className={styles.submenuIcon}>⇄</span>
           </Link>
-
+          <Link href="/inventory" className={`${styles.submenuItem} ${pathname === '/inventory' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>إدارة المخازن والجرد</span>
+            <span className={styles.submenuIcon}>📦</span>
+          </Link>
         </div>
 
         {/* Persons Menu Item */}
@@ -126,45 +129,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
 
-        {/* Invoices Menu Item */}
-        <div 
-          className={`${styles.menuItem} ${showInvoices ? styles.active : ''}`}
-          onClick={() => {
-            setShowInvoices(!showInvoices);
-            if (!isSidebarOpen) setIsSidebarOpen(true);
-          }}
-        >
-          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>{showInvoices ? '▼' : '▶'}</span>
-          <div className={styles.menuItemIcon} title="الفواتير">
-            <span>الفواتير</span>
-            <span className={styles.icon}>🧾</span>
-          </div>
-        </div>
-
-        {/* Submenu for Invoices */}
-        <div className={`${styles.submenu} ${showInvoices ? styles.open : ''}`}>
-          <Link href="/sales-invoices" className={`${styles.submenuItem} ${pathname === '/sales-invoices' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>فواتير المبيعات</span>
-            <span className={styles.submenuIcon}>📈</span>
-          </Link>
-
-          <Link href="/sales-returns" className={`${styles.submenuItem} ${pathname === '/sales-returns' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>مرتجعات المبيعات</span>
-            <span className={styles.submenuIcon}>↩️</span>
-          </Link>
-          <Link href="/purchases" className={`${styles.submenuItem} ${pathname === '/purchases' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>فواتير المشتريات</span>
-            <span className={styles.submenuIcon}>🗓️</span>
-          </Link>
-          <div className={styles.submenuItem}>
-            <span>مرتجعات المشتريات</span>
-            <span className={styles.submenuIcon}>↩️</span>
-          </div>
-          <div className={styles.submenuItem}>
-            <span>كشف حساب عميل ومورد</span>
-            <span className={styles.submenuIcon}>🖥️</span>
-          </div>
-        </div>
 
         {/* Finance Menu Item */}
         <div 
@@ -181,27 +145,22 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
 
-        {/* Submenu for Finance */}
         <div className={`${styles.submenu} ${showFinance ? styles.open : ''}`}>
-          <div className={styles.submenuItem}>
+          <Link href="/finance/expenses" className={`${styles.submenuItem} ${pathname === '/finance/expenses' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>المصروفات</span>
             <span className={styles.submenuIcon}>💸</span>
-          </div>
-          <div className={styles.submenuItem}>
+          </Link>
+          <Link href="/finance/treasury" className={`${styles.submenuItem} ${pathname === '/finance/treasury' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>الخزينة</span>
             <span className={styles.submenuIcon}>🏛️</span>
-          </div>
-          <div className={styles.submenuItem}>
-            <span>خزينة عملة</span>
-            <span className={styles.submenuIcon}>💶</span>
-          </div>
+          </Link>
+          <Link href="/treasury" className={`${styles.submenuItem} ${pathname === '/treasury' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>تسوية الكشوفات</span>
+            <span className={styles.submenuIcon}>🧾</span>
+          </Link>
           <div className={styles.submenuItem}>
             <span>الحسابات البنكية</span>
             <span className={styles.submenuIcon}>💳</span>
-          </div>
-          <div className={styles.submenuItem}>
-            <span>العملات</span>
-            <span className={styles.submenuIcon}>💱</span>
           </div>
         </div>
 
@@ -238,6 +197,14 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>الأصناف الناقصة</span>
             <span className={styles.submenuIcon}>🪫</span>
           </div>
+          <Link href="/finance/cpo" className={`${styles.submenuItem} ${pathname === '/finance/cpo' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>تقارير الإعلانات (CPO)</span>
+            <span className={styles.submenuIcon}>🎯</span>
+          </Link>
+          <Link href="/finance/cpo/archive" className={`${styles.submenuItem} ${pathname === '/finance/cpo/archive' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>أرشيف التقارير الذكية</span>
+            <span className={styles.submenuIcon}>📂</span>
+          </Link>
         </div>
 
         {/* Other menu items */}
@@ -262,13 +229,51 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span className={styles.icon}>📦</span>
           </div>
         </Link>
-        <div className={styles.menuItem} onClick={() => setShowSettings(!showSettings)} title="الإعدادات">
-          <span></span>
+        <div 
+          className={`${styles.menuItem} ${showSettings ? styles.active : ''}`} 
+          onClick={() => {
+            setShowSettings(!showSettings);
+            if (!isSidebarOpen) setIsSidebarOpen(true);
+          }} 
+          title="الإعدادات"
+        >
+          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>{showSettings ? '▼' : '▶'}</span>
           <div className={styles.menuItemIcon}>
             <span>الإعدادات</span>
             <span className={styles.icon}>⚙️</span>
           </div>
         </div>
+
+        {/* Submenu for Settings */}
+        <div className={`${styles.submenu} ${showSettings ? styles.open : ''}`}>
+          <Link href="/settings/currencies" className={`${styles.submenuItem} ${pathname === '/settings/currencies' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>العملات</span>
+            <span className={styles.submenuIcon}>💱</span>
+          </Link>
+          <Link href="/settings/expense-categories" className={`${styles.submenuItem} ${pathname === '/settings/expense-categories' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>فئات المصروفات</span>
+            <span className={styles.submenuIcon}>📂</span>
+          </Link>
+          <Link href="/settings/wallets" className={`${styles.submenuItem} ${pathname === '/settings/wallets' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>محافظ الخزينة</span>
+            <span className={styles.submenuIcon}>🏦</span>
+          </Link>
+          <Link href="/settings/alerts" className={`${styles.submenuItem} ${pathname === '/settings/alerts' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>تنبيهات التقارير</span>
+            <span className={styles.submenuIcon}>🤖</span>
+          </Link>
+          <Link href="/settings/api-integrations" className={`${styles.submenuItem} ${pathname === '/settings/api-integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>بوابة الربط (API)</span>
+            <span className={styles.submenuIcon}>🔌</span>
+          </Link>
+        </div>
+        <Link href="/integrations" className={`${styles.menuItem} ${pathname === '/integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }} title="الربط والتتبع">
+          <span></span>
+          <div className={styles.menuItemIcon}>
+            <span>الربط والتتبع</span>
+            <span className={styles.icon}>🔗</span>
+          </div>
+        </Link>
       </aside>
 
       {/* Main Content Area */}

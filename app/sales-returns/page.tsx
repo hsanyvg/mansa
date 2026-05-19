@@ -28,7 +28,20 @@ export default function SalesReturnsPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   
+  const [employeesList, setEmployeesList] = useState<string[]>([]);
+  const [receiverEmployee, setReceiverEmployee] = useState('');
+  const [deliveryAgent, setDeliveryAgent] = useState('');
+  
   const barcodeBufferRef = useRef<string>('');
+
+  // Fetch Employees List
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'employees'), (snap) => {
+      const names = snap.docs.map(d => d.data().name).filter(Boolean);
+      setEmployeesList(names);
+    });
+    return () => unsub();
+  }, []);
 
   // Fetch Delivered Orders
   useEffect(() => {
@@ -130,6 +143,8 @@ export default function SalesReturnsPage() {
 
   const handleBulkReturnTrigger = () => {
     if (selectedOrderIds.length === 0 || isProcessing) return;
+    setReceiverEmployee('');
+    setDeliveryAgent('');
     setShowConfirmModal(true);
   };
 
@@ -153,7 +168,8 @@ export default function SalesReturnsPage() {
           customerName: orderData.customerName,
           totalAmount: orderData.totalAmount || 0,
           returnDate: serverTimestamp(),
-          processedBy: 'الماسح الضوئي / نظام المرتجعات'
+          processedBy: receiverEmployee || 'الماسح الضوئي / نظام المرتجعات',
+          deliveryAgent: deliveryAgent || 'غير محدد'
         });
 
         // 3. Restore Stock
@@ -333,13 +349,50 @@ export default function SalesReturnsPage() {
 
       {showConfirmModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.confirmModal}>
-            <div className={styles.modalIcon}>⚠️</div>
-            <h3>تأكيد عملية الإرجاع</h3>
-            <p>هل أنت متأكد من إرجاع <strong>{selectedOrderIds.length}</strong> طلبات إلى المخزن؟ سيتم تحديث الكميات وحالة الطلبات فوراً.</p>
+          <div className={styles.confirmModal} style={{ width: '450px', maxWidth: '90%' }}>
+            <div className={styles.modalIcon} style={{ fontSize: '3rem', marginBottom: '1rem' }}>📝</div>
+            <h3 style={{ marginBottom: '0.5rem', color: 'var(--text-primary)' }}>توثيق استلام المرتجعات</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem', textAlign: 'center' }}>
+              يرجى إدخال تفاصيل التسليم لتأكيد إرجاع <strong>{selectedOrderIds.length}</strong> طلبات إلى المخزن.
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', marginBottom: '2rem', textAlign: 'right' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>اسم الموظف المستلم <span style={{color: 'red'}}>*</span></label>
+                <select 
+                  style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}
+                  value={receiverEmployee}
+                  onChange={(e) => setReceiverEmployee(e.target.value)}
+                >
+                  <option value="" disabled>اختر الموظف...</option>
+                  {employeesList.map((emp, idx) => (
+                    <option key={idx} value={emp}>{emp}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>اسم/رقم المندوب المُسلّم <span style={{color: 'red'}}>*</span></label>
+                <input 
+                  type="text" 
+                  placeholder="مثال: محمد المندوب أو 0770..."
+                  style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}
+                  value={deliveryAgent}
+                  onChange={(e) => setDeliveryAgent(e.target.value)}
+                />
+              </div>
+            </div>
+
             <div className={styles.modalActions}>
               <button className={styles.cancelBtn} onClick={() => setShowConfirmModal(false)}>إلغاء</button>
-              <button className={styles.confirmBtn} onClick={executeBulkReturn}>تأكيد الإرجاع</button>
+              <button 
+                className={styles.confirmBtn} 
+                onClick={executeBulkReturn}
+                disabled={!receiverEmployee || !deliveryAgent}
+                style={{ opacity: (!receiverEmployee || !deliveryAgent) ? 0.5 : 1, cursor: (!receiverEmployee || !deliveryAgent) ? 'not-allowed' : 'pointer' }}
+              >
+                تأكيد وحفظ الكشف
+              </button>
             </div>
           </div>
         </div>

@@ -1,0 +1,405 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  background-color: transparent;
+  flex: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.header {
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 0;
+  background: linear-gradient(135deg, #fff 0%, #aaa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Balance Grid */
+.balanceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.balanceCard {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.2rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.cardIcon {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.cardLabel {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.cardValue {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: auto;
+}
+
+.iqdValue { color: var(--primary); }
+.usdValue { color: #10b981; }
+
+.totalCard {
+  background-color: rgba(139, 92, 246, 0.05);
+  border-color: var(--primary);
+}
+
+.totalCard .cardLabel {
+  color: var(--primary);
+}
+
+/* Action Toolbar */
+.toolbar {
+  display: flex;
+  gap: 0.8rem;
+  margin-bottom: 1.5rem;
+  background: var(--surface);
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+  flex: 1;
+  color: white;
+}
+
+.depositBtn { background-color: #10b981; }
+.depositBtn:hover { background-color: #059669; }
+
+.withdrawBtn { background-color: #ef4444; }
+.withdrawBtn:hover { background-color: #dc2626; }
+
+.transferBtn { background-color: var(--primary); }
+.transferBtn:hover { background-color: #7c3aed; }
+
+/* Table Section */
+.tableSection {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+}
+
+.tableHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+}
+
+.tableTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.searchWrapper {
+  position: relative;
+  width: 250px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 0.6rem 2.2rem 0.6rem 1rem;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-main);
+  outline: none;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+}
+
+.searchInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.searchIcon {
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.5;
+  font-size: 0.9rem;
+}
+
+.tableContainer {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: right;
+  padding: 1rem;
+  background-color: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 1rem;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.table tr:last-child td { border-bottom: none; }
+
+.table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.typeTag {
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.depositTag { background-color: rgba(16, 185, 129, 0.1); color: #10b981; }
+.withdrawTag { background-color: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.transferTag { background-color: rgba(139, 92, 246, 0.1); color: var(--primary); }
+
+.walletTag {
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+
+.amountCell {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.amountDeposit { color: #10b981; }
+.amountWithdraw { color: #ef4444; }
+.amountTransfer { color: var(--text-main); }
+
+.iqdText { color: var(--primary); }
+.usdText { color: #10b981; }
+
+.timeText {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+/* Modal Styling */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeInOverlay 0.2s ease-out;
+}
+
+@keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 450px;
+  padding: 2rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.modalTitle {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 1.5rem;
+}
+
+.formGroup {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.label {
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.input, .select, .textarea {
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background-color: var(--background);
+  color: var(--text-main);
+  outline: none;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.modalActions {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 1.5rem;
+}
+
+.submitBtn {
+  flex: 2;
+  background: linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%);
+  color: white;
+  border: none;
+  padding: 0.8rem;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.submitBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(139, 92, 246, 0.4);
+}
+
+.cancelBtn {
+  flex: 1;
+  background: var(--background);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  padding: 0.8rem;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancelBtn:hover {
+  background-color: var(--surface-hover);
+}
+
+.emptyState {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.emptyIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.8rem 2rem;
+  border-radius: 12px;
+  color: white;
+  font-weight: bold;
+  z-index: 9999;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  backdrop-filter: blur(8px);
+}
+
+@keyframes slideIn { from { top: -60px; opacity: 0; } to { top: 20px; opacity: 1; } }
+
+.success { background-color: rgba(16, 185, 129, 0.9); border: 1px solid #10b981; }
+.error { background-color: rgba(239, 68, 68, 0.9); border: 1px solid #ef4444; }
+
+.notToday {
+  background-color: rgba(251, 191, 36, 0.05) !important;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+}
+
+.dateWarning {
+  font-size: 0.75rem;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.revertBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+  padding: 0.3rem;
+  color: inherit;
+}
+
+.revertBtn:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
