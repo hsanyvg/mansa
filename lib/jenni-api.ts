@@ -49,10 +49,16 @@ export async function getJenniToken(userId: string) {
     body: JSON.stringify({ username, password }),
   });
 
-  const data = await response.json();
+  const textData = await response.text();
+  let data;
+  try {
+    data = JSON.parse(textData);
+  } catch (e) {
+    throw new Error(`رد غير متوقع من الخادم: ${textData.substring(0, 50)}...`);
+  }
 
   if (!response.ok || !data.token) {
-    throw new Error(data.message || 'فشل تسجيل الدخول لشركة التوصيل. يرجى مراجعة الإعدادات.');
+    throw new Error(data.message || 'فشل تسجيل الدخول لشركة التوصيل. يرجى مراجعة الإعدادات (اسم المستخدم وكلمة المرور).');
   }
 
   return { token: data.token, systemCode: integration.systemCode };
@@ -90,7 +96,13 @@ export async function createJenniShipment(order: any, userId: string) {
     body: JSON.stringify(payload)
   });
 
-  const data = await response.json();
+  const textData = await response.text();
+  let data;
+  try {
+    data = JSON.parse(textData);
+  } catch (e) {
+    throw new Error(`رد غير متوقع عند إنشاء الشحنة: ${textData.substring(0, 50)}...`);
+  }
 
   if (!response.ok) {
     throw new Error(data.message || 'فشل إرسال الطلب لشركة التوصيل');
@@ -112,7 +124,14 @@ export async function queryJenniShipment(shipmentNumbers: string[], userId: stri
     body: JSON.stringify({ shipment_numbers: shipmentNumbers })
   });
 
-  const data = await response.json();
+  const textData = await response.text();
+  let data;
+  try {
+    data = JSON.parse(textData);
+  } catch (e) {
+    throw new Error(`رد غير متوقع عند الاستعلام: ${textData.substring(0, 50)}...`);
+  }
+
   if (!response.ok) {
     throw new Error(data.message || 'فشل الاستعلام عن الشحنة');
   }
