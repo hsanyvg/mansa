@@ -126,7 +126,7 @@ export default function ExpensesPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!categoryId || !amount || !date || !details || !selectedPageId || !selectedWalletId) return showToastMsg("يرجى ملء الحقول الإجبارية واختيار المحفظة", "error");
+    if (!categoryId || !amount || !date || !details || !selectedWalletId) return showToastMsg("يرجى ملء الحقول الإجبارية واختيار المحفظة", "error");
     
     const numAmount = Number(amount);
     const currentBalance = getWalletBalance(selectedWalletId, currency);
@@ -351,7 +351,7 @@ export default function ExpensesPage() {
               </div>
             </div>
             <div className={styles.formGroup}><label className={styles.label}>البيان / التفاصيل</label><input type="text" className={styles.input} value={details} onChange={e => setDetails(e.target.value)} required placeholder="اكتب التفاصيل هنا..." /></div>
-            <div className={styles.formGroup}><label className={styles.label}>البيج (إلزامي)</label><select className={styles.select} value={selectedPageId} onChange={e => { setSelectedPageId(e.target.value); setSelectedBranchId(''); setSelectedItemId(''); }} required><option value="">اختر البيج...</option>{pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+            <div className={styles.formGroup}><label className={styles.label}>البيج (اختياري)</label><select className={styles.select} value={selectedPageId} onChange={e => { setSelectedPageId(e.target.value); setSelectedBranchId(''); setSelectedItemId(''); }}><option value="">اختر البيج...</option>{pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الفرع (اختياري)</label><select className={styles.select} value={selectedBranchId} onChange={e => { setSelectedBranchId(e.target.value); setSelectedItemId(''); }} disabled={!selectedPageId}><option value="">اختر الفرع...</option>{allCategories.filter(b => b.pageId === selectedPageId).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الصنف (اختياري)</label><select className={styles.select} value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} disabled={!selectedBranchId}><option value="">اختر الصنف...</option>{allProducts.filter(i => i.categoryId === selectedBranchId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>
           </div>
