@@ -23,14 +23,14 @@ export async function POST(req: Request) {
       }
 
       // تحديد الحالة الجديدة في نظامنا بناءً على الـ action_code
-      let newStatus = 'قيد التوصيل'; // الافتراضي
+      let newStatus = 'shipped'; // الافتراضي (تم الشحن / قيد التوصيل)
       
       if (update.action_code === 'SUCCESSFUL_DELIVERY' || update.current_step === 'DELIVERED') {
-        newStatus = 'مستلم';
+        newStatus = 'delivered'; // مكتمل / مستلم
       } else if (update.action_code === 'RETURNED_WITH_AGENT' || update.action_code === 'RETURNED') {
-        newStatus = 'راجع';
+        newStatus = 'returned'; // راجع
       } else if (update.action_code === 'POSTPONED') {
-        newStatus = 'مؤجل';
+        newStatus = 'shipped'; // مؤجل (يبقى تحت الشحن)
       }
 
       try {

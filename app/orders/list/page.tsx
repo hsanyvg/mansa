@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
 import { db } from '../../../lib/firebase';
@@ -27,21 +28,41 @@ export default function OrdersListPage() {
   const [editingOrder, setEditingOrder] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showGovDropdownEdit, setShowGovDropdownEdit] = useState(false);
+  const [baseProducts, setBaseProducts] = useState<any[]>([]);
+  const [compositeProductsData, setCompositeProductsData] = useState<any[]>([]);
+  const [categoriesDb, setCategoriesDb] = useState<any[]>([]);
+  const [pagesDb, setPagesDb] = useState<any[]>([]);
+  const [searchQueryEdit, setSearchQueryEdit] = useState('');
+  const [showProductDropdownEdit, setShowProductDropdownEdit] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState('all'); 
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBarcodeMode, setIsBarcodeMode] = useState(false);
   const [showReturnReceiptModal, setShowReturnReceiptModal] = useState(false);
   
-  // Wallets & Settlement State
-  const [wallets, setWallets] = useState<any[]>([]);
-  const [settlementModal, setSettlementModal] = useState<{show: boolean, type: 'inline' | 'bulk' | 'edit', orderIds: string[], oldStatus: string, selectedWalletId: string, editingOrderData?: any}>({ show: false, type: 'inline', orderIds: [], oldStatus: '', selectedWalletId: '' });
+  // Settlement states and wallets removed (Moved to Treasury Page)
   const [receiverEmployee, setReceiverEmployee] = useState('');
   const [deliveryAgent, setDeliveryAgent] = useState('');
   const [employeesList, setEmployeesList] = useState<string[]>([]);
   const [returnsArchive, setReturnsArchive] = useState<any[]>([]);
   const [selectedReturnBatch, setSelectedReturnBatch] = useState<any | null>(null);
+  const [selectedReturnMonth, setSelectedReturnMonth] = useState<string | null>(null);
+  const [selectedReturnDay, setSelectedReturnDay] = useState<string | null>(null);
+  const [selectedBatchOrderIds, setSelectedBatchOrderIds] = useState<string[]>([]);
   const barcodeBufferRef = React.useRef('');
+
+  const [showBulkDropdown, setShowBulkDropdown] = useState(false);
+  const bulkActionsRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
+        setShowBulkDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
 
   const governoratesList = [
@@ -120,6 +141,78 @@ export default function OrdersListPage() {
     return () => unsubscribe();
   }, []);
 
+  // Fetch products from Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setBaseProducts(pData);
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch composite products
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'composite_products'), (snapshot) => {
+      const cData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCompositeProductsData(cData);
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch categories
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
+      setCategoriesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch pages_stores
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+      setPagesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  const products = React.useMemo(() => {
+    const merged = [...baseProducts];
+    
+    compositeProductsData.forEach(cp => {
+      let minBundles = Infinity;
+      if (cp.composition && cp.composition.length > 0) {
+        for (const comp of cp.composition) {
+          const prod = baseProducts.find(p => p.id === comp.itemId);
+          if (!prod) { minBundles = 0; break; }
+          
+          let totalStock = 0;
+          if (prod.stock) {
+            for (const storeId in prod.stock) {
+              totalStock += prod.stock[storeId].quantity || 0;
+            }
+          }
+          const canMake = Math.floor(totalStock / comp.quantityNeeded);
+          if (canMake < minBundles) minBundles = canMake;
+        }
+      } else {
+        minBundles = 0;
+      }
+      if (minBundles === Infinity) minBundles = 0;
+
+      merged.push({
+        id: cp.id,
+        name: cp.name,
+        barcode: '',
+        units: [{ selling: cp.sellingPrice || 0, type: 'بكج' }],
+        stock: { 'virtual_store': { quantity: minBundles, unit: 'بكج' } },
+        isComposite: true,
+        composition: cp.composition || []
+      });
+    });
+    
+    return merged;
+  }, [baseProducts, compositeProductsData]);
+
   // Fetch Returns Batches Archive
   useEffect(() => {
     const q = query(collection(db, 'return_batches'), orderBy('timestamp', 'desc'), limit(100));
@@ -147,11 +240,7 @@ export default function OrdersListPage() {
     return () => unsub();
   }, []);
 
-  // Fetch Wallets for Settlement
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'wallets'), snap => setWallets(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => unsub();
-  }, []);
+
 
   // Barcode Scanner Logic
   useEffect(() => {
@@ -207,6 +296,36 @@ export default function OrdersListPage() {
         : [...prev, id]
     );
   };
+
+  // Group Return Batches by Month
+  const groupedReturnBatches = React.useMemo(() => {
+    return returnsArchive.reduce((acc, record) => {
+      let dateObj = new Date();
+      if (record.timestamp) {
+         dateObj = record.timestamp instanceof Timestamp ? record.timestamp.toDate() : new Date(record.timestamp);
+      }
+      const monthKey = `${dateObj.getFullYear()}-${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
+      if (!acc[monthKey]) acc[monthKey] = [];
+      acc[monthKey].push(record);
+      return acc;
+    }, {} as Record<string, any[]>);
+  }, [returnsArchive]);
+
+  // Group Return Batches of selected month by Day
+  const groupedReturnDays = React.useMemo(() => {
+    if (!selectedReturnMonth) return {};
+    const batches = groupedReturnBatches[selectedReturnMonth] || [];
+    return batches.reduce((acc: Record<string, any[]>, record: any) => {
+      let dateObj = new Date();
+      if (record.timestamp) {
+         dateObj = record.timestamp instanceof Timestamp ? record.timestamp.toDate() : new Date(record.timestamp);
+      }
+      const dayKey = dateObj.toLocaleDateString('en-GB'); // "dd/mm/yyyy"
+      if (!acc[dayKey]) acc[dayKey] = [];
+      acc[dayKey].push(record);
+      return acc;
+    }, {} as Record<string, any[]>);
+  }, [selectedReturnMonth, groupedReturnBatches]);
 
   const handleFilterChange = (column: keyof typeof columnFilters, value: string) => {
     setColumnFilters(prev => ({ ...prev, [column]: value }));
@@ -426,7 +545,7 @@ export default function OrdersListPage() {
   const confirmDeleteOrder = async () => {
     if (!orderToDelete) return;
     
-    const isFullyLocked = orderToDelete.status === 'delivered' || orderToDelete.status === 'returned' || orderToDelete.is_settled === true;
+    const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToDelete.status) || orderToDelete.isArchived || orderToDelete.is_settled === true;
     if (isFullyLocked) {
        alert("لا يمكن حذف طلب تم تسليمه أو إرجاعه أو تسويته.");
        setOrderToDelete(null);
@@ -520,7 +639,7 @@ export default function OrdersListPage() {
       const batch = writeBatch(db);
       const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
       const validOrdersToDelete = selectedOrdersData.filter(o => {
-         const isFullyLocked = o.status === 'delivered' || o.status === 'returned' || o.is_settled === true;
+         const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) || o.isArchived || o.is_settled === true;
          return !isFullyLocked;
       });
       
@@ -707,6 +826,106 @@ export default function OrdersListPage() {
     }
   };
 
+  const aggregateProductQuantities = (items: any[]) => {
+    const productMap: Record<string, number> = {};
+    for (const item of items) {
+      if (item.isComposite && item.composition) {
+        for (const comp of item.composition) {
+          const id = comp.itemId;
+          const qty = (Number(comp.quantityNeeded) || 0) * (Number(item.quantity) || 0);
+          if (id) {
+            productMap[id] = (productMap[id] || 0) + qty;
+          }
+        }
+      } else {
+        const id = item.productId;
+        const qty = Number(item.quantity) || 0;
+        if (id) {
+          productMap[id] = (productMap[id] || 0) + qty;
+        }
+      }
+    }
+    return productMap;
+  };
+
+  const syncStockForOrderEdit = async (
+    oldItems: any[],
+    newItems: any[],
+    oldStatus: string,
+    newStatus: string,
+    batch: any
+  ) => {
+    const oldState = getStockState(oldStatus);
+    const newState = getStockState(newStatus);
+
+    // 1. Aggregate quantities for each base product
+    const aggregatedOld = aggregateProductQuantities(oldItems);
+    const aggregatedNew = aggregateProductQuantities(newItems);
+
+    // 2. Find all unique product IDs involved
+    const allProductIds = Array.from(
+      new Set([...Object.keys(aggregatedOld), ...Object.keys(aggregatedNew)])
+    );
+
+    if (allProductIds.length === 0) return;
+
+    // 3. Fetch all product documents in parallel and build cache
+    const productCache: Record<string, { ref: any; data: any; stock: any }> = {};
+    const fetchPromises = allProductIds.map(async (productId) => {
+      const prodRef = doc(db, 'products', productId);
+      const prodSnap = await getDoc(prodRef);
+      if (prodSnap.exists()) {
+        const prodData = prodSnap.data();
+        productCache[productId] = {
+          ref: prodRef,
+          data: prodData,
+          stock: JSON.parse(JSON.stringify(prodData.stock || {})) // deep copy
+        };
+      }
+    });
+    await Promise.all(fetchPromises);
+
+    // 4. Process each product
+    for (const productId of allProductIds) {
+      const cached = productCache[productId];
+      if (!cached) continue;
+
+      const oldQty = aggregatedOld[productId] || 0;
+      const newQty = aggregatedNew[productId] || 0;
+
+      const defaultUnit = cached.data.units?.[0]?.type || 'قطعة';
+      const stock = cached.stock;
+
+      const changeReserved = (stockObj: any, amount: number) => {
+        const firstStoreKey = Object.keys(stockObj)[0] || 'default_store';
+        if (!stockObj[firstStoreKey]) {
+          stockObj[firstStoreKey] = { quantity: 0, reserved: 0, unit: defaultUnit };
+        }
+        stockObj[firstStoreKey].reserved = (stockObj[firstStoreKey].reserved || 0) + amount;
+      };
+
+      // 4a. Apply difference under old state
+      if (oldState === 'SOFT_ALLOCATED') {
+        changeReserved(stock, newQty - oldQty);
+      }
+
+      // 4b. Transition status on new quantity
+      if (oldState !== newState) {
+        applyStockTransition(stock, oldState, newState, newQty, defaultUnit);
+      }
+
+      // 4c. Recalculate totalBaseQuantity
+      let newTotalBaseQuantity = 0;
+      Object.values(stock).forEach((s: any) => {
+        const uMul = cached.data.units?.find((u: any) => u.type === s.unit)?.count || 1;
+        newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+      });
+
+      // 4d. Queue database update
+      batch.update(cached.ref, { stock, totalBaseQuantity: newTotalBaseQuantity });
+    }
+  };
+
   const handleInlineStatusChange = async (orderId: string, oldStatus: string, newStatus: string) => {
     if (oldStatus === newStatus) return;
 
@@ -715,9 +934,9 @@ export default function OrdersListPage() {
       const orderToUpdate = orders.find(o => o.id === orderId);
       if (!orderToUpdate) return;
       
-      const isFullyLocked = orderToUpdate.status === 'delivered' || orderToUpdate.status === 'returned' || orderToUpdate.is_settled === true;
+      const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToUpdate.status) || orderToUpdate.isArchived || orderToUpdate.is_settled === true;
       if (isFullyLocked) {
-        alert("🔒 إجراء مرفوض: لا يمكن تغيير حالة طلب تم تسليمه، إرجاعه، أو تسويته مالياً.");
+        alert("🔒 إجراء مرفوض: الطلب مقفل بالكامل (مشحون، واصل، راجع، ملغى، أو متمت تسويته).");
         setIsUpdating(false);
         return;
       }
@@ -755,7 +974,7 @@ export default function OrdersListPage() {
         const orderToUpdate = orders.find(o => o.id === orderId);
         if (!orderToUpdate) continue;
         
-        const isFullyLocked = orderToUpdate.status === 'delivered' || orderToUpdate.status === 'returned' || orderToUpdate.is_settled === true;
+        const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToUpdate.status) || orderToUpdate.isArchived || orderToUpdate.is_settled === true;
         if (isFullyLocked || orderToUpdate.status === 'shipped') continue; // Skip locked or shipped orders
         
         const oldStatus = orderToUpdate.status || 'pending';
@@ -786,6 +1005,105 @@ export default function OrdersListPage() {
     }
   };
 
+  // Product Search for Edit Modal
+  const filteredProductsEdit = React.useMemo(() => {
+    return products.filter(p => {
+      if (!searchQueryEdit) return false;
+      const query = searchQueryEdit.toLowerCase();
+      
+      const pNameClean = p.name?.trim().toLowerCase();
+      if (!pNameClean) return false;
+
+      // Filter out Category, Subcategory or Page names so only real items (products) show up
+      const isPageName = pagesDb.some(page => page.name?.trim().toLowerCase() === pNameClean);
+      if (isPageName) return false;
+
+      const isMainCatName = categoriesDb.some(cat => cat.name?.trim().toLowerCase() === pNameClean);
+      if (isMainCatName) return false;
+
+      const isSubCatName = categoriesDb.some(cat => 
+        cat.subcategories?.some((sub: any) => sub.name?.trim().toLowerCase() === pNameClean)
+      );
+      if (isSubCatName) return false;
+
+      const nameMatch = p.name?.toLowerCase().includes(query);
+      const barcodeMatch = p.barcode?.toLowerCase() === query;
+      return nameMatch || barcodeMatch;
+    });
+  }, [products, searchQueryEdit, pagesDb, categoriesDb]);
+
+  const addProductToEditingOrder = (product: any) => {
+    if (!editingOrder) return;
+    const currentItems = editingOrder.items || [];
+    const existing = currentItems.find((item: any) => item.productId === product.id);
+    let newItems;
+    if (existing) {
+      newItems = currentItems.map((item: any) => 
+        item.productId === product.id ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.unitPrice } : item
+      );
+    } else {
+      const price = (product.units && product.units.length > 0) ? product.units[0].selling : 0;
+      newItems = [...currentItems, {
+        productId: product.id,
+        productName: product.name,
+        quantity: 1,
+        unitPrice: price,
+        total: price,
+        isComposite: product.isComposite || false,
+        composition: product.composition || null
+      }];
+    }
+    
+    const newTotal = newItems.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+    setEditingOrder({
+      ...editingOrder,
+      items: newItems,
+      totalAmount: newTotal
+    });
+    setSearchQueryEdit('');
+    setShowProductDropdownEdit(false);
+  };
+
+  const updateEditingOrderItemQuantity = (productId: string, newQty: number) => {
+    if (!editingOrder || newQty < 1) return;
+    const currentItems = editingOrder.items || [];
+    const newItems = currentItems.map((item: any) => 
+      item.productId === productId ? { ...item, quantity: newQty, total: newQty * item.unitPrice } : item
+    );
+    const newTotal = newItems.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+    setEditingOrder({
+      ...editingOrder,
+      items: newItems,
+      totalAmount: newTotal
+    });
+  };
+
+  const updateEditingOrderItemPrice = (productId: string, newPrice: number) => {
+    if (!editingOrder || newPrice < 0) return;
+    const currentItems = editingOrder.items || [];
+    const newItems = currentItems.map((item: any) => 
+      item.productId === productId ? { ...item, unitPrice: newPrice, total: item.quantity * newPrice } : item
+    );
+    const newTotal = newItems.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+    setEditingOrder({
+      ...editingOrder,
+      items: newItems,
+      totalAmount: newTotal
+    });
+  };
+
+  const removeProductFromEditingOrder = (productId: string) => {
+    if (!editingOrder) return;
+    const currentItems = editingOrder.items || [];
+    const newItems = currentItems.filter((item: any) => item.productId !== productId);
+    const newTotal = newItems.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+    setEditingOrder({
+      ...editingOrder,
+      items: newItems,
+      totalAmount: newTotal
+    });
+  };
+
   const saveOrderUpdates = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrder) return;
@@ -795,9 +1113,9 @@ export default function OrdersListPage() {
       const oldOrder = orders.find(o => o.id === editingOrder.id);
       if (!oldOrder) return;
       
-      const isFullyLocked = oldOrder.status === 'delivered' || oldOrder.status === 'returned' || oldOrder.is_settled === true;
+      const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(oldOrder.status) || oldOrder.isArchived || oldOrder.is_settled === true;
       if (isFullyLocked) {
-        alert("🔒 إجراء مرفوض: لا يمكن تعديل طلب تم تسليمه، إرجاعه، أو تسويته مالياً.");
+        alert("🔒 إجراء مرفوض: الطلب مقفل بالكامل (مشحون، واصل، راجع، ملغى، أو متمت تسويته).");
         setIsUpdating(false);
         setEditingOrder(null);
         return;
@@ -822,13 +1140,19 @@ export default function OrdersListPage() {
         region: editingOrder.region || '',
         notes: editingOrder.notes || '',
         status: editingOrder.status || 'pending',
-        employeeName: editingOrder.employeeName || ''
+        employeeName: editingOrder.employeeName || '',
+        items: editingOrder.items || [],
+        totalAmount: Number(editingOrder.totalAmount) || 0
       });
 
-      // Handle Stock Logic if status changed
-      if (oldOrder && oldOrder.status !== editingOrder.status) {
-        await syncStockForStatusChange(oldOrder.items || [], oldOrder.status, editingOrder.status, batch);
-      }
+      // Handle Stock Logic for order edits (both items and status changes)
+      await syncStockForOrderEdit(
+        oldOrder.items || [],
+        editingOrder.items || [],
+        oldOrder.status,
+        editingOrder.status,
+        batch
+      );
 
       await batch.commit();
       setNotificationModal({ show: true, message: 'تم تحديث بيانات الطلب والمخزون بنجاح' });
@@ -841,80 +1165,7 @@ export default function OrdersListPage() {
     }
   };
 
-  const confirmSettlement = async () => {
-    if (!settlementModal.selectedWalletId) {
-      setNotificationModal({ show: true, message: 'الرجاء اختيار المحفظة للإيداع.' });
-      return;
-    }
-    setIsUpdating(true);
-    try {
-      const batch = writeBatch(db);
-      let totalAmountToDeposit = 0;
-      const walletId = settlementModal.selectedWalletId;
-      const selectedWallet = wallets.find(w => w.id === walletId);
-      const walletName = selectedWallet?.name || 'محفظة غير معروفة';
-      
-      const ordersToUpdate = orders.filter(o => settlementModal.orderIds.includes(o.id));
 
-      for (const orderToUpdate of ordersToUpdate) {
-        const orderRef = doc(db, 'orders', orderToUpdate.id);
-        
-        batch.update(orderRef, { 
-          paymentStatus: 'settled',
-          settledWalletId: walletId,
-          settledWalletName: walletName
-        });
-        
-        const amt = Number(orderToUpdate.totalAmount || orderToUpdate.price || 0);
-        totalAmountToDeposit += amt;
-      }
-
-      if (totalAmountToDeposit > 0) {
-        const treasuryRef = doc(collection(db, 'treasury_transactions'));
-        const now = new Date();
-        const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-        const date = now.toISOString().split('T')[0];
-        
-        let details = '';
-        if (settlementModal.type === 'bulk') {
-          details = `إيداع آلي لتسوية مجمعة لـ ${settlementModal.orderIds.length} طلبات`;
-        } else {
-          const o = ordersToUpdate[0];
-          details = `إيداع آلي لتسوية الطلب #${o.id.slice(-6).toUpperCase()} (${o.customerName || ''})`;
-        }
-
-        batch.set(treasuryRef, {
-          type: 'deposit',
-          walletId: walletId,
-          amount: totalAmountToDeposit,
-          currency: 'IQD',
-          date: date,
-          time: time,
-          details: details,
-          createdAt: serverTimestamp(),
-          isAutomated: true,
-          settledOrderIds: settlementModal.orderIds
-        });
-      }
-
-      await batch.commit();
-      
-      if (settlementModal.type === 'bulk') {
-         setSelectedOrderIds([]); 
-      }
-      if (settlementModal.type === 'edit') {
-         setEditingOrder(null);
-      }
-      
-      setSettlementModal({ ...settlementModal, show: false });
-      setNotificationModal({ show: true, message: `✅ تم تسوية ${settlementModal.orderIds.length} طلب/طلبات وإيداع المبلغ بنجاح!` });
-    } catch (err) {
-      console.error("Error during settlement:", err);
-      setNotificationModal({ show: true, message: '❌ حدث خطأ أثناء عملية التسوية.' });
-    } finally {
-      setIsUpdating(false);
-    }
-  };
 
   const handleConfirmReturnReceipt = async () => {
     if (!receiverEmployee || !deliveryAgent || selectedOrderIds.length === 0) return;
@@ -982,6 +1233,34 @@ export default function OrdersListPage() {
     }
   };
 
+  // Helper calculations for dynamic bulk action eligibility
+  const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id));
+  
+  const canTransfer = selectedOrders.length > 0 && selectedOrders.every(o => 
+    !['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) && 
+    !o.isArchived && 
+    o.paymentStatus !== 'settled' && 
+    o.is_settled !== true
+  );
+  
+  const canArchive = selectedOrders.length > 0 && selectedOrders.every(o => !o.isArchived);
+  
+  const canDelete = selectedOrders.length > 0 && selectedOrders.every(o => 
+    !['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) && 
+    !o.isArchived && 
+    o.paymentStatus !== 'settled' && 
+    o.is_settled !== true
+  );
+
+  const canConfirmReturn = selectedOrders.length > 0 && selectedOrders.every(o => o.status === 'returned');
+  
+  const canRestore = selectedOrders.length > 0 && selectedOrders.every(o => o.isArchived);
+  const canDeletePermanent = selectedOrders.length > 0 && selectedOrders.every(o => o.isArchived);
+
+  const hasAnyBulkAction = activeTab !== 'archived' 
+    ? (canTransfer || canArchive || canDelete || (activeTab === 'returned' && canConfirmReturn))
+    : (canRestore || canDeletePermanent);
+
   return (
     <div className={styles.container}>
       {/* Header Area */}
@@ -998,114 +1277,142 @@ export default function OrdersListPage() {
           />
           
           
-          {activeTab !== 'archived' ? (
-            <>
-              {selectedOrderIds.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#2a2d3d', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.8rem', borderRadius: '0.5rem' }}>
-                  <span style={{color: '#ffffff', fontWeight: 'bold', fontSize: '1rem'}}>حالة الطلبات:</span>
-                  <select 
-                    style={{
-                      backgroundColor: 'transparent', color: '#ffffff', border: 'none', 
-                      padding: '0.2rem', outline: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem'
-                    }}
-                    value={bulkStatusValue}
-                    onChange={(e) => {
-                      const newStatus = e.target.value;
-                      setBulkStatusValue(newStatus);
-                      setShowBulkStatusModal(true);
-                    }}
-                  >
-                    <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d'}}>اختر الحالة...</option>
-                    {Object.entries(statusMap).map(([key, info]) => (
-                       <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d'}}>{info.label} ({key})</option>
-                    ))}
-                  </select>
+          {selectedOrderIds.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#2a2d3d', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.8rem', borderRadius: '0.5rem' }}>
+              <span style={{color: '#ffffff', fontWeight: 'bold', fontSize: '1rem'}}>حالة الطلبات:</span>
+              <select 
+                style={{
+                  backgroundColor: 'transparent', color: '#ffffff', border: 'none', 
+                  padding: '0.2rem', outline: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem'
+                }}
+                value={bulkStatusValue}
+                onChange={(e) => {
+                  const newStatus = e.target.value;
+                  setBulkStatusValue(newStatus);
+                  setShowBulkStatusModal(true);
+                }}
+              >
+                <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d'}}>اختر الحالة...</option>
+                {Object.entries(statusMap).map(([key, info]) => (
+                   <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d'}}>{info.label} ({key})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {hasAnyBulkAction && (
+            <div className={styles.dropdownContainer} ref={bulkActionsRef}>
+              <button 
+                className={styles.bulkTriggerButton} 
+                onClick={() => setShowBulkDropdown(!showBulkDropdown)}
+              >
+                <span>⚡ العمليات الجماعية</span>
+                <span className={styles.bulkBadge}>{selectedOrderIds.length}</span>
+                <span className={styles.bulkArrow}>{showBulkDropdown ? '▲' : '▼'}</span>
+              </button>
+              
+              {showBulkDropdown && (
+                <div className={styles.bulkDropdownMenu}>
+                  {activeTab !== 'archived' ? (
+                    <>
+                      {canTransfer && (
+                        <button 
+                          className={styles.bulkDropdownItem}
+                          onClick={() => {
+                            setShowBulkDropdown(false);
+                            setShowCompanyModal(true);
+                          }}
+                        >
+                          <span className={styles.itemIcon}>🚚</span>
+                          <span>ترحيل الطلبات</span>
+                        </button>
+                      )}
+
+                      {canArchive && (
+                        <button 
+                          className={styles.bulkDropdownItem}
+                          onClick={() => {
+                            setShowBulkDropdown(false);
+                            handleArchiveSelected();
+                          }}
+                        >
+                          <span className={styles.itemIcon}>📁</span>
+                          <span>أرشفة المحددة</span>
+                        </button>
+                      )}
+
+                      {activeTab === 'returned' && canConfirmReturn && (
+                        <button 
+                          className={styles.bulkDropdownItem}
+                          onClick={() => {
+                            setShowBulkDropdown(false);
+                            setShowReturnReceiptModal(true);
+                          }}
+                        >
+                          <span className={styles.itemIcon}>📝</span>
+                          <span>تأكيد استلام المحددة</span>
+                        </button>
+                      )}
+
+                      {(canTransfer || canArchive || (activeTab === 'returned' && canConfirmReturn)) && canDelete && (
+                        <div className={styles.bulkDropdownDivider} />
+                      )}
+
+                      {canDelete && (
+                        <button 
+                          className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
+                          onClick={() => {
+                            setShowBulkDropdown(false);
+                            setShowBulkDeleteModal(true);
+                          }}
+                        >
+                          <span className={styles.itemIcon}>❌</span>
+                          <span>حذف المحددة</span>
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {canRestore && (
+                        <button 
+                          className={styles.bulkDropdownItem}
+                          onClick={() => {
+                            setShowBulkDropdown(false);
+                            handleRestoreSelected();
+                          }}
+                        >
+                          <span className={styles.itemIcon}>🔄</span>
+                          <span>استعادة الطلبات</span>
+                        </button>
+                      )}
+
+                      {canRestore && canDeletePermanent && (
+                        <div className={styles.bulkDropdownDivider} />
+                      )}
+
+                      {canDeletePermanent && (
+                        <button 
+                          className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
+                          onClick={() => {
+                            setShowBulkDropdown(false);
+                            setShowBulkDeleteModal(true);
+                          }}
+                        >
+                          <span className={styles.itemIcon}>❌</span>
+                          <span>حذف النهائي</span>
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
-
-              <button className={styles.routeButton} onClick={() => {
-                if (selectedOrderIds.length === 0) {
-                  setNotificationModal({ show: true, message: 'يرجى تحديد طلب واحد على الأقل لترحيله.' });
-                  return;
-                }
-                setShowCompanyModal(true);
-              }}>
-                <span>ترحيل الطلبات</span>
-                <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
-              </button>
-
-              <button 
-                className={styles.routeButton} 
-                onClick={handleArchiveSelected}
-                style={{ backgroundColor: '#64748b', boxShadow: '0 4px 12px rgba(100, 116, 139, 0.3)' }}
-              >
-                <span>أرشفة المحددة</span>
-                <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
-              </button>
-
-              {selectedOrderIds.length > 0 && (
-                <button 
-                  className={styles.routeButton} 
-                  onClick={() => setShowBulkDeleteModal(true)}
-                  style={{ backgroundColor: '#ef4444', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)' }}
-                >
-                  <span>حذف المحددة</span>
-                  <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
-                </button>
-              )}
-
-              {activeTab === 'returned' && selectedOrderIds.length > 0 && (
-                <button 
-                  className={styles.routeButton} 
-                  onClick={() => setShowReturnReceiptModal(true)}
-                  style={{ backgroundColor: '#f97316', boxShadow: '0 4px 12px rgba(249, 115, 22, 0.3)' }}
-                >
-                  <span>📝 تأكيد استلام الطلبات المحددة</span>
-                </button>
-              )}
-
-              {selectedOrderIds.length > 0 && (
-                <button 
-                  className={styles.routeButton} 
-                  onClick={() => {
-                    const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
-                    const allValid = selectedOrdersData.every(o => o.status === 'delivered' && o.paymentStatus !== 'settled');
-                    if (!allValid) {
-                      setNotificationModal({ show: true, message: 'التسوية متاحة فقط للطلبات المكتملة التي لم تتم تسويتها مسبقاً.' });
-                      return;
-                    }
-                    setSettlementModal({ show: true, type: 'bulk', orderIds: selectedOrderIds, oldStatus: '', selectedWalletId: '' });
-                  }}
-                  style={{ backgroundColor: '#10b981', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}
-                >
-                  <span>💰 تسوية المحددة</span>
-                  <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <button 
-                className={styles.routeButton} 
-                onClick={handleRestoreSelected}
-                style={{ backgroundColor: '#10b981', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}
-              >
-                <span>استعادة الطلبات</span>
-                <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
-              </button>
-
-              {selectedOrderIds.length > 0 && (
-                <button 
-                  className={styles.routeButton} 
-                  onClick={() => setShowBulkDeleteModal(true)}
-                  style={{ backgroundColor: '#ef4444', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)' }}
-                >
-                  <span>حذف النهائي</span>
-                  <span style={{ fontSize: '0.9rem' }}>({selectedOrderIds.length})</span>
-                </button>
-              )}
-            </>
+            </div>
           )}
+
+          <Link href="/orders/entry" className={styles.addButton}>
+            <span>إضافة طلب</span>
+            <span style={{ fontSize: '1rem' }}>➕</span>
+          </Link>
         </div>
       </div>
 
@@ -1286,7 +1593,7 @@ export default function OrdersListPage() {
           <tbody>
             {filteredOrders.length > 0 ? filteredOrders.map((order) => {
               const isSelected = selectedOrderIds.includes(order.id);
-              const isFullyLocked = order.status === 'delivered' || order.status === 'returned' || order.is_settled === true;
+              const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.isArchived || order.is_settled === true;
               
               return (
                 <tr 
@@ -1395,19 +1702,7 @@ export default function OrdersListPage() {
                   )}
                   <td>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      {order.status === 'delivered' && order.paymentStatus !== 'settled' && (
-                        <button 
-                          className={styles.actionButton} 
-                          title="تسوية مالية"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSettlementModal({ show: true, type: 'inline', orderIds: [order.id], oldStatus: order.status, selectedWalletId: '' });
-                          }}
-                          style={{ borderColor: '#10b981', color: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)' }}
-                        >
-                          💰
-                        </button>
-                      )}
+
                       <button 
                         className={styles.actionButton} 
                         title="عرض التفاصيل"
@@ -1477,49 +1772,115 @@ export default function OrdersListPage() {
 
       {activeTab === 'returns_archive' && (
         <div className={styles.tableWrapper}>
-          <table className={styles.table}>
-            <thead>
-              <tr className={styles.trHead}>
-                <th>رقم الكشف</th>
-                <th>المندوب المسلم</th>
-                <th>الموظف المستلم</th>
-                <th>عدد الطلبات</th>
-                <th>التاريخ</th>
-                <th>الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {returnsArchive.map((record) => (
-                <tr key={record.id} className={styles.tr}>
-                  <td style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>{record.batchId}</td>
-                  <td style={{ color: '#f97316', fontWeight: 'bold' }}>🚚 {record.driverName}</td>
-                  <td style={{ color: '#10b981', fontWeight: 'bold' }}>👤 {record.employeeName}</td>
-                  <td>
-                    <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '0.2rem 0.6rem', borderRadius: '1rem', fontWeight: 'bold' }}>
-                      {record.totalOrders} طلبات
-                    </span>
-                  </td>
-                  <td>{record.formattedDate}</td>
-                  <td>
-                    <button 
-                      className={styles.actionButton} 
-                      title="عرض الطلبات"
-                      onClick={() => setSelectedReturnBatch(record)}
-                    >
-                      👁️ عرض التفاصيل
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {returnsArchive.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                    لا توجد كشوفات راجعات مستلمة حالياً.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          {!selectedReturnMonth ? (
+             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', padding: '2rem' }}>
+               {Object.keys(groupedReturnBatches).sort((a,b) => b.localeCompare(a)).map(monthKey => {
+                 const [year, month] = monthKey.split('-');
+                 return (
+                   <div 
+                     key={monthKey}
+                     onClick={() => setSelectedReturnMonth(monthKey)}
+                     style={{
+                       background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px',
+                       padding: '1.5rem', width: '200px', cursor: 'pointer', textAlign: 'center', transition: 'transform 0.2s',
+                       display: 'flex', flexDirection: 'column', alignItems: 'center'
+                     }}
+                     onMouseOver={e => e.currentTarget.style.transform = 'translateY(-5px)'}
+                     onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
+                   >
+                     <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>📁</div>
+                     <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--accent-primary)', fontSize: '1.1rem' }}>شهر {month}-{year}</h3>
+                     <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                       {groupedReturnBatches[monthKey].length} كشوفات مستلمة
+                     </p>
+                   </div>
+                 );
+               })}
+               {Object.keys(groupedReturnBatches).length === 0 && (
+                 <div style={{ textAlign: 'center', width: '100%', padding: '3rem', color: 'var(--text-muted)' }}>
+                   لا توجد كشوفات راجعات حالياً.
+                 </div>
+               )}
+             </div>
+          ) : !selectedReturnDay ? (
+             <div style={{ padding: '1rem' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                 <h3 style={{ margin: 0, color: 'var(--accent-primary)' }}>أيام كشوفات شهر {selectedReturnMonth}</h3>
+                 <button className={styles.cancelButton} onClick={() => { setSelectedReturnMonth(null); setSelectedReturnDay(null); }}>🔙 العودة للمجلدات</button>
+               </div>
+               <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', padding: '1.5rem 0' }}>
+                 {Object.keys(groupedReturnDays).sort((a,b) => b.localeCompare(a)).map(dayKey => {
+                   return (
+                     <div 
+                       key={dayKey}
+                       onClick={() => setSelectedReturnDay(dayKey)}
+                       style={{
+                         background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px',
+                         padding: '1.5rem', width: '200px', cursor: 'pointer', textAlign: 'center', transition: 'transform 0.2s',
+                         display: 'flex', flexDirection: 'column', alignItems: 'center'
+                       }}
+                       onMouseOver={e => e.currentTarget.style.transform = 'translateY(-5px)'}
+                       onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
+                     >
+                       <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>📅</div>
+                       <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--accent-primary)', fontSize: '1.1rem' }}>يوم {dayKey}</h3>
+                       <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                         {groupedReturnDays[dayKey].length} كشوفات مستلمة
+                       </p>
+                     </div>
+                   );
+                 })}
+                 {Object.keys(groupedReturnDays).length === 0 && (
+                   <div style={{ textAlign: 'center', width: '100%', padding: '3rem', color: 'var(--text-muted)' }}>
+                     لا توجد أيام مسجلة لهذا الشهر.
+                   </div>
+                 )}
+               </div>
+             </div>
+          ) : (
+             <div style={{ padding: '1rem' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                 <h3 style={{ margin: 0, color: 'var(--accent-primary)' }}>كشوفات يوم {selectedReturnDay}</h3>
+                 <button className={styles.cancelButton} onClick={() => setSelectedReturnDay(null)}>🔙 العودة للأيام</button>
+               </div>
+               <table className={styles.table}>
+                 <thead>
+                   <tr className={styles.trHead}>
+                     <th>رقم الكشف</th>
+                     <th>المندوب المسلم</th>
+                     <th>الموظف المستلم</th>
+                     <th>عدد الطلبات</th>
+                     <th>التاريخ</th>
+                     <th>الإجراءات</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {groupedReturnDays[selectedReturnDay]?.map((record: any) => (
+                     <tr key={record.id} className={styles.tr}>
+                       <td style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>{record.batchId}</td>
+                       <td style={{ color: '#f97316', fontWeight: 'bold' }}>🚚 {record.driverName}</td>
+                       <td style={{ color: '#10b981', fontWeight: 'bold' }}>👤 {record.employeeName}</td>
+                       <td>
+                         <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '0.2rem 0.6rem', borderRadius: '1rem', fontWeight: 'bold' }}>
+                           {record.totalOrders} طلبات
+                         </span>
+                       </td>
+                       <td>{record.formattedDate}</td>
+                       <td>
+                         <button 
+                           className={styles.actionButton} 
+                           title="عرض الطلبات"
+                           onClick={() => { setSelectedReturnBatch(record); setSelectedBatchOrderIds([]); }}
+                         >
+                           👁️ عرض التفاصيل
+                         </button>
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+          )}
         </div>
       )}
 
@@ -1634,99 +1995,252 @@ export default function OrdersListPage() {
         
         return (
         <div className={styles.modalOverlay} onClick={() => setEditingOrder(null)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', width: '95%', backgroundColor: '#1e1b2e' }}>
             <div className={styles.modalHeader}>
               <h2>✏️ تعديل الطلب <span style={{ color: 'var(--primary)', fontSize: '1rem', marginRight: '0.5rem' }}>#{editingOrder.id.slice(-6).toUpperCase()}</span></h2>
               <button className={styles.closeButton} onClick={() => setEditingOrder(null)}>×</button>
             </div>
             <div className={styles.modalBody}>
-              <form onSubmit={saveOrderUpdates} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>اسم الزبون</label>
-                  <input type="text" className={styles.input} value={editingOrder.customerName || ''} onChange={e => setEditingOrder({...editingOrder, customerName: e.target.value})} required disabled={isPartiallyLocked} style={lockedInputStyle} />
-                </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>رقم الهاتف</label>
-                  <input 
-                    type="text" 
-                    className={styles.input} 
-                    value={editingOrder.customerPhone || editingOrder.phone || ''} 
-                    onChange={e => setEditingOrder({...editingOrder, customerPhone: e.target.value, phone: e.target.value})} 
-                    required 
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <div className={styles.formGroup} style={{ flex: 1, position: 'relative' }}>
-                    <label className={styles.label}>المحافظة</label>
-                    <div className={styles.searchableSelectContainer}>
+              <form onSubmit={saveOrderUpdates} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                  
+                  {/* Right Column: Customer Details */}
+                  <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1rem', borderInlineEnd: '1px solid rgba(255,255,255,0.08)', paddingInlineEnd: '1.5rem' }}>
+                    <h3 style={{ color: 'var(--primary)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>👤 بيانات الزبون</h3>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>اسم الزبون</label>
+                      <input type="text" className={styles.input} value={editingOrder.customerName || ''} onChange={e => setEditingOrder({...editingOrder, customerName: e.target.value})} required disabled={isPartiallyLocked} style={lockedInputStyle} />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>رقم الهاتف</label>
                       <input 
                         type="text" 
                         className={styles.input} 
-                        placeholder="اختر المحافظة أو اكتب للبحث"
-                        value={editingOrder.governorate || ''} 
-                        onChange={e => setEditingOrder({...editingOrder, governorate: e.target.value})} 
-                        onFocus={() => setShowGovDropdownEdit(true)}
-                        onBlur={() => setTimeout(() => setShowGovDropdownEdit(false), 200)}
+                        value={editingOrder.customerPhone || editingOrder.phone || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, customerPhone: e.target.value, phone: e.target.value})} 
+                        required 
                       />
-                      <div className={styles.selectArrow}>▼</div>
                     </div>
-                    {showGovDropdownEdit && (
-                      <ul className={styles.dropdownList}>
-                        {governoratesList
-                          .filter(g => g.includes(editingOrder.governorate || ''))
-                          .map((gov, idx) => (
-                            <li 
-                              key={idx} 
-                              className={styles.dropdownItem}
-                              onClick={() => {
-                                setEditingOrder({...editingOrder, governorate: gov});
-                                setShowGovDropdownEdit(false);
-                              }}
-                            >
-                              {gov}
-                            </li>
-                          ))
-                        }
-                        {governoratesList.filter(g => g.includes(editingOrder.governorate || '')).length === 0 && (
-                          <li className={styles.noResults}>لا توجد نتائج تطابق بحثك</li>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <div className={styles.formGroup} style={{ flex: 1, position: 'relative' }}>
+                        <label className={styles.label}>المحافظة</label>
+                        <div className={styles.searchableSelectContainer}>
+                          <input 
+                            type="text" 
+                            className={styles.input} 
+                            placeholder="اختر المحافظة أو اكتب للبحث"
+                            value={editingOrder.governorate || ''} 
+                            onChange={e => setEditingOrder({...editingOrder, governorate: e.target.value})} 
+                            onFocus={() => setShowGovDropdownEdit(true)}
+                            onBlur={() => setTimeout(() => setShowGovDropdownEdit(false), 200)}
+                          />
+                          <div className={styles.selectArrow}>▼</div>
+                        </div>
+                        {showGovDropdownEdit && (
+                          <ul className={styles.dropdownList}>
+                            {governoratesList
+                              .filter(g => g.includes(editingOrder.governorate || ''))
+                              .map((gov, idx) => (
+                                <li 
+                                  key={idx} 
+                                  className={styles.dropdownItem}
+                                  onClick={() => {
+                                    setEditingOrder({...editingOrder, governorate: gov});
+                                    setShowGovDropdownEdit(false);
+                                  }}
+                                >
+                                  {gov}
+                                </li>
+                              ))
+                            }
+                            {governoratesList.filter(g => g.includes(editingOrder.governorate || '')).length === 0 && (
+                              <li className={styles.noResults}>لا توجد نتائج تطابق بحثك</li>
+                            )}
+                          </ul>
                         )}
-                      </ul>
-                    )}
+                      </div>
+                      <div className={styles.formGroup} style={{ flex: 1 }}>
+                        <label className={styles.label}>المنطقة</label>
+                        <input type="text" className={styles.input} value={editingOrder.region || ''} onChange={e => setEditingOrder({...editingOrder, region: e.target.value})} disabled={isPartiallyLocked} style={lockedInputStyle} />
+                      </div>
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>الحالة</label>
+                      <select className={styles.input} value={editingOrder.status} onChange={e => setEditingOrder({...editingOrder, status: e.target.value})} disabled={isPartiallyLocked} style={lockedInputStyle}>
+                        <option value="pending">قيد الانتظار (pending)</option>
+                        <option value="backordered">بانتظار المخزون (backordered)</option>
+                        <option value="processing">جاري التجهيز (processing)</option>
+                        <option value="shipped">مشحون (shipped)</option>
+                        <option value="delivered">مكتمل (delivered)</option>
+                        <option value="cancelled">ملغي (cancelled)</option>
+                        <option value="returned">راجع (returned)</option>
+                      </select>
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>اسم الموظف</label>
+                      <input 
+                        type="text" 
+                        className={styles.input} 
+                        value={editingOrder.employeeName || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, employeeName: e.target.value})} 
+                        disabled={isPartiallyLocked}
+                        style={lockedInputStyle}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>الملاحظات</label>
+                      <textarea className={styles.input} value={editingOrder.notes || ''} onChange={e => setEditingOrder({...editingOrder, notes: e.target.value})} rows={2}></textarea>
+                    </div>
                   </div>
-                  <div className={styles.formGroup} style={{ flex: 1 }}>
-                    <label className={styles.label}>المنطقة</label>
-                    <input type="text" className={styles.input} value={editingOrder.region || ''} onChange={e => setEditingOrder({...editingOrder, region: e.target.value})} disabled={isPartiallyLocked} style={lockedInputStyle} />
+
+                  {/* Left Column: Cart / Items */}
+                  <div style={{ flex: 1.2, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <h3 style={{ color: '#10b981', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>🛒 سلة المشتريات</span>
+                      <span style={{ fontSize: '1rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                        المجموع: {new Intl.NumberFormat('en-US').format(editingOrder.totalAmount || 0)} د.ع
+                      </span>
+                    </h3>
+
+                    {/* Product Search Input inside Modal */}
+                    <div className={styles.formGroup} style={{ position: 'relative' }}>
+                      <label className={styles.label}>إضافة منتجات للطلب</label>
+                      <div className={styles.searchableSelectContainer}>
+                        <input
+                          type="text"
+                          className={styles.input}
+                          placeholder="ابحث بالاسم أو الباركود لإضافة منتج..."
+                          value={searchQueryEdit}
+                          onChange={e => {
+                            setSearchQueryEdit(e.target.value);
+                            setShowProductDropdownEdit(true);
+                          }}
+                          onFocus={() => setShowProductDropdownEdit(true)}
+                          onBlur={() => setTimeout(() => setShowProductDropdownEdit(false), 250)}
+                        />
+                        {searchQueryEdit && (
+                          <button
+                            type="button"
+                            onClick={() => { setSearchQueryEdit(''); setShowProductDropdownEdit(false); }}
+                            style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.1rem' }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                      {showProductDropdownEdit && searchQueryEdit.trim() !== '' && (
+                        <ul className={styles.dropdownList} style={{ width: '100%' }}>
+                          {filteredProductsEdit.map(product => (
+                            <li
+                              key={product.id}
+                              className={styles.dropdownItem}
+                              onClick={() => addProductToEditingOrder(product)}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                <span>{product.name}</span>
+                                <span style={{ color: '#10b981', fontWeight: 'bold' }}>
+                                  {product.units && product.units.length > 0 ? `${product.units[0].selling} د.ع` : '---'}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                          {filteredProductsEdit.length === 0 && (
+                            <li className={styles.noResults}>لا توجد نتائج تطابق بحثك</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* Cart Items List */}
+                    <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', backgroundColor: 'rgba(0,0,0,0.1)' }}>
+                      {(editingOrder.items || []).length === 0 ? (
+                        <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>السلة فارغة حالياً</div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                              <th style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.85rem', color: '#94a3b8' }}>المنتج</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', color: '#94a3b8', width: '90px' }}>السعر</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', color: '#94a3b8', width: '100px' }}>الكمية</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.85rem', color: '#94a3b8', width: '40px' }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(editingOrder.items || []).map((item: any, idx: number) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
+                                  <div style={{ fontWeight: 'bold' }}>{item.productName}</div>
+                                </td>
+                                <td style={{ padding: '0.3rem', textAlign: 'center' }}>
+                                  <input
+                                    type="number"
+                                    value={item.unitPrice || 0}
+                                    onChange={e => updateEditingOrderItemPrice(item.productId, Number(e.target.value))}
+                                    style={{
+                                      width: '100%',
+                                      backgroundColor: 'var(--background)',
+                                      border: '1px solid var(--border)',
+                                      color: '#ffffff',
+                                      padding: '0.2rem',
+                                      borderRadius: '4px',
+                                      textAlign: 'center',
+                                      fontSize: '0.85rem'
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '0.3rem', textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateEditingOrderItemQuantity(item.productId, item.quantity - 1)}
+                                      style={{ width: '20px', height: '20px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      value={item.quantity || 1}
+                                      onChange={e => updateEditingOrderItemQuantity(item.productId, Number(e.target.value))}
+                                      style={{
+                                        width: '40px',
+                                        backgroundColor: 'var(--background)',
+                                        border: '1px solid var(--border)',
+                                        color: '#ffffff',
+                                        padding: '0.2rem',
+                                        borderRadius: '4px',
+                                        textAlign: 'center',
+                                        fontSize: '0.85rem'
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => updateEditingOrderItemQuantity(item.productId, item.quantity + 1)}
+                                      style={{ width: '20px', height: '20px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeProductFromEditingOrder(item.productId)}
+                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.1rem' }}
+                                    title="حذف المنتج"
+                                  >
+                                    🗑️
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>الحالة</label>
-                  <select className={styles.input} value={editingOrder.status} onChange={e => setEditingOrder({...editingOrder, status: e.target.value})} disabled={isPartiallyLocked} style={lockedInputStyle}>
-                    <option value="pending">قيد الانتظار (pending)</option>
-                    <option value="backordered">بانتظار المخزون (backordered)</option>
-                    <option value="processing">جاري التجهيز (processing)</option>
-                    <option value="shipped">مشحون (shipped)</option>
-                    <option value="delivered">مكتمل (delivered)</option>
-                    <option value="cancelled">ملغي (cancelled)</option>
-                    <option value="returned">راجع (returned)</option>
-                  </select>
-                </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>اسم الموظف</label>
-                  <input 
-                    type="text" 
-                    className={styles.input} 
-                    value={editingOrder.employeeName || ''} 
-                    onChange={e => setEditingOrder({...editingOrder, employeeName: e.target.value})} 
-                    disabled={isPartiallyLocked}
-                    style={lockedInputStyle}
-                  />
-                </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>الملاحظات</label>
-                  <textarea className={styles.input} value={editingOrder.notes || ''} onChange={e => setEditingOrder({...editingOrder, notes: e.target.value})} rows={3}></textarea>
-                </div>
-                
-                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+
+                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
                   <button type="button" className={styles.controlButton} onClick={() => setEditingOrder(null)}>إلغاء</button>
                   <button type="submit" className={styles.routeButton} disabled={isUpdating}>
                     {isUpdating ? 'جاري الحفظ...' : 'حفظ التعديلات'}
@@ -2040,18 +2554,59 @@ export default function OrdersListPage() {
                 <div><strong>إجمالي الطلبات:</strong> {selectedReturnBatch.totalOrders}</div>
               </div>
 
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  {selectedBatchOrderIds.length > 0 
+                    ? `تم تحديد ${selectedBatchOrderIds.length} طلبات للطباعة`
+                    : 'إذا لم تقم بتحديد أي طلب، ستتم طباعة كافة الطلبات في الكشف.'}
+                </span>
+                <button 
+                  onClick={() => {
+                    if (selectedBatchOrderIds.length === selectedReturnBatch.orders?.length) {
+                      setSelectedBatchOrderIds([]);
+                    } else {
+                      setSelectedBatchOrderIds(selectedReturnBatch.orders?.map((o: any) => o.id) || []);
+                    }
+                  }}
+                  style={{ background: 'transparent', color: 'var(--accent-primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  {selectedBatchOrderIds.length === selectedReturnBatch.orders?.length ? 'إلغاء التحديد' : 'تحديد الكل'}
+                </button>
+              </div>
+
               <table className={styles.table}>
                 <thead>
                   <tr className={styles.trHead}>
+                    <th style={{ width: '40px' }}>تحديد</th>
                     <th>المعرف</th>
                     <th>اسم الزبون</th>
                     <th>المبلغ</th>
                     <th>حالة الطلب</th>
+                    <th style={{ width: '60px' }}>تفاصيل</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedReturnBatch.orders?.map((ord: any, idx: number) => (
-                    <tr key={idx} className={styles.tr}>
+                  {selectedReturnBatch.orders?.map((ord: any, idx: number) => {
+                    const isSelected = selectedBatchOrderIds.includes(ord.id);
+                    return (
+                    <tr key={idx} className={styles.tr} style={isSelected ? { backgroundColor: 'var(--surface-hover)' } : {}} onClick={() => {
+                      if (isSelected) {
+                        setSelectedBatchOrderIds(prev => prev.filter(id => id !== ord.id));
+                      } else {
+                        setSelectedBatchOrderIds(prev => [...prev, ord.id]);
+                      }
+                    }}>
+                      <td onClick={e => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          className={styles.checkbox} 
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedBatchOrderIds(prev => [...prev, ord.id]);
+                            else setSelectedBatchOrderIds(prev => prev.filter(id => id !== ord.id));
+                          }}
+                        />
+                      </td>
                       <td style={{ fontWeight: 'bold' }}>#{ord.id?.slice(-6).toUpperCase()}</td>
                       <td>{ord.customerName}</td>
                       <td>{new Intl.NumberFormat('en-US').format(ord.totalAmount)} د.ع</td>
@@ -2067,62 +2622,103 @@ export default function OrdersListPage() {
                           {statusMap[ord.status]?.label || ord.status}
                         </span>
                       </td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const fullOrder = orders.find(o => o.id === ord.id);
+                            if (fullOrder) {
+                              setSelectedOrder(fullOrder);
+                            } else {
+                              alert("لم يتم العثور على تفاصيل هذا الطلب.");
+                            }
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '1.2rem',
+                            padding: '4px'
+                          }}
+                          title="عرض تفاصيل الطلب كاملة"
+                        >
+                          👁️
+                        </button>
+                      </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.submitButton} onClick={() => window.print()} style={{ backgroundColor: '#4b5563' }}>طباعة الكشف</button>
+              <button 
+                className={styles.submitButton} 
+                onClick={() => {
+                  const ordersToPrint = selectedBatchOrderIds.length > 0 
+                    ? selectedReturnBatch.orders.filter((o: any) => selectedBatchOrderIds.includes(o.id))
+                    : selectedReturnBatch.orders;
+                  
+                  const printContent = `
+                    <html dir="rtl">
+                    <head>
+                      <title>كشف المرتجعات المستلمة</title>
+                      <style>
+                        body { font-family: Arial, sans-serif; padding: 20px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+                        th { background-color: #f2f2f2; }
+                        .header { text-align: center; margin-bottom: 20px; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="header">
+                        <h2>كشف مرتجعات مستلمة</h2>
+                        <p><strong>رقم الكشف:</strong> ${selectedReturnBatch.batchId}</p>
+                        <p><strong>المندوب المسلم:</strong> ${selectedReturnBatch.driverName} | <strong>الموظف المستلم:</strong> ${selectedReturnBatch.employeeName}</p>
+                        <p><strong>التاريخ:</strong> ${selectedReturnBatch.formattedDate}</p>
+                      </div>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>المعرف</th>
+                            <th>اسم الزبون</th>
+                            <th>المبلغ</th>
+                            <th>حالة الطلب</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${ordersToPrint.map((ord: any) => `
+                            <tr>
+                              <td>#${ord.id?.slice(-6).toUpperCase()}</td>
+                              <td>${ord.customerName}</td>
+                              <td>${new Intl.NumberFormat('en-US').format(ord.totalAmount)} د.ع</td>
+                              <td>${statusMap[ord.status]?.label || ord.status}</td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </body>
+                    </html>
+                  `;
+                  const printWin = window.open('', '_blank');
+                  if (printWin) {
+                    printWin.document.write(printContent);
+                    printWin.document.close();
+                    printWin.focus();
+                    setTimeout(() => { printWin.print(); printWin.close(); }, 250);
+                  }
+                }} 
+                style={{ backgroundColor: '#4b5563' }}
+              >
+                {selectedBatchOrderIds.length > 0 ? 'طباعة المحدد' : 'طباعة الكشف'}
+              </button>
               <button className={styles.cancelButton} onClick={() => setSelectedReturnBatch(null)}>إغلاق</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Settlement Modal */}
-      {settlementModal.show && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.confirmModal}>
-            <div className={styles.modalIcon}>💰</div>
-            <h3 className={styles.modalTitle}>تسوية الطلبات وإيداع المبلغ</h3>
-            <p className={styles.modalText}>
-              لقد اخترت تحويل {settlementModal.orderIds.length} طلب/طلبات إلى حالة "مكتمل".<br/>
-              الرجاء اختيار المحفظة لإيداع مبالغ الطلبات (المجموع الكلي).
-            </p>
-            <div style={{ marginTop: '1rem', width: '100%', textAlign: 'right' }}>
-               <label className={styles.modalLabel} style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>المحفظة (إلزامي)</label>
-               <select 
-                 className={styles.modalInput} 
-                 style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '1rem' }}
-                 value={settlementModal.selectedWalletId} 
-                 onChange={e => setSettlementModal({...settlementModal, selectedWalletId: e.target.value})}
-               >
-                 <option value="">-- اختر المحفظة --</option>
-                 {wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-               </select>
-            </div>
-            <div className={styles.modalActions} style={{ marginTop: '1.5rem', display: 'flex', gap: '0.5rem' }}>
-              <button 
-                className={styles.confirmDeleteBtn} 
-                style={{ backgroundColor: '#10b981', borderColor: '#10b981', flex: 1, padding: '0.75rem', borderRadius: '8px', color: 'white', fontWeight: 600, cursor: 'pointer' }}
-                onClick={confirmSettlement}
-                disabled={isUpdating}
-              >
-                {isUpdating ? 'جاري التسوية...' : 'تأكيد التسوية والإيداع'}
-              </button>
-              <button 
-                className={styles.cancelDeleteBtn} 
-                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', backgroundColor: '#f1f5f9', color: '#64748b', fontWeight: 600, border: 'none', cursor: 'pointer' }}
-                onClick={() => setSettlementModal({ ...settlementModal, show: false })}
-                disabled={isUpdating}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
     </div>
   );

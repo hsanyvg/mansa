@@ -26,6 +26,11 @@ interface Transaction {
   time: string;
   details: string;
   createdAt: any;
+  externalStatementId?: string;
+  deliveryAgent?: string;
+  notes?: string;
+  images?: string[];
+  settledOrderIds?: string[];
 }
 
 
@@ -314,7 +319,55 @@ export default function TreasuryPage() {
                       <span className={styles.walletTag}>{wallets.find(w => w.id === t.walletId)?.name}</span>
                     )}
                   </td>
-                  <td>{t.details}</td>
+                  <td>
+                    <div style={{ fontWeight: '500' }}>{t.details}</div>
+                    {(t.externalStatementId || t.deliveryAgent) && (
+                      <div style={{
+                        marginTop: '6px',
+                        fontSize: '0.8rem',
+                        color: '#94a3b8',
+                        display: 'flex',
+                        gap: '12px',
+                        flexWrap: 'wrap',
+                        alignItems: 'center'
+                      }}>
+                        {t.externalStatementId && (
+                          <span style={{
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            color: '#38bdf8',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(56, 189, 248, 0.2)'
+                          }}>
+                            📄 كشف: {t.externalStatementId}
+                          </span>
+                        )}
+                        {t.deliveryAgent && (
+                          <span style={{
+                            backgroundColor: 'rgba(241, 245, 249, 0.05)',
+                            color: '#e2e8f0',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(255, 255, 255, 0.05)'
+                          }}>
+                            👤 المندوب: {t.deliveryAgent}
+                          </span>
+                        )}
+                        {t.images && t.images.length > 0 && (
+                          <span style={{
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            color: '#10b981',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(16, 185, 129, 0.2)',
+                            fontWeight: '600'
+                          }}>
+                            📸 {t.images.length} مرفقات
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className={styles.amountCell}>
                     <span className={t.type === 'deposit' ? styles.amountDeposit : t.type === 'withdraw' ? styles.amountWithdraw : styles.amountTransfer}>
                       {t.type === 'withdraw' ? '-' : t.type === 'deposit' ? '+' : ''}
