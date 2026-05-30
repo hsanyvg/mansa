@@ -384,18 +384,18 @@
 }
 
 .barDelivered {
-  background: linear-gradient(to top, rgba(16, 185, 129, 0.9), rgba(16, 185, 129, 0.3));
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+  background: linear-gradient(to top, rgba(87, 4, 212, 0.9), rgba(87, 4, 212, 0.3));
+  box-shadow: 0 0 10px rgba(87, 4, 212, 0.4);
 }
 
 .barReturned {
-  background: linear-gradient(to top, rgba(239, 68, 68, 0.9), rgba(239, 68, 68, 0.3));
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  background: linear-gradient(to top, rgba(235, 5, 74, 0.9), rgba(235, 5, 74, 0.3));
+  box-shadow: 0 0 10px rgba(235, 5, 74, 0.4);
 }
 
 .barPending {
-  background: linear-gradient(to top, rgba(245, 158, 11, 0.9), rgba(245, 158, 11, 0.3));
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+  background: linear-gradient(to top, rgba(235, 5, 158, 0.9), rgba(235, 5, 158, 0.3));
+  box-shadow: 0 0 10px rgba(235, 5, 158, 0.4);
 }
 
 .iconCircle {

@@ -724,16 +724,16 @@ export default function Dashboard() {
                       <div className={styles.chartColumns}>
                         {/* Delivered (واصل) */}
                         <div className={styles.columnContainer}>
-                          <div className={styles.columnValue} style={{ color: '#10b981' }}>{emp.delivered}</div>
-                          <div className={styles.columnPercent} style={{ color: '#10b981' }}>({delPct}%)</div>
+                          <div className={styles.columnValue} style={{ color: '#5704d4' }}>{emp.delivered}</div>
+                          <div className={styles.columnPercent} style={{ color: '#5704d4' }}>({delPct}%)</div>
                           <div className={styles.verticalBarTrack}>
                             <div 
                               className={`${styles.verticalBarFill} ${styles.barDelivered}`} 
                               style={{ height: `${delPct || 3}%` }}
                             />
                           </div>
-                          <div className={styles.iconCircle} style={{ borderColor: 'rgba(16, 185, 129, 0.4)', backgroundColor: 'rgba(16, 185, 129, 0.1)' }}>
-                            <svg className={styles.statusSvg} style={{ color: '#10b981' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <div className={styles.iconCircle} style={{ borderColor: 'rgba(87, 4, 212, 0.4)', backgroundColor: 'rgba(87, 4, 212, 0.1)' }}>
+                            <svg className={styles.statusSvg} style={{ color: '#5704d4' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
                           </div>
@@ -742,16 +742,16 @@ export default function Dashboard() {
 
                         {/* Returned (راجع) */}
                         <div className={styles.columnContainer}>
-                          <div className={styles.columnValue} style={{ color: '#ef4444' }}>{emp.returned}</div>
-                          <div className={styles.columnPercent} style={{ color: '#ef4444' }}>({retPct}%)</div>
+                          <div className={styles.columnValue} style={{ color: '#eb054a' }}>{emp.returned}</div>
+                          <div className={styles.columnPercent} style={{ color: '#eb054a' }}>({retPct}%)</div>
                           <div className={styles.verticalBarTrack}>
                             <div 
                               className={`${styles.verticalBarFill} ${styles.barReturned}`} 
                               style={{ height: `${retPct || 3}%` }}
                             />
                           </div>
-                          <div className={styles.iconCircle} style={{ borderColor: 'rgba(245, 158, 11, 0.4)', backgroundColor: 'rgba(245, 158, 11, 0.1)' }}>
-                            <svg className={styles.statusSvg} style={{ color: '#f59e0b' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <div className={styles.iconCircle} style={{ borderColor: 'rgba(235, 5, 74, 0.4)', backgroundColor: 'rgba(235, 5, 74, 0.1)' }}>
+                            <svg className={styles.statusSvg} style={{ color: '#eb054a' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                             </svg>
                           </div>
@@ -760,16 +760,16 @@ export default function Dashboard() {
 
                         {/* Pending (قيد) */}
                         <div className={styles.columnContainer}>
-                          <div className={styles.columnValue} style={{ color: '#f59e0b' }}>{emp.pending}</div>
-                          <div className={styles.columnPercent} style={{ color: '#f59e0b' }}>({penPct}%)</div>
+                          <div className={styles.columnValue} style={{ color: '#eb059e' }}>{emp.pending}</div>
+                          <div className={styles.columnPercent} style={{ color: '#eb059e' }}>({penPct}%)</div>
                           <div className={styles.verticalBarTrack}>
                             <div 
                               className={`${styles.verticalBarFill} ${styles.barPending}`} 
                               style={{ height: `${penPct || 3}%` }}
                             />
                           </div>
-                          <div className={styles.iconCircle} style={{ borderColor: 'rgba(239, 68, 68, 0.4)', backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-                            <svg className={styles.statusSvg} style={{ color: '#ef4444' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <div className={styles.iconCircle} style={{ borderColor: 'rgba(235, 5, 158, 0.4)', backgroundColor: 'rgba(235, 5, 158, 0.1)' }}>
+                            <svg className={styles.statusSvg} style={{ color: '#eb059e' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </div>
@@ -789,15 +789,15 @@ export default function Dashboard() {
             {/* Bottom Legend */}
             <div className={styles.legendContainer}>
               <div className={styles.legendItem}>
-                <span className={styles.legendDot} style={{ backgroundColor: '#10b981' }} />
+                <span className={styles.legendDot} style={{ backgroundColor: '#5704d4' }} />
                 <span>واصل</span>
               </div>
               <div className={styles.legendItem}>
-                <span className={styles.legendDot} style={{ backgroundColor: '#f59e0b' }} />
+                <span className={styles.legendDot} style={{ backgroundColor: '#eb059e' }} />
                 <span>قيد</span>
               </div>
               <div className={styles.legendItem}>
-                <span className={styles.legendDot} style={{ backgroundColor: '#ef4444' }} />
+                <span className={styles.legendDot} style={{ backgroundColor: '#eb054a' }} />
                 <span>راجع</span>
               </div>
             </div>
