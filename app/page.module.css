@@ -677,3 +677,7 @@
   margin-top: 0.5rem;
 }
 
+.elevatedCard {
+  z-index: 20 !important;
+}
+

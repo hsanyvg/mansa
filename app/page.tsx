@@ -456,7 +456,7 @@ export default function Dashboard() {
           </div>
 
           {/* Card 2 */}
-          <div className={`${styles.card} ${styles.gaugeCard}`}>
+          <div className={`${styles.card} ${styles.gaugeCard} ${isGaugeCalOpen ? styles.elevatedCard : ''}`}>
             <div className={`${styles.cardHeader} ${styles.gaugeCardHeader}`}>
               <span>الطلبات النشطة (نسبة التوصيل)</span>
               
@@ -617,7 +617,7 @@ export default function Dashboard() {
           </div>
 
           {/* Team Performance */}
-          <div className={`${styles.card} ${styles.colSpan2} ${styles.rowSpan2}`}>
+          <div className={`${styles.card} ${styles.colSpan2} ${styles.rowSpan2} ${isTeamCalOpen ? styles.elevatedCard : ''}`}>
             <div className={styles.cardHeader}>
               <span>أداء الفريق ({teamStats.length} موظف نشط)</span>
               
