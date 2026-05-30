@@ -158,10 +158,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>تسوية الكشوفات</span>
             <span className={styles.submenuIcon}>🧾</span>
           </Link>
-          <div className={styles.submenuItem}>
-            <span>الحسابات البنكية</span>
-            <span className={styles.submenuIcon}>💳</span>
-          </div>
         </div>
 
         {/* Reports Menu Item */}
@@ -182,28 +178,12 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         {/* Submenu for Reports */}
         <div className={`${styles.submenu} ${showReports ? styles.open : ''}`}>
           <div className={styles.submenuItem}>
-            <span>كشف اليومية</span>
-            <span className={styles.submenuIcon}>📅</span>
-          </div>
-          <div className={styles.submenuItem}>
-            <span>تقرير الأرباح</span>
-            <span className={styles.submenuIcon}>📈</span>
-          </div>
-          <div className={styles.submenuItem}>
-            <span>تقرير الأصناف</span>
-            <span className={styles.submenuIcon}>▥</span>
-          </div>
-          <div className={styles.submenuItem}>
             <span>الأصناف الناقصة</span>
             <span className={styles.submenuIcon}>🪫</span>
           </div>
           <Link href="/finance/cpo" className={`${styles.submenuItem} ${pathname === '/finance/cpo' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>تقارير الإعلانات (CPO)</span>
             <span className={styles.submenuIcon}>🎯</span>
-          </Link>
-          <Link href="/finance/cpo/archive" className={`${styles.submenuItem} ${pathname === '/finance/cpo/archive' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>أرشيف التقارير الذكية</span>
-            <span className={styles.submenuIcon}>📂</span>
           </Link>
         </div>
 
@@ -258,10 +238,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>محافظ الخزينة</span>
             <span className={styles.submenuIcon}>🏦</span>
           </Link>
-          <Link href="/settings/alerts" className={`${styles.submenuItem} ${pathname === '/settings/alerts' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>تنبيهات التقارير</span>
-            <span className={styles.submenuIcon}>🤖</span>
-          </Link>
+
           <Link href="/settings/api-integrations" className={`${styles.submenuItem} ${pathname === '/settings/api-integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>بوابة الربط (API)</span>
             <span className={styles.submenuIcon}>🔌</span>

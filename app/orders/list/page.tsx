@@ -545,9 +545,9 @@ export default function OrdersListPage() {
   const confirmDeleteOrder = async () => {
     if (!orderToDelete) return;
     
-    const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToDelete.status) || orderToDelete.isArchived || orderToDelete.is_settled === true;
-    if (isFullyLocked) {
-       alert("لا يمكن حذف طلب تم تسليمه أو إرجاعه أو تسويته.");
+    const isDeleteLocked = !orderToDelete.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToDelete.status) || orderToDelete.is_settled === true);
+    if (isDeleteLocked) {
+       alert("لا يمكن حذف طلب نشط تم تسليمه أو إرجاعه أو تسويته. يرجى أرشفة الطلب أولاً لحذفه نهائياً.");
        setOrderToDelete(null);
        return;
     }
@@ -639,8 +639,8 @@ export default function OrdersListPage() {
       const batch = writeBatch(db);
       const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
       const validOrdersToDelete = selectedOrdersData.filter(o => {
-         const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) || o.isArchived || o.is_settled === true;
-         return !isFullyLocked;
+         const isDeleteLocked = !o.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) || o.is_settled === true);
+         return !isDeleteLocked;
       });
       
       if (validOrdersToDelete.length === 0) {
@@ -1594,6 +1594,7 @@ export default function OrdersListPage() {
             {filteredOrders.length > 0 ? filteredOrders.map((order) => {
               const isSelected = selectedOrderIds.includes(order.id);
               const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.isArchived || order.is_settled === true;
+              const isDeleteLocked = !order.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.is_settled === true);
               
               return (
                 <tr 
@@ -1729,15 +1730,15 @@ export default function OrdersListPage() {
                         title="حذف الطلب"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!isFullyLocked) setOrderToDelete(order);
+                          if (!isDeleteLocked) setOrderToDelete(order);
                         }}
                         style={{ 
-                          borderColor: isFullyLocked ? '#475569' : '#ef4444', 
-                          color: isFullyLocked ? '#475569' : '#ef4444',
-                          opacity: isFullyLocked ? 0.5 : 1,
-                          cursor: isFullyLocked ? 'not-allowed' : 'pointer'
+                          borderColor: isDeleteLocked ? '#475569' : '#ef4444', 
+                          color: isDeleteLocked ? '#475569' : '#ef4444',
+                          opacity: isDeleteLocked ? 0.5 : 1,
+                          cursor: isDeleteLocked ? 'not-allowed' : 'pointer'
                         }}
-                        disabled={isFullyLocked}
+                        disabled={isDeleteLocked}
                       >
                         🗑️
                       </button>

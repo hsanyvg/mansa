@@ -5,7 +5,7 @@ import styles from './page.module.css';
 import { db } from '../../../lib/firebase';
 import { 
   collection, onSnapshot, addDoc, deleteDoc, doc,
-  serverTimestamp, query, orderBy, getDocs
+  serverTimestamp, query, orderBy, getDocs, getDoc
 } from 'firebase/firestore';
 
 // Types
@@ -45,6 +45,44 @@ export default function TreasuryPage() {
   const [activeModal, setActiveModal] = useState<'deposit' | 'withdraw' | 'transfer' | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Drill-down states
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [settledOrders, setSettledOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  const handleViewTransactionDetails = async (t: Transaction) => {
+    setSelectedTransaction(t);
+    if (t.settledOrderIds && t.settledOrderIds.length > 0) {
+      setLoadingOrders(true);
+      setSettledOrders([]);
+      try {
+        const promises = t.settledOrderIds.map(async (id) => {
+          const docSnap = await getDoc(doc(db, 'orders', id));
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            let addDate = '---';
+            let addTime = '---';
+            if (data.date) {
+              const dateObj = data.date.toDate ? data.date.toDate() : new Date(data.date);
+              addDate = dateObj.toLocaleDateString('en-GB');
+              addTime = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+            }
+            return { id: docSnap.id, ...data, addDate, addTime };
+          }
+          return null;
+        });
+        const results = await Promise.all(promises);
+        setSettledOrders(results.filter(Boolean));
+      } catch (err) {
+        console.error("Error fetching settled orders:", err);
+      } finally {
+        setLoadingOrders(false);
+      }
+    }
+  };
 
   // Form State
   const [formData, setFormData] = useState({
@@ -320,7 +358,16 @@ export default function TreasuryPage() {
                     )}
                   </td>
                   <td>
-                    <div style={{ fontWeight: '500' }}>{t.details}</div>
+                    <div style={{ fontWeight: '600', color: t.settledOrderIds && t.settledOrderIds.length > 0 ? '#38bdf8' : 'inherit' }}>
+                      {t.settledOrderIds && t.settledOrderIds.length > 0 ? (
+                        `🧾 تسوية كشف تلقائية (${t.settledOrderIds.length} طلبات)`
+                      ) : (
+                        t.details
+                      )}
+                    </div>
+                    {t.notes && t.settledOrderIds && t.settledOrderIds.length > 0 && (
+                      <div style={{ fontSize: '0.85rem', opacity: 0.8, marginTop: '2px' }}>{t.notes}</div>
+                    )}
                     {(t.externalStatementId || t.deliveryAgent) && (
                       <div style={{
                         marginTop: '6px',
@@ -375,13 +422,29 @@ export default function TreasuryPage() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button 
-                      className={styles.revertBtn} 
-                      onClick={() => handleRevertTransactionClick(t.id)}
-                      title="إلغاء الحركة"
-                    >
-                      🗑️
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleViewTransactionDetails(t)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '1.2rem',
+                          padding: '4px'
+                        }}
+                        title="عرض التفاصيل"
+                      >
+                        👁️
+                      </button>
+                      <button 
+                        className={styles.revertBtn} 
+                        onClick={() => handleRevertTransactionClick(t.id)}
+                        title="إلغاء الحركة"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -525,6 +588,300 @@ export default function TreasuryPage() {
                 تراجع
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction Details Modal */}
+      {selectedTransaction && (
+        <div className={styles.modalOverlay} onClick={() => setSelectedTransaction(null)}>
+          <div className={styles.detailsModal} style={{ maxWidth: '900px' }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader} style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #111827 100%)' }}>
+              <h2>
+                🧾 تفاصيل الحركة المالية 
+                <span style={{ color: '#38bdf8', fontSize: '1rem', marginRight: '0.5rem' }}>
+                  {selectedTransaction.type === 'deposit' ? 'إيداع' : selectedTransaction.type === 'withdraw' ? 'سحب' : 'تحويل'}
+                </span>
+              </h2>
+              <button className={styles.closeButton} onClick={() => setSelectedTransaction(null)}>×</button>
+            </div>
+            
+            <div className={styles.modalBody}>
+              {/* Transaction Information Grid */}
+              <div className={styles.detailsGrid} style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.5rem' }}>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>رقم الحركة</span>
+                  <span className={styles.detailsValue}>{selectedTransaction.id}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>نوع العملية</span>
+                  <span className={styles.detailsValue} style={{ color: selectedTransaction.type === 'deposit' ? '#10b981' : selectedTransaction.type === 'withdraw' ? '#ef4444' : '#a855f7' }}>
+                    {selectedTransaction.type === 'deposit' ? 'إيداع' : selectedTransaction.type === 'withdraw' ? 'سحب' : 'تحويل'}
+                  </span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>المحفظة</span>
+                  <span className={styles.detailsValue}>
+                    {selectedTransaction.type === 'transfer' ? (
+                      `${wallets.find(w => w.id === selectedTransaction.fromWalletId)?.name || 'غير معروفة'} ➡️ ${wallets.find(w => w.id === selectedTransaction.toWalletId)?.name || 'غير معروفة'}`
+                    ) : (
+                      wallets.find(w => w.id === selectedTransaction.walletId)?.name || 'غير معروفة'
+                    )}
+                  </span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>التاريخ والوقت</span>
+                  <span className={styles.detailsValue}>{selectedTransaction.date} - {selectedTransaction.time}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>المبلغ الكلي</span>
+                  <span className={styles.detailsValue} style={{ color: selectedTransaction.type === 'deposit' ? '#10b981' : '#fff', fontWeight: 'bold' }}>
+                    {selectedTransaction.amount.toLocaleString()} {selectedTransaction.currency === 'IQD' ? 'د.ع' : '$'}
+                  </span>
+                </div>
+                {selectedTransaction.externalStatementId && (
+                  <div className={styles.detailsItem}>
+                    <span className={styles.detailsLabel}>رقم كشف الشركة / الورقي</span>
+                    <span className={styles.detailsValue} style={{ color: '#38bdf8' }}>📄 {selectedTransaction.externalStatementId}</span>
+                  </div>
+                )}
+                {selectedTransaction.deliveryAgent && (
+                  <div className={styles.detailsItem}>
+                    <span className={styles.detailsLabel}>المندوب المسلِّم</span>
+                    <span className={styles.detailsValue}>👤 {selectedTransaction.deliveryAgent}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Orders List Table inside Transaction */}
+              {selectedTransaction.settledOrderIds && selectedTransaction.settledOrderIds.length > 0 && (
+                <div className={styles.itemsTableContainer} style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1.05rem', color: '#fff', marginBottom: '0.8rem', fontWeight: '600' }}>📦 الطلبات المستلمة والمشمولة في هذه التسوية:</h3>
+                  {loadingOrders ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#cbd5e1' }}>
+                      <span className={styles.loaderSmall} style={{ borderTopColor: '#38bdf8', width: '20px', height: '20px', marginLeft: '8px' }}></span>
+                      جاري تحميل بيانات الطلبات من قاعدة البيانات...
+                    </div>
+                  ) : (
+                    <table className={styles.itemsTable}>
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>رقم الطلب</th>
+                          <th>اسم الزبون</th>
+                          <th>رقم الهاتف</th>
+                          <th>المحافظة والمنطقة</th>
+                          <th>المبلغ</th>
+                          <th style={{ width: '60px', textAlign: 'center' }}>التفاصيل</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {settledOrders.length > 0 ? (
+                          settledOrders.map((order, idx) => (
+                            <tr key={order.id}>
+                              <td>{idx + 1}</td>
+                              <td style={{ fontWeight: 'bold' }}>{order.id}</td>
+                              <td>{order.customerName}</td>
+                              <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || '---'}</td>
+                              <td>{order.governorate} - {order.region}</td>
+                              <td style={{ color: '#10b981', fontWeight: 'bold' }}>{order.totalAmount.toLocaleString()} د.ع</td>
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedOrder(order)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontSize: '1.1rem',
+                                    padding: '4px'
+                                  }}
+                                  title="عرض تفاصيل الطلب والمواد"
+                                >
+                                  👁️
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8' }}>
+                              تعذر تحميل تفاصيل الطلبات أو تم حذفها.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* Transaction Notes */}
+              {(selectedTransaction.notes || selectedTransaction.details) && (
+                <div className={styles.settlementDetailsSection} style={{ marginBottom: '1.5rem' }}>
+                  <h3 className={styles.sectionSubTitle}>📝 البيان / الملاحظات</h3>
+                  <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)', fontSize: '0.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                    {selectedTransaction.settledOrderIds && selectedTransaction.settledOrderIds.length > 0 ? (
+                      selectedTransaction.notes || selectedTransaction.details
+                    ) : (
+                      selectedTransaction.details
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Attachment Images */}
+              {selectedTransaction.images && selectedTransaction.images.length > 0 && (
+                <div className={styles.settlementDetailsSection}>
+                  <h3 className={styles.sectionSubTitle}>🖼️ مرفقات وصور الحركة ({selectedTransaction.images.length})</h3>
+                  <div className={styles.imageGallery}>
+                    {selectedTransaction.images.map((imgUrl, index) => (
+                      <div 
+                        key={index} 
+                        className={styles.galleryImageCard}
+                        onClick={() => setLightboxImage(imgUrl)}
+                      >
+                        <img src={imgUrl} alt={`مرفق حركة ${index + 1}`} className={styles.galleryImage} />
+                        <div className={styles.galleryImageOverlay}>
+                          <span>🔍 تكبير</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className={styles.modalFooterDetails}>
+              <div className={styles.notesSection}>
+                {selectedTransaction.settledOrderIds && selectedTransaction.settledOrderIds.length > 0 ? (
+                  "💡 اضغط على زر العين (👁️) بجانب أي طلب في الجدول أعلاه لعرض الأصناف المشتраة وتفاصيل العميل."
+                ) : (
+                  "حركة مالية مسجلة في سجل الخزينة."
+                )}
+              </div>
+              <div className={styles.totalHighlight} style={{ color: selectedTransaction.type === 'deposit' ? '#10b981' : '#fff' }}>
+                <span>المبلغ:</span>
+                <span>{selectedTransaction.amount.toLocaleString()} {selectedTransaction.currency === 'IQD' ? 'د.ع' : '$'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order Details Modal */}
+      {selectedOrder && (
+        <div className={styles.modalOverlay} onClick={() => setSelectedOrder(null)}>
+          <div className={styles.detailsModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2>📄 تفاصيل الطلب <span style={{ color: '#10b981', fontSize: '1rem', marginRight: '0.5rem' }}>#{selectedOrder.id.slice(-6).toUpperCase()}</span></h2>
+              <button className={styles.closeButton} onClick={() => setSelectedOrder(null)}>×</button>
+            </div>
+            
+            <div className={styles.modalBody}>
+              {/* Customer Information Grid */}
+              <div className={styles.detailsGrid}>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>اسم الزبون</span>
+                  <span className={styles.detailsValue}>{selectedOrder.customerName || '---'}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>رقم الهاتف</span>
+                  <span className={styles.detailsValue} style={{direction: 'ltr', textAlign: 'right'}}>{selectedOrder.customerPhone || '---'}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>المحافظة</span>
+                  <span className={styles.detailsValue}>{selectedOrder.governorate || '---'}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>المنطقة</span>
+                  <span className={styles.detailsValue}>{selectedOrder.region || '---'}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>تاريخ ووقت الطلب</span>
+                  <span className={styles.detailsValue}>{selectedOrder.addDate} - {selectedOrder.addTime}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>موظف الخدمة</span>
+                  <span className={styles.detailsValue}>
+                    {selectedOrder.employeeName || '---'}
+                    {selectedOrder.isPaidToStaff && (
+                      <span style={{ color: '#10b981', fontSize: '0.8rem', marginRight: '0.5rem' }}>(✔️ تم دفع العمولة)</span>
+                    )}
+                  </span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>حالة الطلب / الشحن</span>
+                  <span className={styles.detailsValue} style={{ color: '#fbbf24' }}>
+                    {selectedOrder.status === 'delivered' ? 'مكتمل' : selectedOrder.status} ({selectedOrder.fulfillmentStatus || '---'})
+                  </span>
+                </div>
+                {selectedOrder.shipmentCompany && (
+                  <div className={styles.detailsItem}>
+                    <span className={styles.detailsLabel}>شركة التوصيل</span>
+                    <span className={styles.detailsValue}>{selectedOrder.shipmentCompany}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Items Table */}
+              <div className={styles.itemsTableContainer}>
+                <table className={styles.itemsTable}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>الصنف</th>
+                      <th>الكمية</th>
+                      <th>السعر المفرد</th>
+                      <th>الإجمالي</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                      selectedOrder.items.map((item: any, idx: number) => (
+                        <tr key={idx}>
+                          <td>{idx + 1}</td>
+                          <td style={{ fontWeight: 'bold' }}>{item.productName || 'صنف غير معروف'}</td>
+                          <td>{item.quantity}</td>
+                          <td>{new Intl.NumberFormat('en-US').format(item.unitPrice || 0)} د.ع</td>
+                          <td style={{ color: '#10B981', fontWeight: 'bold' }}>
+                            {new Intl.NumberFormat('en-US').format((item.quantity || 0) * (item.unitPrice || 0))} د.ع
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8' }}>لا توجد أصناف في السلة لهذا الطلب</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className={styles.modalFooterDetails}>
+              <div className={styles.notesSection}>
+                {selectedOrder.notes ? (
+                  <><strong>ملاحظات:</strong> {selectedOrder.notes}</>
+                ) : (
+                  <span style={{opacity: 0.5}}>لا توجد ملاحظات</span>
+                )}
+              </div>
+              <div className={styles.totalHighlight}>
+                <span>المبلغ الكلي:</span>
+                <span>{selectedOrder.totalAmount.toLocaleString()} د.ع</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {lightboxImage && (
+        <div className={styles.lightboxOverlay} onClick={() => setLightboxImage(null)}>
+          <button className={styles.lightboxClose} onClick={() => setLightboxImage(null)}>×</button>
+          <div className={styles.lightboxContainer} onClick={e => e.stopPropagation()}>
+            <img src={lightboxImage} alt="مرفق مكبر" className={styles.lightboxImg} />
           </div>
         </div>
       )}

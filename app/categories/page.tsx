@@ -94,68 +94,79 @@ export default function CategoriesPage() {
   const filteredPages = pagesStores.filter(p => (p.name || '').includes(searchTerm));
 
   // --- Handlers for Add/Edit Form ---
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!inputName.trim()) return;
 
-    try {
-      if (modalMode === 'addPage') {
-        await addDoc(collection(db, 'pages_stores'), { name: inputName, createdAt: serverTimestamp() });
-        showToastMsg("تم إضافة البيج بنجاح");
-      } else if (modalMode === 'editPage' && targetPageId) {
-        await updateDoc(doc(db, 'pages_stores', targetPageId), { name: inputName });
-        showToastMsg("تم التعديل بنجاح");
-      } else if (modalMode === 'addMain' && targetPageId) {
-        let subs: SubCategory[] = [];
-        if (hasSubCategory && inputSubName.trim()) {
-          subs.push({ id: Date.now().toString(), name: inputSubName.trim() });
-        }
-        await addDoc(collection(db, 'categories'), { name: inputName, pageId: targetPageId, subcategories: subs });
-        setExpandedPageId(targetPageId);
-        showToastMsg("تم إضافة الفئة الرئيسية بنجاح");
-      } else if (modalMode === 'editMain' && targetMainId) {
-        await updateDoc(doc(db, 'categories', targetMainId), { name: inputName });
-        showToastMsg("تم التعديل بنجاح");
-      } else if (modalMode === 'addSub' && targetMainId) {
-        const cat = categories.find(c => c.id === targetMainId);
-        if (cat) {
-          const newSubId = Date.now().toString();
-          const subcategories = [...cat.subcategories, { id: newSubId, name: inputName }];
-          await updateDoc(doc(db, 'categories', targetMainId), { subcategories });
-          setExpandedMainCatId(targetMainId);
-          showToastMsg("تم إضافة الفئة الفرعية بنجاح");
-        }
-      } else if (modalMode === 'editSub' && targetMainId && targetSubId) {
-        const cat = categories.find(c => c.id === targetMainId);
-        if (cat) {
-          const subcategories = cat.subcategories.map(s => s.id === targetSubId ? { ...s, name: inputName } : s);
-          await updateDoc(doc(db, 'categories', targetMainId), { subcategories });
-          showToastMsg("تم التعديل بنجاح");
-        }
-      } else if (modalMode === 'addProduct' && targetMainId) {
-        await addDoc(collection(db, 'products'), {
-          name: inputName.trim(),
-          categoryId: targetMainId,
-          subcategoryId: targetSubId || "",
-          barcode: "",
-          model: "",
-          trackingCode: "",
-          notes: "",
-          reorderLevel: 10,
-          units: [
-            { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 }
-          ],
-          stock: {},
-          totalBaseQuantity: 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-        showToastMsg("تم إضافة الصنف بنجاح");
-      }
-    } catch (error) {
-      console.error("Error saving document: ", error);
-      showToastMsg("حدث خطأ أثناء الحفظ", "error");
-    }
+    const currentMode = modalMode;
+    const currentName = inputName.trim();
+    const currentSubName = inputSubName.trim();
+    const currentTargetPageId = targetPageId;
+    const currentTargetMainId = targetMainId;
+    const currentTargetSubId = targetSubId;
+    const currentHasSubCategory = hasSubCategory;
+
     closeModal();
+
+    (async () => {
+      try {
+        if (currentMode === 'addPage') {
+          await addDoc(collection(db, 'pages_stores'), { name: currentName, createdAt: serverTimestamp() });
+          showToastMsg("تم إضافة البيج بنجاح");
+        } else if (currentMode === 'editPage' && currentTargetPageId) {
+          await updateDoc(doc(db, 'pages_stores', currentTargetPageId), { name: currentName });
+          showToastMsg("تم التعديل بنجاح");
+        } else if (currentMode === 'addMain' && currentTargetPageId) {
+          let subs: SubCategory[] = [];
+          if (currentHasSubCategory && currentSubName) {
+            subs.push({ id: Date.now().toString(), name: currentSubName });
+          }
+          await addDoc(collection(db, 'categories'), { name: currentName, pageId: currentTargetPageId, subcategories: subs });
+          setExpandedPageId(currentTargetPageId);
+          showToastMsg("تم إضافة الفئة الرئيسية بنجاح");
+        } else if (currentMode === 'editMain' && currentTargetMainId) {
+          await updateDoc(doc(db, 'categories', currentTargetMainId), { name: currentName });
+          showToastMsg("تم التعديل بنجاح");
+        } else if (currentMode === 'addSub' && currentTargetMainId) {
+          const cat = categories.find(c => c.id === currentTargetMainId);
+          if (cat) {
+            const newSubId = Date.now().toString();
+            const subcategories = [...cat.subcategories, { id: newSubId, name: currentName }];
+            await updateDoc(doc(db, 'categories', currentTargetMainId), { subcategories });
+            setExpandedMainCatId(currentTargetMainId);
+            showToastMsg("تم إضافة الفئة الفرعية بنجاح");
+          }
+        } else if (currentMode === 'editSub' && currentTargetMainId && currentTargetSubId) {
+          const cat = categories.find(c => c.id === currentTargetMainId);
+          if (cat) {
+            const subcategories = cat.subcategories.map(s => s.id === currentTargetSubId ? { ...s, name: currentName } : s);
+            await updateDoc(doc(db, 'categories', currentTargetMainId), { subcategories });
+            showToastMsg("تم التعديل بنجاح");
+          }
+        } else if (currentMode === 'addProduct' && currentTargetMainId) {
+          await addDoc(collection(db, 'products'), {
+            name: currentName,
+            categoryId: currentTargetMainId,
+            subcategoryId: currentTargetSubId || "",
+            barcode: "",
+            model: "",
+            trackingCode: "",
+            notes: "",
+            reorderLevel: 10,
+            units: [
+              { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 }
+            ],
+            stock: {},
+            totalBaseQuantity: 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          showToastMsg("تم إضافة الصنف بنجاح");
+        }
+      } catch (error) {
+        console.error("Error saving document: ", error);
+        showToastMsg("حدث خطأ أثناء الحفظ", "error");
+      }
+    })();
   };
 
   // --- Open Modal Helpers ---
@@ -405,7 +416,7 @@ export default function CategoriesPage() {
       {/* Add / Edit Modal */}
       {showModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modal}>
+          <form className={styles.modal} onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
             <div className={styles.modalHeader}>
               <h2 className={styles.modalTitle}>
                 {modalMode === 'addPage' ? 'إضافة بيج/محل جديد' :
@@ -415,7 +426,7 @@ export default function CategoriesPage() {
                  modalMode === 'addSub' ? 'إضافة فئة فرعية' :
                  modalMode === 'addProduct' ? 'إضافة صنف جديد (منتج)' : 'تعديل الفئة الفرعية'}
               </h2>
-              <button className={styles.closeButton} onClick={closeModal}>×</button>
+              <button type="button" className={styles.closeButton} onClick={closeModal}>×</button>
             </div>
             <div className={styles.modalBody}>
               <div className={styles.formGroup}>
@@ -425,7 +436,6 @@ export default function CategoriesPage() {
                   className={styles.input}
                   value={inputName}
                   onChange={(e) => setInputName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSave()}
                   autoFocus
                 />
               </div>
@@ -451,7 +461,6 @@ export default function CategoriesPage() {
                         className={styles.input}
                         value={inputSubName}
                         onChange={(e) => setInputSubName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSave()}
                         placeholder="أدخل اسم الفئة الفرعية..."
                       />
                     </div>
@@ -460,9 +469,9 @@ export default function CategoriesPage() {
               )}
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.saveButton} onClick={handleSave}>حفظ</button>
+              <button type="submit" className={styles.saveButton}>حفظ</button>
             </div>
-          </div>
+          </form>
         </div>
       )}
 

@@ -226,3 +226,453 @@
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* Team Performance Redesign */
+
+.teamFilterContainer {
+  display: flex;
+  align-items: center;
+}
+
+.teamSelectDropdown {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.4rem 0.8rem;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  direction: rtl;
+}
+
+.teamSelectDropdown:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
+}
+
+.teamScrollRow {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 1rem 0.2rem;
+  margin-top: 1rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) transparent;
+}
+
+.teamScrollRow::-webkit-scrollbar {
+  height: 6px;
+}
+
+.teamScrollRow::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.teamScrollRow::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.2);
+  border-radius: 10px;
+}
+
+.teamScrollRow::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+.employeeCard {
+  min-width: 150px;
+  max-width: 160px;
+  flex: 0 0 auto;
+  background: rgba(30, 30, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 1.25rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.employeeCard:hover {
+  transform: translateY(-4px);
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 15px rgba(16, 185, 129, 0.1);
+  background: rgba(30, 30, 42, 0.6);
+}
+
+.employeeHeader {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  padding-bottom: 0.75rem;
+  width: 100%;
+}
+
+.employeeInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.15rem;
+}
+
+.employeeName {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.employeeTotalOrders {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.chartColumns {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  flex: 1;
+  width: 100%;
+}
+
+.columnContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  gap: 0.35rem;
+}
+
+.columnValue {
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.columnPercent {
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.verticalBarTrack {
+  width: 12px;
+  height: 130px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  position: relative;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  margin: 0.25rem 0;
+}
+
+.verticalBarFill {
+  width: 100%;
+  border-radius: 6px;
+  transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.barDelivered {
+  background: linear-gradient(to top, rgba(16, 185, 129, 0.9), rgba(16, 185, 129, 0.3));
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+.barReturned {
+  background: linear-gradient(to top, rgba(239, 68, 68, 0.9), rgba(239, 68, 68, 0.3));
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.barPending {
+  background: linear-gradient(to top, rgba(245, 158, 11, 0.9), rgba(245, 158, 11, 0.3));
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+}
+
+.iconCircle {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  margin-top: 0.15rem;
+}
+
+.statusSvg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 3px;
+}
+
+.columnLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.legendContainer {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.teamDatePickerContainer {
+  position: relative;
+  display: inline-block;
+}
+
+.teamDateRangeBtn {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.4rem 0.8rem;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.teamDateRangeBtn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
+}
+
+.teamDateModal {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background-color: #1e1e28;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 15px rgba(139, 92, 246, 0.05);
+  z-index: 50;
+  min-width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.teamShortcutList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.teamShortcutBtn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  text-align: right;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.teamShortcutBtn:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+}
+
+.teamShortcutBtn.activeShortcut {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.teamDateInputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 0.75rem;
+}
+
+.teamDateInputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: right;
+}
+
+.teamDateInputGroup label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.teamDateInput {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color-scheme: dark; /* ensures browser datepicker looks great on dark theme */
+}
+
+.teamDateInput:hover, .teamDateInput:focus {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--primary);
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+}
+
+.teamModalActions {
+  display: flex;
+  gap: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.teamApplyBtn {
+  flex: 1;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  text-align: center;
+}
+
+.teamApplyBtn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.teamCancelBtn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.teamCancelBtn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.gaugeCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1rem;
+}
+
+.gaugeCardHeader {
+  width: 100%;
+}
+
+.gaugeContainer {
+  position: relative;
+  width: 100%;
+  height: 170px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  margin-top: 10px;
+}
+
+.gaugeSvg {
+  width: 100%;
+  height: auto;
+  max-width: 260px;
+  overflow: visible;
+}
+
+.progressBar {
+  transition: stroke-dashoffset 3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.needleGroup {
+  transition: transform 3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gaugeValue {
+  text-align: center;
+  font-size: 26px;
+  font-weight: bold;
+  margin-top: 10px;
+  color: #ffffff;
+  text-shadow: 0 0 15px rgba(168, 85, 247, 0.9);
+  transition: all 0.3s ease;
+}
+
+.card:hover .gaugeValue {
+  color: #d8b4fe;
+  text-shadow: 0 0 25px rgba(168, 85, 247, 1);
+  transform: scale(1.08);
+}
+
+.gaugeDescription {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+

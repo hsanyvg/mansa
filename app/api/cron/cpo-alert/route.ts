@@ -7,11 +7,14 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    // 1. Check if alerts are enabled
+    const { searchParams } = new URL(request.url);
+    const force = searchParams.get('force') === 'true';
+
+    // 1. Check if alerts are enabled (bypass if force is true)
     const settingsRef = doc(db, 'alerts_settings', 'cpo_alerts');
     const settingsSnap = await getDoc(settingsRef);
     
-    if (!settingsSnap.exists() || !settingsSnap.data().isActive) {
+    if (!force && (!settingsSnap.exists() || !settingsSnap.data().isActive)) {
       return NextResponse.json({ message: 'Alerts are disabled in settings.' }, { status: 200 });
     }
 
@@ -32,9 +35,9 @@ export async function GET(request: Request) {
     const pagesSnap = await getDocs(collection(db, 'pages_stores'));
     const pagesDb = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-    // 4. Fetch Products with Tracking Codes
+    // 4. Fetch Products with Tracking Codes (Grouped by trackingCode)
     const productsSnap = await getDocs(collection(db, 'products'));
-    const trackedProducts: any[] = [];
+    const groupedTrackedMap = new Map<string, { trackingCode: string, productIds: string[], productNames: string[] }>();
     
     productsSnap.forEach(doc => {
       const data = doc.data();
@@ -47,10 +50,36 @@ export async function GET(request: Request) {
         );
         if (isPageName || isMainCatName || isSubCatName) return; 
       }
-      if (data.trackingCode && data.trackingCode.trim() !== '') {
-        trackedProducts.push({ id: doc.id, name: data.name, trackingCode: data.trackingCode.trim() });
+      const tCode = data.trackingCode?.trim();
+      if (tCode && tCode !== '') {
+        const key = tCode.toLowerCase();
+        if (!groupedTrackedMap.has(key)) {
+          groupedTrackedMap.set(key, { trackingCode: tCode, productIds: [], productNames: [] });
+        }
+        const group = groupedTrackedMap.get(key)!;
+        group.productIds.push(doc.id);
+        group.productNames.push(data.name);
       }
     });
+
+    const compProductsSnap = await getDocs(collection(db, 'composite_products'));
+    compProductsSnap.forEach(doc => {
+      const data = doc.data();
+      const tCode = data.trackingCode?.trim();
+      if (tCode && tCode !== '') {
+        const key = tCode.toLowerCase();
+        if (!groupedTrackedMap.has(key)) {
+          groupedTrackedMap.set(key, { trackingCode: tCode, productIds: [], productNames: [] });
+        }
+        const group = groupedTrackedMap.get(key)!;
+        group.productIds.push(doc.id);
+        group.productNames.push(data.name);
+      }
+    });
+
+    const trackedProducts = Array.from(groupedTrackedMap.values()).sort(
+      (a: any, b: any) => b.trackingCode.length - a.trackingCode.length
+    );
 
     if (trackedProducts.length === 0) {
       return NextResponse.json({ message: 'No tracked products found.' }, { status: 200 });
@@ -127,15 +156,41 @@ export async function GET(request: Request) {
     const finalReport: any[] = [];
     let reportText = `📊 *تحديث تقارير التكلفة (CPO) اليومية*\n📅 التاريخ: ${new Date().toLocaleDateString('ar-IQ')}\n⏰ الوقت: ${new Date().toLocaleTimeString('ar-IQ')}\n\n`;
 
+    // Track already matched campaigns per account to prevent double counting spend
+    const matchedCampaignsByAccount = new Map<string, Set<string>>();
+    activeAccs.forEach((account: any) => {
+      matchedCampaignsByAccount.set(account.name, new Set<string>());
+    });
+
     trackedProducts.forEach(product => {
       const tCode = product.trackingCode.toLowerCase();
-      const validOrders = validOrdersCountByProduct.get(product.id)?.size || 0;
-      const deliveredOrders = deliveredOrdersCountByProduct.get(product.id)?.size || 0;
+      
+      const matchedOrderIds = new Set<string>();
+      const matchedDeliveredOrderIds = new Set<string>();
+      
+      product.productIds.forEach(prodId => {
+        const vOrders = validOrdersCountByProduct.get(prodId);
+        if (vOrders) vOrders.forEach(id => matchedOrderIds.add(id));
+        
+        const dOrders = deliveredOrdersCountByProduct.get(prodId);
+        if (dOrders) dOrders.forEach(id => matchedDeliveredOrderIds.add(id));
+      });
+
+      const validOrders = matchedOrderIds.size;
+      const deliveredOrders = matchedDeliveredOrderIds.size;
 
       allCampaignsByAccount.forEach(accData => {
+        const matchedSet = matchedCampaignsByAccount.get(accData.accountName)!;
         const matched = accData.campaigns.filter((c: any) => {
+          const campaignKey = c.id || c.campaign_id;
+          if (matchedSet.has(campaignKey)) return false; // Already matched for this account
+          
           const cName = c.campaign_name.toLowerCase();
-          return cName.includes(tCode) || cName.includes(`[${tCode}]`);
+          const isMatch = cName.includes(tCode) || cName.includes(`[${tCode}]`);
+          if (isMatch) {
+            matchedSet.add(campaignKey);
+          }
+          return isMatch;
         });
 
         const totalSpend = matched.reduce((sum: number, c: any) => sum + c.spend, 0);
@@ -144,8 +199,8 @@ export async function GET(request: Request) {
           const cpa = validOrders > 0 ? (totalSpend / validOrders) : (totalSpend > 0 ? -1 : 0);
           
           finalReport.push({
-            productId: product.id,
-            productName: product.name,
+            productId: product.trackingCode,
+            productName: product.productNames.join(" + "),
             accountName: accData.accountName,
             trackingCode: product.trackingCode,
             totalSpend,
@@ -157,7 +212,7 @@ export async function GET(request: Request) {
           const formattedSpend = totalSpend.toFixed(2) + '$';
           const formattedCpa = cpa === -1 ? '∞' : cpa.toFixed(2) + '$';
 
-          reportText += `📦 الصنف: *${product.name}*\n`;
+          reportText += `📦 الصنف: *${product.productNames.join(" + ")}*\n`;
           reportText += `🔗 الحساب: ${accData.accountName}\n`;
           reportText += `💸 الصرف اليومي: ${formattedSpend}\n`;
           reportText += `📝 طلبات اليوم: ${validOrders}\n`;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../lib/firebase';
-import { collection, onSnapshot, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import styles from './page.module.css';
 
 interface Order {
@@ -29,6 +29,100 @@ interface Order {
   settlementAgent?: string;
   settlementNotes?: string;
   settlementImages?: string[];
+  isSettlementArchived?: boolean;
+}
+
+interface GroupedStatement {
+  id: string;
+  isStatement: boolean;
+  settlementStatementId: string;
+  settledWalletName: string;
+  settlementAgent: string;
+  settlementNotes: string;
+  settlementImages: string[];
+  totalAmount: number;
+  addDate: string;
+  addTime: string;
+  date: any;
+  orders: Order[];
+  isSettlementArchived: boolean;
+}
+
+function groupOrders(ordersList: Order[]): GroupedStatement[] {
+  const groupsMap = new Map<string, GroupedStatement>();
+  const individualStatements: GroupedStatement[] = [];
+
+  ordersList.forEach(order => {
+    const stmtId = order.settlementStatementId?.trim();
+    if (stmtId) {
+      if (groupsMap.has(stmtId)) {
+        const group = groupsMap.get(stmtId)!;
+        group.orders.push(order);
+        group.totalAmount += order.totalAmount;
+        const orderTime = order.date?.toMillis ? order.date.toMillis() : (order.date ? new Date(order.date).getTime() : 0);
+        const groupTime = group.date?.toMillis ? group.date.toMillis() : (group.date ? new Date(group.date).getTime() : 0);
+        if (orderTime > groupTime) {
+          group.date = order.date;
+          group.addDate = order.addDate || '---';
+          group.addTime = order.addTime || '---';
+        }
+        if (order.settlementImages) {
+          order.settlementImages.forEach(img => {
+            if (!group.settlementImages.includes(img)) {
+              group.settlementImages.push(img);
+            }
+          });
+        }
+        if (order.settlementNotes && !group.settlementNotes.includes(order.settlementNotes)) {
+          group.settlementNotes = group.settlementNotes
+            ? `${group.settlementNotes}\n${order.settlementNotes}`
+            : order.settlementNotes;
+        }
+      } else {
+        groupsMap.set(stmtId, {
+          id: stmtId,
+          isStatement: true,
+          settlementStatementId: stmtId,
+          settledWalletName: order.settledWalletName || 'غير محددة',
+          settlementAgent: order.settlementAgent || '---',
+          settlementNotes: order.settlementNotes || '',
+          settlementImages: [...(order.settlementImages || [])],
+          totalAmount: order.totalAmount,
+          addDate: order.addDate || '---',
+          addTime: order.addTime || '---',
+          date: order.date,
+          orders: [order],
+          isSettlementArchived: order.isSettlementArchived || false
+        });
+      }
+    } else {
+      individualStatements.push({
+        id: order.id,
+        isStatement: false,
+        settlementStatementId: '',
+        settledWalletName: order.settledWalletName || 'غير محددة',
+        settlementAgent: order.settlementAgent || '---',
+        settlementNotes: order.settlementNotes || '',
+        settlementImages: [...(order.settlementImages || [])],
+        totalAmount: order.totalAmount,
+        addDate: order.addDate || '---',
+        addTime: order.addTime || '---',
+        date: order.date,
+        orders: [order],
+        isSettlementArchived: order.isSettlementArchived || false
+      });
+    }
+  });
+
+  const result = [...Array.from(groupsMap.values()), ...individualStatements];
+  
+  result.sort((a, b) => {
+    const tA = a.date?.toMillis ? a.date.toMillis() : (a.date ? new Date(a.date).getTime() : 0);
+    const tB = b.date?.toMillis ? b.date.toMillis() : (b.date ? new Date(b.date).getTime() : 0);
+    return tB - tA;
+  });
+
+  return result;
 }
 
 interface Wallet {
@@ -55,9 +149,20 @@ export default function TreasurySettlementPage() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [selectedWalletId, setSelectedWalletId] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedStatement, setSelectedStatement] = useState<GroupedStatement | null>(null);
   const [settledOrders, setSettledOrders] = useState<Order[]>([]);
-  const [activeTab, setActiveTab] = useState<'pending' | 'settled'>('pending');
+  const [archivedSettlements, setArchivedSettlements] = useState<Order[]>([]);
+  const [activeTab, setActiveTab] = useState<'pending' | 'settled' | 'archived'>('pending');
+
+  const settledGroups = React.useMemo(() => {
+    return groupOrders(settledOrders);
+  }, [settledOrders]);
+
+  const archivedGroups = React.useMemo(() => {
+    return groupOrders(archivedSettlements);
+  }, [archivedSettlements]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [showActionsDropdown, setShowActionsDropdown] = useState(false);
 
   // Phase 2 Form States
   const [externalStatementId, setExternalStatementId] = useState('');
@@ -69,6 +174,7 @@ export default function TreasurySettlementPage() {
   // File Input Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const actionsDropdownRef = useRef<HTMLDivElement>(null);
 
   // HTML5 Canvas image compression to keep files < 200KB and preserve text clarity
   const compressImage = (file: File): Promise<UploadedImage> => {
@@ -194,6 +300,17 @@ export default function TreasurySettlementPage() {
     return () => unsubWallets();
   }, []);
 
+  // Listen to outside clicks to close the Actions dropdown
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(e.target as Node)) {
+        setShowActionsDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   useEffect(() => {
     // Fetch all orders for real-time calculations and filter delivered ones
     const q = collection(db, 'orders');
@@ -203,6 +320,7 @@ export default function TreasurySettlementPage() {
       let pending = 0;
       const pendingList: Order[] = [];
       const settledList: Order[] = [];
+      const archivedList: Order[] = [];
 
       snapshot.docs.forEach((document) => {
         const data = document.data();
@@ -244,12 +362,17 @@ export default function TreasurySettlementPage() {
             settlementStatementId: data.settlementStatementId || '',
             settlementAgent: data.settlementAgent || '',
             settlementNotes: data.settlementNotes || '',
-            settlementImages: data.settlementImages || []
+            settlementImages: data.settlementImages || [],
+            isSettlementArchived: data.isSettlementArchived || false
           };
 
           if (isSettled) {
             actual += amount;
-            settledList.push(orderObj);
+            if (data.isSettlementArchived === true) {
+              archivedList.push(orderObj);
+            } else {
+              settledList.push(orderObj);
+            }
           } else {
             pending += amount;
             pendingList.push(orderObj);
@@ -271,16 +394,27 @@ export default function TreasurySettlementPage() {
         return tB - tA;
       });
 
+      // Sort archived list by date descending (newest first)
+      archivedList.sort((a, b) => {
+        const tA = a.date?.toMillis ? a.date.toMillis() : (a.date ? new Date(a.date).getTime() : 0);
+        const tB = b.date?.toMillis ? b.date.toMillis() : (b.date ? new Date(b.date).getTime() : 0);
+        return tB - tA;
+      });
+
       setActualBalance(actual);
       setPendingBalance(pending);
       setPendingOrders(pendingList);
       setSettledOrders(settledList);
+      setArchivedSettlements(archivedList);
       
-      // Remove any selected orders that are no longer pending
+      // Remove any selected items that are no longer in the active lists
       setSelectedOrders((prev) => {
         const next = new Set(prev);
         for (const id of next) {
-          if (!pendingList.find(o => o.id === id)) {
+          const existsInPending = pendingList.some(o => o.id === id);
+          const existsInSettled = groupOrders(settledList).some(g => g.id === id);
+          const existsInArchived = groupOrders(archivedList).some(g => g.id === id);
+          if (!existsInPending && !existsInSettled && !existsInArchived) {
             next.delete(id);
           }
         }
@@ -296,7 +430,13 @@ export default function TreasurySettlementPage() {
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedOrders(new Set(pendingOrders.map(o => o.id)));
+      if (activeTab === 'pending') {
+        setSelectedOrders(new Set(pendingOrders.map(o => o.id)));
+      } else if (activeTab === 'settled') {
+        setSelectedOrders(new Set(settledGroups.map(o => o.id)));
+      } else if (activeTab === 'archived') {
+        setSelectedOrders(new Set(archivedGroups.map(o => o.id)));
+      }
     } else {
       setSelectedOrders(new Set());
     }
@@ -397,6 +537,92 @@ export default function TreasurySettlementPage() {
     }
   };
 
+  const handleArchiveSettlement = async (orderId: string) => {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, { isSettlementArchived: true });
+    } catch (error) {
+      console.error("Error archiving settlement:", error);
+      alert("حدث خطأ أثناء أرشفة التسوية.");
+    }
+  };
+
+  const handleRestoreSettlement = async (orderId: string) => {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, { isSettlementArchived: false });
+    } catch (error) {
+      console.error("Error restoring settlement:", error);
+      alert("حدث خطأ أثناء استعادة التسوية.");
+    }
+  };
+
+  const handleDeleteSettlement = async (orderId: string) => {
+    if (confirm("هل أنت متأكد من حذف هذا الطلب بشكل نهائي من النظام؟")) {
+      try {
+        const orderRef = doc(db, 'orders', orderId);
+        await deleteDoc(orderRef);
+      } catch (error) {
+        console.error("Error deleting order:", error);
+        alert("حدث خطأ أثناء حذف الطلب.");
+      }
+    }
+  };
+
+  const handleArchiveGroup = async (group: GroupedStatement) => {
+    try {
+      const batch = writeBatch(db);
+      group.orders.forEach(order => {
+        batch.update(doc(db, 'orders', order.id), { isSettlementArchived: true });
+      });
+      await batch.commit();
+      if (selectedStatement?.id === group.id) {
+        setSelectedStatement(null);
+      }
+    } catch (error) {
+      console.error("Error archiving group:", error);
+      alert("حدث خطأ أثناء أرشفة الكشف.");
+    }
+  };
+
+  const handleRestoreGroup = async (group: GroupedStatement) => {
+    try {
+      const batch = writeBatch(db);
+      group.orders.forEach(order => {
+        batch.update(doc(db, 'orders', order.id), { isSettlementArchived: false });
+      });
+      await batch.commit();
+      if (selectedStatement?.id === group.id) {
+        setSelectedStatement(null);
+      }
+    } catch (error) {
+      console.error("Error restoring group:", error);
+      alert("حدث خطأ أثناء استعادة الكشف.");
+    }
+  };
+
+  const handleDeleteGroup = async (group: GroupedStatement) => {
+    const message = group.isStatement 
+      ? `هل أنت متأكد من حذف هذا الكشف (#${group.settlementStatementId}) وجميع الطلبات المرتبطة به (${group.orders.length} طلب) بشكل نهائي من النظام؟`
+      : `هل أنت متأكد من حذف هذا الطلب بشكل نهائي من النظام؟`;
+      
+    if (confirm(message)) {
+      try {
+        const batch = writeBatch(db);
+        group.orders.forEach(order => {
+          batch.delete(doc(db, 'orders', order.id));
+        });
+        await batch.commit();
+        if (selectedStatement?.id === group.id) {
+          setSelectedStatement(null);
+        }
+      } catch (error) {
+        console.error("Error deleting group:", error);
+        alert("حدث خطأ أثناء حذف الكشف.");
+      }
+    }
+  };
+
   const totalSelectedAmount = Array.from(selectedOrders).reduce((sum, orderId) => {
     const order = pendingOrders.find(o => o.id === orderId);
     return sum + (order ? order.totalAmount : 0);
@@ -417,15 +643,21 @@ export default function TreasurySettlementPage() {
           <div className={styles.tabsContainer}>
             <button 
               className={`${styles.tab} ${activeTab === 'pending' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('pending')}
+              onClick={() => { setActiveTab('pending'); setSelectedOrders(new Set()); }}
             >
               الطلبات المعلقة ({pendingOrders.length})
             </button>
             <button 
               className={`${styles.tab} ${activeTab === 'settled' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('settled')}
+              onClick={() => { setActiveTab('settled'); setSelectedOrders(new Set()); }}
             >
-              التسويات المكتملة ({settledOrders.length})
+              التسويات المكتملة ({settledGroups.length})
+            </button>
+            <button 
+              className={`${styles.tab} ${activeTab === 'archived' ? styles.activeTab : ''}`}
+              onClick={() => { setActiveTab('archived'); setSelectedOrders(new Set()); }}
+            >
+              أرشيف الكشوفات ({archivedGroups.length})
             </button>
           </div>
 
@@ -444,6 +676,227 @@ export default function TreasurySettlementPage() {
                 </>
               )}
             </button>
+          )}
+
+          {activeTab === 'settled' && (
+            <div ref={actionsDropdownRef} style={{ position: 'relative' }}>
+              <button 
+                className={styles.settleButton} 
+                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.2)' }}
+                onClick={() => setShowActionsDropdown(!showActionsDropdown)}
+                disabled={selectedOrders.size === 0}
+              >
+                ⚙️ الإجراءات ({selectedOrders.size}) ▼
+              </button>
+              {showActionsDropdown && selectedOrders.size > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '0.5rem',
+                  backgroundColor: '#1e293b',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+                  zIndex: 100,
+                  minWidth: '180px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
+                }}>
+                  {selectedOrders.size === 1 && (
+                    <button
+                      onClick={() => {
+                        const singleId = Array.from(selectedOrders)[0];
+                        const group = settledGroups.find(g => g.id === singleId);
+                        if (group) setSelectedStatement(group);
+                        setShowActionsDropdown(false);
+                      }}
+                      style={{
+                        padding: '0.75rem 1rem',
+                        background: 'none',
+                        border: 'none',
+                        color: '#fff',
+                        textAlign: 'right',
+                        cursor: 'pointer',
+                        fontSize: '0.95rem',
+                        transition: 'background 0.2s',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.05)'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      👁️ تفاصيل الكشف
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const batch = writeBatch(db);
+                        selectedOrders.forEach(id => {
+                          const group = settledGroups.find(g => g.id === id);
+                          if (group) {
+                            group.orders.forEach(order => {
+                              batch.update(doc(db, 'orders', order.id), { isSettlementArchived: true });
+                            });
+                          }
+                        });
+                        await batch.commit();
+                        setSelectedOrders(new Set());
+                        setShowActionsDropdown(false);
+                      } catch (err) {
+                        console.error(err);
+                        alert("حدث خطأ أثناء أرشفة الكشوفات.");
+                      }
+                    }}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      background: 'none',
+                      border: 'none',
+                      color: '#fff',
+                      textAlign: 'right',
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    📥 أرشفة الكشوفات المحددة
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'archived' && (
+            <div ref={actionsDropdownRef} style={{ position: 'relative' }}>
+              <button 
+                className={styles.settleButton} 
+                style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', boxShadow: '0 4px 12px rgba(217, 119, 6, 0.2)' }}
+                onClick={() => setShowActionsDropdown(!showActionsDropdown)}
+                disabled={selectedOrders.size === 0}
+              >
+                ⚙️ الإجراءات ({selectedOrders.size}) ▼
+              </button>
+              {showActionsDropdown && selectedOrders.size > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '0.5rem',
+                  backgroundColor: '#1e293b',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+                  zIndex: 100,
+                  minWidth: '180px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
+                }}>
+                  {selectedOrders.size === 1 && (
+                    <button
+                      onClick={() => {
+                        const singleId = Array.from(selectedOrders)[0];
+                        const group = archivedGroups.find(g => g.id === singleId);
+                        if (group) setSelectedStatement(group);
+                        setShowActionsDropdown(false);
+                      }}
+                      style={{
+                        padding: '0.75rem 1rem',
+                        background: 'none',
+                        border: 'none',
+                        color: '#fff',
+                        textAlign: 'right',
+                        cursor: 'pointer',
+                        fontSize: '0.95rem',
+                        transition: 'background 0.2s',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.05)'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      👁️ تفاصيل الكشف
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const batch = writeBatch(db);
+                        selectedOrders.forEach(id => {
+                          const group = archivedGroups.find(g => g.id === id);
+                          if (group) {
+                            group.orders.forEach(order => {
+                              batch.update(doc(db, 'orders', order.id), { isSettlementArchived: false });
+                            });
+                          }
+                        });
+                        await batch.commit();
+                        setSelectedOrders(new Set());
+                        setShowActionsDropdown(false);
+                      } catch (err) {
+                        console.error(err);
+                        alert("حدث خطأ أثناء استعادة الكشوفات.");
+                      }
+                    }}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      background: 'none',
+                      border: 'none',
+                      color: '#fff',
+                      textAlign: 'right',
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                      transition: 'background 0.2s',
+                      borderBottom: '1px solid rgba(255, 255, 255, 0.05)'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    ↩️ استعادة الكشوفات المحددة
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (confirm(`هل أنت متأكد من حذف ${selectedOrders.size} كشفاً (وجميع الطلبات المرتبطة بها) بشكل نهائي من النظام؟`)) {
+                        try {
+                          const batch = writeBatch(db);
+                          selectedOrders.forEach(id => {
+                            const group = archivedGroups.find(g => g.id === id);
+                            if (group) {
+                              group.orders.forEach(order => {
+                                batch.delete(doc(db, 'orders', order.id));
+                              });
+                            }
+                          });
+                          await batch.commit();
+                          setSelectedOrders(new Set());
+                          setShowActionsDropdown(false);
+                        } catch (err) {
+                          console.error(err);
+                          alert("حدث خطأ أثناء حذف الكشوفات.");
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      background: 'none',
+                      border: 'none',
+                      color: '#ef4444',
+                      textAlign: 'right',
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                      fontWeight: 'bold',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    🗑️ حذف الكشوفات المحددة
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -509,27 +962,55 @@ export default function TreasurySettlementPage() {
                 <div>لا توجد طلبات معلقة بانتظار التسوية!</div>
               </div>
             )
-          ) : (
-            // Settled orders tab
-            settledOrders.length > 0 ? (
+          ) : activeTab === 'settled' ? (
+            settledGroups.length > 0 ? (
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>رقم الطلب</th>
-                    <th>اسم الزبون</th>
-                    <th>تاريخ الطلب</th>
+                    <th className={styles.checkboxCell}>
+                      <input 
+                        type="checkbox" 
+                        className={styles.checkbox}
+                        checked={selectedOrders.size === settledGroups.length && settledGroups.length > 0}
+                        onChange={handleSelectAll}
+                      />
+                    </th>
+                    <th>رقم الكشف / الطلب</th>
+                    <th>اسم الزبون / التفاصيل</th>
+                    <th>تاريخ التسوية</th>
                     <th>المحفظة المستلمة</th>
                     <th>المبلغ المستلم</th>
                     <th>بيانات التسوية</th>
-                    <th style={{ width: '60px', textAlign: 'center' }}>التفاصيل</th>
+                    <th style={{ width: '120px', textAlign: 'center' }}>الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {settledOrders.map(order => (
-                    <tr key={order.id}>
-                      <td>{order.id}</td>
-                      <td>{order.customerName}</td>
-                      <td className={styles.dateCol}>{order.addDate} - {order.addTime}</td>
+                  {settledGroups.map(group => (
+                    <tr key={group.id}>
+                      <td className={styles.checkboxCell}>
+                        <input 
+                          type="checkbox" 
+                          className={styles.checkbox}
+                          checked={selectedOrders.has(group.id)}
+                          onChange={(e) => handleSelectOrder(group.id, e.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: group.isStatement ? 'bold' : 'normal' }}>
+                          {group.isStatement ? `📄 كشف: ${group.settlementStatementId}` : `# ${group.id}`}
+                        </span>
+                      </td>
+                      <td>
+                        {group.isStatement ? (
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '600', color: '#38bdf8' }}>🧾 كشف مشترك ({group.orders.length} طلبات)</span>
+                            <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>أول زبون: {group.orders[0]?.customerName || 'بدون اسم'}</span>
+                          </div>
+                        ) : (
+                          <span>{group.orders[0]?.customerName || 'بدون اسم'}</span>
+                        )}
+                      </td>
+                      <td className={styles.dateCol}>{group.addDate} - {group.addTime}</td>
                       <td>
                         <span style={{
                           backgroundColor: 'rgba(16, 185, 129, 0.1)',
@@ -539,26 +1020,28 @@ export default function TreasurySettlementPage() {
                           fontSize: '0.85rem',
                           fontWeight: '600'
                         }}>
-                          🏦 {order.settledWalletName || 'غير محددة'}
+                          🏦 {group.settledWalletName || 'غير محددة'}
                         </span>
                       </td>
-                      <td className={styles.amountCol}>{order.totalAmount.toLocaleString()} د.ع</td>
+                      <td className={styles.amountCol} style={{ fontWeight: 'bold', color: group.isStatement ? '#38bdf8' : 'inherit' }}>
+                        {group.totalAmount.toLocaleString()} د.ع
+                      </td>
                       <td>
-                        {(order.settlementStatementId || order.settlementAgent) ? (
+                        {(group.settlementStatementId || group.settlementAgent) ? (
                           <div className={styles.settlementTableBadge}>
-                            {order.settlementStatementId && (
+                            {group.settlementStatementId && (
                               <div className={styles.badgeLine}>
-                                <span className={styles.badgeLabel}>كشف:</span> {order.settlementStatementId}
+                                <span className={styles.badgeLabel}>كشف:</span> {group.settlementStatementId}
                               </div>
                             )}
-                            {order.settlementAgent && (
+                            {group.settlementAgent && (
                               <div className={styles.badgeLine}>
-                                <span className={styles.badgeLabel}>المندوب:</span> {order.settlementAgent}
+                                <span className={styles.badgeLabel}>المندوب:</span> {group.settlementAgent}
                               </div>
                             )}
-                            {order.settlementImages && order.settlementImages.length > 0 && (
+                            {group.settlementImages && group.settlementImages.length > 0 && (
                               <div className={styles.badgeLine} style={{ color: '#10b981', fontWeight: 'bold' }}>
-                                📸 {order.settlementImages.length} مرفقات
+                                📸 {group.settlementImages.length} مرفقات
                               </div>
                             )}
                           </div>
@@ -567,20 +1050,36 @@ export default function TreasurySettlementPage() {
                         )}
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedOrder(order)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '1.2rem',
-                            padding: '4px'
-                          }}
-                          title="عرض تفاصيل الطلب"
-                        >
-                          👁️
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStatement(group)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '1.2rem',
+                              padding: '4px'
+                            }}
+                            title="عرض تفاصيل الكشف"
+                          >
+                            👁️
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleArchiveGroup(group)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '1.1rem',
+                              padding: '4px'
+                            }}
+                            title="أرشفة الكشف"
+                          >
+                            📥
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -590,6 +1089,149 @@ export default function TreasurySettlementPage() {
               <div className={styles.emptyState}>
                 <div className={styles.emptyIcon}>📭</div>
                 <div>لا توجد تسويات مكتملة مسجلة بعد!</div>
+              </div>
+            )
+          ) : (
+            archivedGroups.length > 0 ? (
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th className={styles.checkboxCell}>
+                      <input 
+                        type="checkbox" 
+                        className={styles.checkbox}
+                        checked={selectedOrders.size === archivedGroups.length && archivedGroups.length > 0}
+                        onChange={handleSelectAll}
+                      />
+                    </th>
+                    <th>رقم الكشف / الطلب</th>
+                    <th>اسم الزبون / التفاصيل</th>
+                    <th>تاريخ التسوية</th>
+                    <th>المحفظة المستلمة</th>
+                    <th>المبلغ المستلم</th>
+                    <th>بيانات التسوية</th>
+                    <th style={{ width: '140px', textAlign: 'center' }}>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedGroups.map(group => (
+                    <tr key={group.id}>
+                      <td className={styles.checkboxCell}>
+                        <input 
+                          type="checkbox" 
+                          className={styles.checkbox}
+                          checked={selectedOrders.has(group.id)}
+                          onChange={(e) => handleSelectOrder(group.id, e.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: group.isStatement ? 'bold' : 'normal' }}>
+                          {group.isStatement ? `📄 كشف: ${group.settlementStatementId}` : `# ${group.id}`}
+                        </span>
+                      </td>
+                      <td>
+                        {group.isStatement ? (
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '600', color: '#f59e0b' }}>🧾 كشف مشترك ({group.orders.length} طلبات)</span>
+                            <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>أول زبون: {group.orders[0]?.customerName || 'بدون اسم'}</span>
+                          </div>
+                        ) : (
+                          <span>{group.orders[0]?.customerName || 'بدون اسم'}</span>
+                        )}
+                      </td>
+                      <td className={styles.dateCol}>{group.addDate} - {group.addTime}</td>
+                      <td>
+                        <span style={{
+                          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                          color: '#10b981',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          fontSize: '0.85rem',
+                          fontWeight: '600'
+                        }}>
+                          🏦 {group.settledWalletName || 'غير محددة'}
+                        </span>
+                      </td>
+                      <td className={styles.amountCol} style={{ fontWeight: 'bold', color: group.isStatement ? '#f59e0b' : 'inherit' }}>
+                        {group.totalAmount.toLocaleString()} د.ع
+                      </td>
+                      <td>
+                        {(group.settlementStatementId || group.settlementAgent) ? (
+                          <div className={styles.settlementTableBadge}>
+                            {group.settlementStatementId && (
+                              <div className={styles.badgeLine}>
+                                <span className={styles.badgeLabel}>كشف:</span> {group.settlementStatementId}
+                              </div>
+                            )}
+                            {group.settlementAgent && (
+                              <div className={styles.badgeLine}>
+                                <span className={styles.badgeLabel}>المندوب:</span> {group.settlementAgent}
+                              </div>
+                            )}
+                            {group.settlementImages && group.settlementImages.length > 0 && (
+                              <div className={styles.badgeLine} style={{ color: '#10b981', fontWeight: 'bold' }}>
+                                📸 {group.settlementImages.length} مرفقات
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>---</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStatement(group)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '1.2rem',
+                              padding: '4px'
+                            }}
+                            title="عرض تفاصيل الكشف"
+                          >
+                            👁️
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreGroup(group)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '1.1rem',
+                              padding: '4px'
+                            }}
+                            title="استعادة الكشف"
+                          >
+                            ↩️
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteGroup(group)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '1.1rem',
+                              padding: '4px'
+                            }}
+                            title="حذف الكشف نهائياً"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className={styles.emptyState}>
+                <div className={styles.emptyIcon}>📦</div>
+                <div>أرشيف الكشوفات فارغ!</div>
               </div>
             )
           )}
@@ -760,6 +1402,142 @@ export default function TreasurySettlementPage() {
               >
                 إلغاء
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Statement Details Modal */}
+      {selectedStatement && (
+        <div className={styles.modalOverlay} onClick={() => setSelectedStatement(null)}>
+          <div className={styles.detailsModal} style={{ maxWidth: '900px' }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader} style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #311042 100%)' }}>
+              <h2>
+                🧾 تفاصيل كشف التسوية 
+                <span style={{ color: '#38bdf8', fontSize: '1rem', marginRight: '0.5rem' }}>
+                  {selectedStatement.isStatement ? `#${selectedStatement.settlementStatementId}` : `(تسوية فردية)`}
+                </span>
+              </h2>
+              <button className={styles.closeButton} onClick={() => setSelectedStatement(null)}>×</button>
+            </div>
+            
+            <div className={styles.modalBody}>
+              {/* Statement Information Grid */}
+              <div className={styles.detailsGrid} style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.5rem' }}>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>رقم كشف الشركة / الورقي</span>
+                  <span className={styles.detailsValue}>{selectedStatement.settlementStatementId || 'بدون رقم كشف'}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>المحفظة المستلمة</span>
+                  <span className={styles.detailsValue} style={{ color: '#10b981' }}>🏦 {selectedStatement.settledWalletName}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>المندوب المسلِّم</span>
+                  <span className={styles.detailsValue}>{selectedStatement.settlementAgent || '---'}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>تاريخ ووقت الكشف</span>
+                  <span className={styles.detailsValue}>{selectedStatement.addDate} - {selectedStatement.addTime}</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>عدد الطلبات المشمولة</span>
+                  <span className={styles.detailsValue} style={{ color: '#38bdf8', fontWeight: 'bold' }}>{selectedStatement.orders.length} طلب</span>
+                </div>
+                <div className={styles.detailsItem}>
+                  <span className={styles.detailsLabel}>إجمالي مبلغ الكشف</span>
+                  <span className={styles.detailsValue} style={{ color: '#10b981', fontWeight: 'bold' }}>
+                    {selectedStatement.totalAmount.toLocaleString()} د.ع
+                  </span>
+                </div>
+              </div>
+
+              {/* Orders List Table inside Statement */}
+              <div className={styles.itemsTableContainer} style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', color: '#fff', marginBottom: '0.8rem', fontWeight: '600' }}>📦 الطلبات المشمولة في هذا الكشف:</h3>
+                <table className={styles.itemsTable}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>رقم الطلب</th>
+                      <th>اسم الزبون</th>
+                      <th>رقم الهاتف</th>
+                      <th>المحافظة والمنطقة</th>
+                      <th>المبلغ</th>
+                      <th style={{ width: '60px', textAlign: 'center' }}>التفاصيل</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedStatement.orders.map((order, idx) => (
+                      <tr key={order.id}>
+                        <td>{idx + 1}</td>
+                        <td style={{ fontWeight: 'bold' }}>{order.id}</td>
+                        <td>{order.customerName}</td>
+                        <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || '---'}</td>
+                        <td>{order.governorate} - {order.region}</td>
+                        <td style={{ color: '#10b981', fontWeight: 'bold' }}>{order.totalAmount.toLocaleString()} د.ع</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrder(order)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '1.1rem',
+                              padding: '4px'
+                            }}
+                            title="عرض تفاصيل الطلب والمواد"
+                          >
+                            👁️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Settlement Notes */}
+              {selectedStatement.settlementNotes && (
+                <div className={styles.settlementDetailsSection} style={{ marginBottom: '1.5rem' }}>
+                  <h3 className={styles.sectionSubTitle}>📝 ملاحظات التسوية الكلية</h3>
+                  <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)', fontSize: '0.9rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                    {selectedStatement.settlementNotes}
+                  </div>
+                </div>
+              )}
+
+              {/* Attachment Images */}
+              {selectedStatement.settlementImages && selectedStatement.settlementImages.length > 0 && (
+                <div className={styles.settlementDetailsSection}>
+                  <h3 className={styles.sectionSubTitle}>🖼️ مرفقات وصور الكشف الورقي ({selectedStatement.settlementImages.length})</h3>
+                  <div className={styles.imageGallery}>
+                    {selectedStatement.settlementImages.map((imgUrl, index) => (
+                      <div 
+                        key={index} 
+                        className={styles.galleryImageCard}
+                        onClick={() => setLightboxImage(imgUrl)}
+                      >
+                        <img src={imgUrl} alt={`مرفق كشف ${index + 1}`} className={styles.galleryImage} />
+                        <div className={styles.galleryImageOverlay}>
+                          <span>🔍 تكبير</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className={styles.modalFooterDetails}>
+              <div className={styles.notesSection}>
+                💡 اضغط على زر العين (👁️) بجانب أي طلب في الجدول أعلاه لعرض الأصناف المشتراة وتفاصيل العميل.
+              </div>
+              <div className={styles.totalHighlight}>
+                <span>المبلغ الكلي للكشف:</span>
+                <span>{selectedStatement.totalAmount.toLocaleString()} د.ع</span>
+              </div>
             </div>
           </div>
         </div>
