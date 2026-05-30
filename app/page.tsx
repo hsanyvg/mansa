@@ -23,10 +23,24 @@ export default function Dashboard() {
   const [inStockCount, setInStockCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Active Orders (Gauge Card) Period Filter states
+  const [gaugeFilter, setGaugeFilter] = useState('الشهر');
+  const [gaugeStartDate, setGaugeStartDate] = useState('');
+  const [gaugeEndDate, setGaugeEndDate] = useState('');
+  const [isGaugeCalOpen, setIsGaugeCalOpen] = useState(false);
+  const gaugeCalRef = useRef<HTMLDivElement>(null);
+
+  const [tempGaugeFilter, setTempGaugeFilter] = useState('الشهر');
+  const [tempGaugeStartDate, setTempGaugeStartDate] = useState('');
+  const [tempGaugeEndDate, setTempGaugeEndDate] = useState('');
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (teamCalRef.current && !teamCalRef.current.contains(event.target as Node)) {
         setIsTeamCalOpen(false);
+      }
+      if (gaugeCalRef.current && !gaugeCalRef.current.contains(event.target as Node)) {
+        setIsGaugeCalOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -87,6 +101,69 @@ export default function Dashboard() {
       if (!tempEndDate) setTempEndDate(todayStr);
     }
   }, [tempFilter, tempStartDate, tempEndDate]);
+
+  const getGaugeDateRangeLabel = () => {
+    if (gaugeFilter === 'اليوم') return 'تاريخ: اليوم';
+    if (gaugeFilter === 'الأسبوع') return 'تاريخ: الأسبوع';
+    if (gaugeFilter === 'الشهر') return 'تاريخ: الشهر';
+    if (gaugeFilter === 'الحد الأقصى') return 'تاريخ: الحد الأقصى';
+    if (gaugeFilter === 'مخصص') {
+      if (gaugeStartDate && gaugeEndDate) {
+        return `${gaugeStartDate} ⬅️ ${gaugeEndDate}`;
+      }
+      return 'تاريخ: مخصص';
+    }
+    return 'تاريخ: الشهر';
+  };
+
+  const getGaugeDescriptionLabel = () => {
+    if (gaugeFilter === 'اليوم') return 'اليوم';
+    if (gaugeFilter === 'الأسبوع') return 'هذا الأسبوع';
+    if (gaugeFilter === 'الشهر') return 'هذا الشهر';
+    if (gaugeFilter === 'الحد الأقصى') return 'الكل';
+    return 'في هذه الفترة';
+  };
+
+  const toggleGaugeCal = () => {
+    if (!isGaugeCalOpen) {
+      setTempGaugeFilter(gaugeFilter);
+      setTempGaugeStartDate(gaugeStartDate);
+      setTempGaugeEndDate(gaugeEndDate);
+    }
+    setIsGaugeCalOpen(!isGaugeCalOpen);
+  };
+
+  const selectGaugeShortcut = (type: string) => {
+    setTempGaugeFilter(type);
+  };
+
+  const handleGaugeCustomDateChange = (type: 'start' | 'end', val: string) => {
+    setTempGaugeFilter('مخصص');
+    if (type === 'start') {
+      setTempGaugeStartDate(val);
+    } else {
+      setTempGaugeEndDate(val);
+    }
+  };
+
+  const handleApplyGaugeFilter = () => {
+    setGaugeFilter(tempGaugeFilter);
+    setGaugeStartDate(tempGaugeStartDate);
+    setGaugeEndDate(tempGaugeEndDate);
+    setIsGaugeCalOpen(false);
+  };
+
+  const handleCancelGaugeFilter = () => {
+    setIsGaugeCalOpen(false);
+  };
+
+  useEffect(() => {
+    if (tempGaugeFilter === 'مخصص') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (!tempGaugeStartDate) setTempGaugeStartDate(todayStr);
+      if (!tempGaugeEndDate) setTempGaugeEndDate(todayStr);
+    }
+  }, [tempGaugeFilter, tempGaugeStartDate, tempGaugeEndDate]);
 
   useEffect(() => {
     // Listen to orders
@@ -262,12 +339,52 @@ export default function Dashboard() {
 
   const stockPercent = productsCount > 0 ? Math.round((inStockCount / productsCount) * 100) : 0;
 
-  const deliveryRate = React.useMemo(() => {
-    const total = stats.activeOrdersCount;
-    if (total === 0) return 0;
-    const delivered = filteredOrders.filter(o => o.status === 'delivered').length;
-    return Math.round((delivered / total) * 100);
-  }, [stats.activeOrdersCount, filteredOrders]);
+  const gaugeFilteredOrders = React.useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const oneWeek = today - 7 * 24 * 60 * 60 * 1000;
+    const oneMonth = today - 30 * 24 * 60 * 60 * 1000;
+
+    return orders.filter(order => {
+      if (!order.date) return false;
+      const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
+      
+      if (gaugeFilter === 'اليوم') {
+        return orderTime >= today;
+      } else if (gaugeFilter === 'الأسبوع') {
+        return orderTime >= oneWeek;
+      } else if (gaugeFilter === 'الشهر') {
+        return orderTime >= oneMonth;
+      } else if (gaugeFilter === 'الحد الأقصى') {
+        return true;
+      } else if (gaugeFilter === 'مخصص') {
+        let start = 0;
+        if (gaugeStartDate) {
+          const [yr, mo, dy] = gaugeStartDate.split('-').map(Number);
+          start = new Date(yr, mo - 1, dy, 0, 0, 0, 0).getTime();
+        }
+        let end = Infinity;
+        if (gaugeEndDate) {
+          const [yr, mo, dy] = gaugeEndDate.split('-').map(Number);
+          end = new Date(yr, mo - 1, dy, 23, 59, 59, 999).getTime();
+        }
+        return orderTime >= start && orderTime <= end;
+      }
+      return true;
+    });
+  }, [orders, gaugeFilter, gaugeStartDate, gaugeEndDate]);
+
+  const gaugeStats = React.useMemo(() => {
+    const activeOrders = gaugeFilteredOrders.filter(o => o.status !== 'cancelled');
+    const total = activeOrders.length;
+    if (total === 0) return { activeOrdersCount: 0, deliveryRate: 0 };
+    const delivered = gaugeFilteredOrders.filter(o => o.status === 'delivered').length;
+    const rate = Math.round((delivered / total) * 100);
+    return {
+      activeOrdersCount: total,
+      deliveryRate: rate
+    };
+  }, [gaugeFilteredOrders]);
 
   const [animatedRate, setAnimatedRate] = useState(0);
 
@@ -275,11 +392,11 @@ export default function Dashboard() {
     if (!loading) {
       setAnimatedRate(0);
       const timer = setTimeout(() => {
-        setAnimatedRate(deliveryRate);
+        setAnimatedRate(gaugeStats.deliveryRate);
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [deliveryRate, loading]);
+  }, [gaugeStats.deliveryRate, loading]);
 
   if (loading) {
     return (
@@ -342,6 +459,82 @@ export default function Dashboard() {
           <div className={`${styles.card} ${styles.gaugeCard}`}>
             <div className={`${styles.cardHeader} ${styles.gaugeCardHeader}`}>
               <span>الطلبات النشطة (نسبة التوصيل)</span>
+              
+              <div className={styles.teamDatePickerContainer} ref={gaugeCalRef}>
+                <button 
+                  className={styles.teamDateRangeBtn} 
+                  onClick={toggleGaugeCal}
+                >
+                  📅 {getGaugeDateRangeLabel()}
+                </button>
+                
+                {isGaugeCalOpen && (
+                  <div className={styles.teamDateModal}>
+                    <div className={styles.teamShortcutList}>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempGaugeFilter === 'اليوم' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectGaugeShortcut('اليوم')}
+                      >
+                        اليوم
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempGaugeFilter === 'الأسبوع' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectGaugeShortcut('الأسبوع')}
+                      >
+                        الأسبوع
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempGaugeFilter === 'الشهر' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectGaugeShortcut('الشهر')}
+                      >
+                        الشهر
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempGaugeFilter === 'الحد الأقصى' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectGaugeShortcut('الحد الأقصى')}
+                      >
+                        الحد الأقصى
+                      </button>
+                    </div>
+                    
+                    <div className={styles.teamDateInputs}>
+                      <div className={styles.teamDateInputGroup}>
+                        <label>من تاريخ:</label>
+                        <input 
+                          type="date" 
+                          className={styles.teamDateInput} 
+                          value={tempGaugeStartDate} 
+                          onChange={e => handleGaugeCustomDateChange('start', e.target.value)} 
+                        />
+                      </div>
+                      <div className={styles.teamDateInputGroup}>
+                        <label>إلى تاريخ:</label>
+                        <input 
+                          type="date" 
+                          className={styles.teamDateInput} 
+                          value={tempGaugeEndDate} 
+                          onChange={e => handleGaugeCustomDateChange('end', e.target.value)} 
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.teamModalActions}>
+                      <button 
+                        className={styles.teamApplyBtn} 
+                        onClick={handleApplyGaugeFilter}
+                      >
+                        تم
+                      </button>
+                      <button 
+                        className={styles.teamCancelBtn} 
+                        onClick={handleCancelGaugeFilter}
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             
             <div className={styles.gaugeContainer}>
@@ -408,7 +601,7 @@ export default function Dashboard() {
             <div className={styles.gaugeValue}>{animatedRate}%</div>
 
             <div className={styles.gaugeDescription}>
-              📦 {stats.activeOrdersCount} طلب نشط {filter}
+              📦 {gaugeStats.activeOrdersCount} طلب نشط {getGaugeDescriptionLabel()}
             </div>
           </div>
 
