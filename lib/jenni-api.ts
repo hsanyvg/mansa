@@ -54,6 +54,10 @@ export async function getJenniToken(userId: string) {
   try {
     data = JSON.parse(textData);
   } catch (e) {
+    // If it's not JSON, maybe it's a plain text error from the server (like "Login failed: Bad credentials")
+    if (!response.ok) {
+      throw new Error(`فشل تسجيل الدخول: ${textData.substring(0, 100)}`);
+    }
     throw new Error(`رد غير متوقع من الخادم: ${textData.substring(0, 50)}...`);
   }
 
@@ -101,6 +105,9 @@ export async function createJenniShipment(order: any, userId: string) {
   try {
     data = JSON.parse(textData);
   } catch (e) {
+    if (!response.ok) {
+      throw new Error(`فشل الإرسال: ${textData.substring(0, 100)}`);
+    }
     throw new Error(`رد غير متوقع عند إنشاء الشحنة: ${textData.substring(0, 50)}...`);
   }
 
@@ -129,6 +136,9 @@ export async function queryJenniShipment(shipmentNumbers: string[], userId: stri
   try {
     data = JSON.parse(textData);
   } catch (e) {
+    if (!response.ok) {
+      throw new Error(`فشل الاستعلام: ${textData.substring(0, 100)}`);
+    }
     throw new Error(`رد غير متوقع عند الاستعلام: ${textData.substring(0, 50)}...`);
   }
 
