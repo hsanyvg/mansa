@@ -65,7 +65,7 @@ export async function getJenniToken(userId: string) {
     throw new Error(data.message || 'فشل تسجيل الدخول لشركة التوصيل. يرجى مراجعة الإعدادات (اسم المستخدم وكلمة المرور).');
   }
 
-  return { token: data.token, systemCode: integration.systemCode };
+  return { token: data.token.replace('Bearer ', '').trim(), systemCode: integration.systemCode };
 }
 
 export async function createJenniShipment(order: any, userId: string) {
