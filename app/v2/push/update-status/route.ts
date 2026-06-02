@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       
       if (update.action_code === 'SUCCESSFUL_DELIVERY' || update.current_step === 'DELIVERED') {
         newStatus = 'delivered'; // مكتمل / مستلم
-      } else if (update.action_code === 'RETURNED_WITH_AGENT' || update.action_code === 'RETURNED') {
+      } else if (update.action_code === 'RETURNED_WITH_AGENT' || update.action_code === 'RETURN_TO_STORE' || (update.current_step && update.current_step.startsWith('RTO_'))) {
         newStatus = 'returned'; // راجع
       } else if (update.action_code === 'POSTPONED') {
         newStatus = 'shipped'; // مؤجل (يبقى تحت الشحن)
