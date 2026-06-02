@@ -98,9 +98,18 @@ export async function POST(req: Request) {
       const errorData = await deleteRes.json().catch(() => ({}));
       console.error('Jenni API Delete Error:', errorData);
       
-      // If Jenni returns an error, it might be because it's already out for delivery or doesn't exist
-      const errorMsg = errorData.message || 'لا يمكن إلغاء هذه الشحنة حالياً (قد تكون خرجت مع المندوب)';
-      return NextResponse.json({ success: false, message: errorMsg }, { status: 400 });
+      const errorMsg = errorData.message || errorData.error || '';
+      const isNotFound = errorMsg.toLowerCase().includes('not found') || 
+                         errorMsg.toLowerCase().includes('لا يوجد') || 
+                         deleteRes.status === 404;
+      
+      if (!isNotFound) {
+        // If Jenni returns an actual error (e.g., shipment locked, out for delivery), block the cancellation
+        const finalMsg = errorMsg || 'لا يمكن إلغاء هذه الشحنة حالياً (قد تكون خرجت مع المندوب)';
+        return NextResponse.json({ success: false, message: finalMsg }, { status: 400 });
+      }
+      
+      console.log(`Shipment was already deleted or not found on Jenni (${targetShipmentId}). Proceeding to cancel locally in Firestore.`);
     }
 
     // 4. Update order in Firebase to cancelled
