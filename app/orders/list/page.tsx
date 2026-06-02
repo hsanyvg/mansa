@@ -425,7 +425,7 @@ export default function OrdersListPage() {
 
         try {
           const response = await createJenniShipment(orderData, currentUserId);
-          const shipmentId = response?.shipment_id || response?.data?.shipment_id || response?.id || '';
+          const shipmentId = response?.accepted_shipments?.[0]?.shipment_id || response?.shipment_id || response?.data?.shipment_id || response?.id || '';
 
           const batch = writeBatch(db);
           const orderRef = doc(db, 'orders', orderData.id);
