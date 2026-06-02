@@ -1772,7 +1772,7 @@ export default function OrdersListPage() {
                                 const res = await fetch('/api/orders/cancel-jenni', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ orderId: order.id, shipmentId: order.shipmentId || order.shipmentNumber || order.jenniShipmentId })
+                                  body: JSON.stringify({ orderId: order.id, shipmentId: order.jenniShipmentId || order.shipmentId || order.shipmentNumber })
                                 });
                                 const data = await res.json();
                                 if (data.success) {
