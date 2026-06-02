@@ -1761,6 +1761,35 @@ export default function OrdersListPage() {
                       >
                         🗑️
                       </button>
+                      {(order.shipmentId || order.shipmentNumber) && !['cancelled', 'returned', 'delivered'].includes(order.status) && (
+                        <button 
+                          className={styles.actionButton} 
+                          title="إلغاء الشحنة من شركة التوصيل"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (window.confirm('هل أنت متأكد أنك تريد إلغاء هذه الشحنة من نظام شركة التوصيل؟ (هذا الإجراء لا يمكن التراجع عنه)')) {
+                              try {
+                                const res = await fetch('/api/orders/cancel-jenni', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ orderId: order.id, shipmentId: order.shipmentId || order.shipmentNumber })
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  setNotificationModal({ show: true, message: `✅ ${data.message}` });
+                                } else {
+                                  setNotificationModal({ show: true, message: `❌ ${data.message}` });
+                                }
+                              } catch (err) {
+                                setNotificationModal({ show: true, message: '❌ حدث خطأ في الاتصال' });
+                              }
+                            }
+                          }}
+                          style={{ borderColor: '#f97316', color: '#f97316' }}
+                        >
+                          🚫
+                        </button>
+                      )}
                       {activeTab === 'archived' && (
                         <button 
                            className={styles.actionButton} 
