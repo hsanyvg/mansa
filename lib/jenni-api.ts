@@ -104,8 +104,8 @@ export async function createJenniShipment(order: any, userId: string) {
         receiver_name: order.customerName,
         receiver_phone_1: order.customerPhone || order.phone1 || order.phone || '07700000000',
         governorate_code: getGovernorateCode(order.governorate),
-        city: order.district || order.city || 'المركز',
-        address: order.address || 'غير محدد',
+        city: order.region || order.district || order.city || 'المركز',
+        address: order.address || order.region || 'غير محدد',
         amount_iqd: Number(order.totalAmount || 0),
       }
     ]
