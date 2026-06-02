@@ -6,11 +6,26 @@ export async function POST(req: Request) {
   try {
     const { orderId, shipmentId } = await req.json();
 
-    if (!orderId || !shipmentId) {
-      return NextResponse.json({ success: false, message: 'معرف الطلب أو الشحنة مفقود' }, { status: 400 });
+    if (!orderId) {
+      return NextResponse.json({ success: false, message: 'معرف الطلب مفقود' }, { status: 400 });
     }
 
-    // 1. Fetch Integration Settings
+    // 1. Fetch Order Document from Firestore to get the true jenniShipmentId
+    const orderRef = doc(db, 'orders', orderId);
+    const orderSnap = await getDoc(orderRef);
+    if (!orderSnap.exists()) {
+      return NextResponse.json({ success: false, message: 'الطلب غير موجود في قاعدة البيانات' }, { status: 404 });
+    }
+
+    const orderData = orderSnap.data();
+    // Prioritize the correct internal ID stored in Firestore, fallback to client-provided shipmentId
+    const targetShipmentId = orderData.jenniShipmentId || orderData.shipmentId || orderData.shipmentNumber || shipmentId;
+
+    if (!targetShipmentId) {
+      return NextResponse.json({ success: false, message: 'معرف الشحنة غير متوفر في النظام' }, { status: 400 });
+    }
+
+    // 2. Fetch Integration Settings
     const integrationRef = doc(db, 'users', 'default_tenant', 'integrations', 'delivery');
     const integrationSnap = await getDoc(integrationRef);
 
@@ -41,7 +56,7 @@ export async function POST(req: Request) {
     const token = loginData.token.replace('Bearer ', '').trim();
 
     // 3. Send DELETE request to Jenni API
-    const deleteRes = await fetch(`https://almasara.jenni.delivery/api/v2/orders/${shipmentId}`, {
+    const deleteRes = await fetch(`https://almasara.jenni.delivery/api/v2/orders/${targetShipmentId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`
