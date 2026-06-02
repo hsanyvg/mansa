@@ -102,7 +102,7 @@ export async function createJenniShipment(order: any, userId: string) {
         shipment_number: order.orderNumber || order.id,
         external_shipment_id: order.id, 
         receiver_name: order.customerName,
-        receiver_phone_1: order.phone1 || order.phone,
+        receiver_phone_1: order.customerPhone || order.phone1 || order.phone || '07700000000',
         governorate_code: getGovernorateCode(order.governorate),
         city: order.district || order.city || 'المركز',
         address: order.address || 'غير محدد',
