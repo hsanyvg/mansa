@@ -67,6 +67,7 @@ export async function POST(req: Request) {
           deliveryAmount: update.amount_iqd,
           shipmentNumber: update.shipment_number,
           shipmentId: update.shipment_id,
+          jenniShipmentId: update.shipment_id || '',
           updatedAt: serverTimestamp()
         });
         processedCount++;

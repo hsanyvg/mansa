@@ -99,6 +99,7 @@ export async function POST(req: Request) {
             deliveryStatus: shipment.current_step,
             deliveryNote: shipment.note || '',
             shipmentId: shipment.shipment_number,
+            jenniShipmentId: shipment.shipment_id || shipment.id || '',
             updatedAt: new Date()
           });
           updatedCount++;
