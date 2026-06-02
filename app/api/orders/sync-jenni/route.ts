@@ -92,17 +92,19 @@ export async function POST(req: Request) {
         const orderRef = doc(db, 'orders', orderId);
         // We read the doc to see if the status actually changed to avoid unnecessary writes
         const orderSnap = await getDoc(orderRef);
-        const currentData = orderSnap.data();
-        if (orderSnap.exists() && (currentData.status !== newStatus || !currentData.shipmentId || !currentData.jenniShipmentId)) {
-          await updateDoc(orderRef, {
-            status: newStatus,
-            deliveryStatus: shipment.current_step,
-            deliveryNote: shipment.note || '',
-            shipmentId: shipment.shipment_number,
-            jenniShipmentId: shipment.shipment_id || shipment.id || '',
-            updatedAt: new Date()
-          });
-          updatedCount++;
+        if (orderSnap.exists()) {
+          const currentData = orderSnap.data();
+          if (currentData && (currentData.status !== newStatus || !currentData.shipmentId || !currentData.jenniShipmentId)) {
+            await updateDoc(orderRef, {
+              status: newStatus,
+              deliveryStatus: shipment.current_step,
+              deliveryNote: shipment.note || '',
+              shipmentId: shipment.shipment_number,
+              jenniShipmentId: shipment.shipment_id || shipment.id || '',
+              updatedAt: new Date()
+            });
+            updatedCount++;
+          }
         }
       }
     }
