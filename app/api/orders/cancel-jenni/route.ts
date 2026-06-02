@@ -19,11 +19,7 @@ export async function POST(req: Request) {
 
     const orderData = orderSnap.data();
     // Prioritize the correct internal ID stored in Firestore, fallback to client-provided shipmentId
-    const targetShipmentId = orderData.jenniShipmentId || orderData.shipmentId || orderData.shipmentNumber || shipmentId;
-
-    if (!targetShipmentId) {
-      return NextResponse.json({ success: false, message: 'معرف الشحنة غير متوفر في النظام' }, { status: 400 });
-    }
+    let targetShipmentId = orderData.jenniShipmentId || orderData.shipmentId || orderData.shipmentNumber || shipmentId;
 
     // 2. Fetch Integration Settings
     const integrationRef = doc(db, 'users', 'default_tenant', 'integrations', 'delivery');
@@ -38,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'بيانات الدخول لشركة التوصيل مفقودة' }, { status: 400 });
     }
 
-    // 2. Login to get token
+    // 3. Login to get token
     const loginRes = await fetch('https://almasara.jenni.delivery/api/v2/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,6 +50,40 @@ export async function POST(req: Request) {
     }
 
     const token = loginData.token.replace('Bearer ', '').trim();
+
+    // Self-healing: if targetShipmentId is missing or matches orderId (since orderId is merchant order number), query Jenni API
+    if (!targetShipmentId || targetShipmentId === orderId) {
+      console.log(`jenniShipmentId is missing or equal to orderId for ${orderId}. Querying Jenni API to resolve...`);
+      try {
+        const queryRes = await fetch('https://almasara.jenni.delivery/api/v2/shipments/query', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ shipment_numbers: [orderId] })
+        });
+        const queryData = await queryRes.json();
+        if (queryRes.ok && queryData.success && queryData.shipments?.length > 0) {
+          const foundShip = queryData.shipments[0];
+          const resolvedId = foundShip.shipment_id || foundShip.id;
+          if (resolvedId) {
+            console.log(`Resolved targetShipmentId to: ${resolvedId}. Updating Firestore...`);
+            targetShipmentId = resolvedId;
+            await updateDoc(orderRef, {
+              jenniShipmentId: resolvedId,
+              shipmentId: foundShip.shipment_number || orderId
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to self-heal shipment ID:', err);
+      }
+    }
+
+    if (!targetShipmentId) {
+      return NextResponse.json({ success: false, message: 'معرف الشحنة غير متوفر في النظام' }, { status: 400 });
+    }
 
     // 3. Send DELETE request to Jenni API
     const deleteRes = await fetch(`https://almasara.jenni.delivery/api/v2/orders/${targetShipmentId}`, {
@@ -74,7 +104,6 @@ export async function POST(req: Request) {
     }
 
     // 4. Update order in Firebase to cancelled
-    const orderRef = doc(db, 'orders', orderId);
     await updateDoc(orderRef, {
       status: 'cancelled',
       deliveryStatus: 'CANCELLED_API',

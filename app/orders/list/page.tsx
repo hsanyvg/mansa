@@ -1761,7 +1761,7 @@ export default function OrdersListPage() {
                       >
                         🗑️
                       </button>
-                      {(order.shipmentId || order.shipmentNumber || order.jenniShipmentId) && !['cancelled', 'returned', 'delivered'].includes(order.status) && (
+                      {(order.shipmentId || order.shipmentNumber || order.jenniShipmentId || (order.status === 'shipped' && order.shipmentCompany === 'Jenni Logistics')) && !['cancelled', 'returned', 'delivered'].includes(order.status) && (
                         <button 
                           className={styles.actionButton} 
                           title="إلغاء الشحنة من شركة التوصيل"
