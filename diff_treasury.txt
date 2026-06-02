@@ -1,0 +1,922 @@
+﻿diff --git a/app/treasury/page.tsx b/app/treasury/page.tsx
+index a4e4b37..76e2d85 100644
+--- a/app/treasury/page.tsx
++++ b/app/treasury/page.tsx
+@@ -1,18 +1,44 @@
+ "use client";
+ 
+-import React, { useState, useEffect } from 'react';
++import React, { useState, useEffect, useRef } from 'react';
+ import { db } from '../../lib/firebase';
+-import { collection, query as fsQuery, where, onSnapshot, writeBatch, doc } from 'firebase/firestore';
++import { collection, onSnapshot, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+ import styles from './page.module.css';
+ 
+ interface Order {
+   id: string;
+   customerName: string;
+   customerPhone: string;
++  shipmentCompany?: string;
+   totalAmount: number;
+   status: string;
++  fulfillmentStatus?: string;
+   is_settled?: boolean;
++  paymentStatus?: string;
+   date: any;
++  addDate?: string;
++  addTime?: string;
++  items?: any[];
++  notes?: string;
++  region?: string;
++  governorate?: string;
++  employeeName?: string;
++  isPaidToStaff?: boolean;
++  settledWalletName?: string;
++}
++
++interface Wallet {
++  id: string;
++  name: string;
++}
++
++interface UploadedImage {
++  id: string;
++  name: string;
++  originalSize: number;
++  compressedSize: number;
++  dataUrl: string;
++  file: File;
+ }
+ 
+ export default function TreasurySettlementPage() {
+@@ -21,52 +47,225 @@ export default function TreasurySettlementPage() {
+   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+   const [isSettling, setIsSettling] = useState(false);
++  const [wallets, setWallets] = useState<Wallet[]>([]);
++  const [showWalletModal, setShowWalletModal] = useState(false);
++  const [selectedWalletId, setSelectedWalletId] = useState('');
++  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
++  const [settledOrders, setSettledOrders] = useState<Order[]>([]);
++  const [activeTab, setActiveTab] = useState<'pending' | 'settled'>('pending');
++
++  // Phase 2 Form States
++  const [externalStatementId, setExternalStatementId] = useState('');
++  const [deliveryAgent, setDeliveryAgent] = useState('');
++  const [settlementNotes, setSettlementNotes] = useState('');
++  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
++  const [isCompressing, setIsCompressing] = useState(false);
++
++  // File Input Refs
++  const fileInputRef = useRef<HTMLInputElement>(null);
++  const cameraInputRef = useRef<HTMLInputElement>(null);
++
++  // HTML5 Canvas image compression to keep files < 200KB and preserve text clarity
++  const compressImage = (file: File): Promise<UploadedImage> => {
++    return new Promise((resolve) => {
++      const reader = new FileReader();
++      reader.readAsDataURL(file);
++      reader.onload = (event) => {
++        const img = new Image();
++        img.src = event.target?.result as string;
++        img.onload = () => {
++          const canvas = document.createElement('canvas');
++          let width = img.width;
++          let height = img.height;
++
++          // Limit resolution for text clarity and compression efficiency
++          const maxDim = 1600;
++          if (width > maxDim || height > maxDim) {
++            if (width > height) {
++              height = Math.round((height * maxDim) / width);
++              width = maxDim;
++            } else {
++              width = Math.round((width * maxDim) / height);
++              height = maxDim;
++            }
++          }
++
++          canvas.width = width;
++          canvas.height = height;
++          const ctx = canvas.getContext('2d');
++          if (ctx) {
++            ctx.fillStyle = '#ffffff';
++            ctx.fillRect(0, 0, width, height);
++            ctx.drawImage(img, 0, 0, width, height);
++          }
++
++          let quality = 0.8;
++          let dataUrl = canvas.toDataURL('image/jpeg', quality);
++          let blobSize = Math.round((dataUrl.length - 22) * 3 / 4);
++
++          while (blobSize > 200 * 1024 && quality > 0.15) {
++            quality -= 0.08;
++            dataUrl = canvas.toDataURL('image/jpeg', quality);
++            blobSize = Math.round((dataUrl.length - 22) * 3 / 4);
++          }
++
++          const arr = dataUrl.split(',');
++          const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
++          const bstr = atob(arr[1]);
++          let n = bstr.length;
++          const u8arr = new Uint8Array(n);
++          while (n--) {
++            u8arr[n] = bstr.charCodeAt(n);
++          }
++          const compressedBlob = new Blob([u8arr], { type: mime });
++          const compressedFile = new File([compressedBlob], file.name, {
++            type: mime,
++            lastModified: Date.now()
++          });
++
++          resolve({
++            id: Math.random().toString(36).substring(2, 9),
++            name: file.name,
++            originalSize: file.size,
++            compressedSize: compressedFile.size,
++            dataUrl: dataUrl,
++            file: compressedFile
++          });
++        };
++        img.onerror = () => {
++          resolve({
++            id: Math.random().toString(36).substring(2, 9),
++            name: file.name,
++            originalSize: file.size,
++            compressedSize: file.size,
++            dataUrl: event.target?.result as string,
++            file: file
++          });
++        };
++      };
++      reader.onerror = () => {
++        resolve({
++          id: Math.random().toString(36).substring(2, 9),
++          name: file.name,
++          originalSize: file.size,
++          compressedSize: file.size,
++          dataUrl: '',
++          file: file
++        });
++      };
++    });
++  };
++
++  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
++    if (!e.target.files || e.target.files.length === 0) return;
++    
++    setIsCompressing(true);
++    const filesArray = Array.from(e.target.files);
++    
++    try {
++      const promises = filesArray.map(file => compressImage(file));
++      const results = await Promise.all(promises);
++      setUploadedImages(prev => [...prev, ...results]);
++    } catch (err) {
++      console.error("Error compressing images:", err);
++    } finally {
++      setIsCompressing(false);
++      if (e.target) e.target.value = '';
++    }
++  };
++
++  const removeImage = (id: string) => {
++    setUploadedImages(prev => prev.filter(img => img.id !== id));
++  };
++
++  // Fetch wallets list
++  useEffect(() => {
++    const unsubWallets = onSnapshot(collection(db, 'wallets'), (snapshot) => {
++      setWallets(snapshot.docs.map(doc => ({
++        id: doc.id,
++        name: doc.data().name || '',
++      })));
++    });
++    return () => unsubWallets();
++  }, []);
+ 
+   useEffect(() => {
+-    // Query all 'delivered' orders to calculate balances and show pending ones
+-    const q = fsQuery(
+-      collection(db, 'orders'),
+-      where('status', '==', 'delivered')
+-    );
++    // Fetch all orders for real-time calculations and filter delivered ones
++    const q = collection(db, 'orders');
+ 
+     const unsubscribe = onSnapshot(q, (snapshot) => {
+       let actual = 0;
+       let pending = 0;
+       const pendingList: Order[] = [];
++      const settledList: Order[] = [];
+ 
+       snapshot.docs.forEach((document) => {
+         const data = document.data();
+-        const amount = Number(data.totalAmount) || 0;
++        const amount = Number(data.totalAmount) || Number(data.price) || 0;
+         
+-        // Treat undefined is_settled as false
+-        const isSettled = data.is_settled === true;
+-
+-        if (isSettled) {
+-          actual += amount;
+-        } else {
+-          pending += amount;
+-          pendingList.push({
++        const isSettled = data.is_settled === true || data.paymentStatus === 'settled';
++        const isDelivered = data.status === 'delivered' || data.fulfillmentStatus === 'Delivered';
++
++        if (isDelivered) {
++          // Format dates
++          let addDate = '---';
++          let addTime = '---';
++          if (data.date) {
++            const dateObj = data.date.toDate ? data.date.toDate() : new Date(data.date);
++            addDate = dateObj.toLocaleDateString('en-GB'); // DD/MM/YYYY
++            addTime = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
++          }
++
++          const orderObj: Order = {
+             id: document.id,
+             customerName: data.customerName || '╪ذ╪»┘ê┘ ╪د╪│┘à',
+-            customerPhone: data.customerPhone || '',
++            customerPhone: data.customerPhone || data.phone || '',
++            shipmentCompany: data.shipmentCompany || '---',
+             totalAmount: amount,
+-            status: data.status,
++            status: data.status || '',
++            fulfillmentStatus: data.fulfillmentStatus || '',
+             is_settled: isSettled,
+-            date: data.date
+-          });
++            paymentStatus: data.paymentStatus || '',
++            date: data.date,
++            addDate,
++            addTime,
++            items: data.items || [],
++            notes: data.notes || '',
++            region: data.region || '---',
++            governorate: data.governorate || '---',
++            employeeName: data.employeeName || '---',
++            isPaidToStaff: data.isPaidToStaff || false,
++            settledWalletName: data.settledWalletName || ''
++          };
++
++          if (isSettled) {
++            actual += amount;
++            settledList.push(orderObj);
++          } else {
++            pending += amount;
++            pendingList.push(orderObj);
++          }
+         }
+       });
+ 
+       // Sort pending list by date descending (newest first)
+       pendingList.sort((a, b) => {
+-        const tA = a.date?.toMillis ? a.date.toMillis() : 0;
+-        const tB = b.date?.toMillis ? b.date.toMillis() : 0;
++        const tA = a.date?.toMillis ? a.date.toMillis() : (a.date ? new Date(a.date).getTime() : 0);
++        const tB = b.date?.toMillis ? b.date.toMillis() : (b.date ? new Date(b.date).getTime() : 0);
++        return tB - tA;
++      });
++
++      // Sort settled list by date descending (newest first)
++      settledList.sort((a, b) => {
++        const tA = a.date?.toMillis ? a.date.toMillis() : (a.date ? new Date(a.date).getTime() : 0);
++        const tB = b.date?.toMillis ? b.date.toMillis() : (b.date ? new Date(b.date).getTime() : 0);
+         return tB - tA;
+       });
+ 
+       setActualBalance(actual);
+       setPendingBalance(pending);
+       setPendingOrders(pendingList);
++      setSettledOrders(settledList);
+       
+       // Remove any selected orders that are no longer pending
+       setSelectedOrders((prev) => {
+@@ -80,7 +279,7 @@ export default function TreasurySettlementPage() {
+       });
+ 
+     }, (error) => {
+-      console.error("Error fetching delivered orders:", error);
++      console.error("Error fetching orders:", error);
+     });
+ 
+     return () => unsubscribe();
+@@ -106,26 +305,72 @@ export default function TreasurySettlementPage() {
+     });
+   };
+ 
+-  const handleSettle = async () => {
++  const handleSettle = () => {
+     if (selectedOrders.size === 0) return;
+-    
+-    const confirmSettle = window.confirm(`┘ç┘ ╪ث┘╪ز ┘à╪ز╪ث┘â╪» ┘à┘ ╪ز╪│┘ê┘è╪ر ┘à╪ذ┘╪║ ${selectedOrders.size} ╪╖┘╪ذ/╪╖┘╪ذ╪د╪ز╪ا`);
+-    if (!confirmSettle) return;
++    setSelectedWalletId('');
++    setExternalStatementId('');
++    setDeliveryAgent('');
++    setSettlementNotes('');
++    setUploadedImages([]);
++    setShowWalletModal(true);
++  };
++
++  const handleConfirmSettlement = async () => {
++    if (selectedOrders.size === 0 || !selectedWalletId) return;
++
++    const selectedWallet = wallets.find(w => w.id === selectedWalletId);
++    if (!selectedWallet) {
++      alert("╪د┘┘à╪ص┘╪╕╪ر ╪د┘┘à╪ص╪»╪»╪ر ╪║┘è╪▒ ┘à┘ê╪ش┘ê╪»╪ر.");
++      return;
++    }
+ 
+     setIsSettling(true);
+     try {
+       const batch = writeBatch(db);
+-      
++      let totalAmount = 0;
++
+       selectedOrders.forEach(orderId => {
++        const order = pendingOrders.find(o => o.id === orderId);
++        if (order) {
++          totalAmount += order.totalAmount;
++        }
+         const orderRef = doc(db, 'orders', orderId);
+-        batch.update(orderRef, { is_settled: true });
++        batch.update(orderRef, {
++          is_settled: true,
++          paymentStatus: 'settled',
++          settledWalletId: selectedWallet.id,
++          settledWalletName: selectedWallet.name,
++          settledAt: serverTimestamp()
++        });
++      });
++
++      // Create a deposit transaction record in treasury_transactions
++      const now = new Date();
++      const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
++      const dateStr = now.toISOString().split('T')[0];
++
++      const transactionRef = doc(collection(db, 'treasury_transactions'));
++      batch.set(transactionRef, {
++        type: 'deposit',
++        amount: totalAmount,
++        currency: 'IQD',
++        date: dateStr,
++        time: timeStr,
++        details: `╪ز╪│┘ê┘è╪ر ╪ز┘┘é╪د╪خ┘è╪ر ┘┘╪╖┘╪ذ╪د╪ز ╪░╪د╪ز ╪د┘╪ث╪▒┘é╪د┘à: ${Array.from(selectedOrders).join(', ')}`,
++        walletId: selectedWallet.id,
++        createdAt: serverTimestamp()
+       });
+ 
+       await batch.commit();
+-      
+-      // Selection will automatically clear via the onSnapshot effect, but we can clear it here too
++
+       setSelectedOrders(new Set());
+-      alert('╪ز┘à╪ز ╪د┘╪ز╪│┘ê┘è╪ر ╪ذ┘╪ش╪د╪ص!');
++      setShowWalletModal(false);
++      setSelectedWalletId('');
++      setExternalStatementId('');
++      setDeliveryAgent('');
++      setSettlementNotes('');
++      setUploadedImages([]);
++      alert('╪ز┘à╪ز ╪ز╪│┘ê┘è╪ر ╪د┘╪╖┘╪ذ╪د╪ز ╪د┘┘à╪ص╪»╪»╪ر ┘ê╪ح┘è╪»╪د╪╣ ╪د┘┘à╪ذ┘╪║ ┘┘è ╪د┘┘à╪ص┘╪╕╪ر ╪ذ┘╪ش╪د╪ص!');
+     } catch (error) {
+       console.error("Error during settlement:", error);
+       alert('╪ص╪»╪س ╪«╪╖╪ث ╪ث╪س┘╪د╪ة ╪د┘╪ز╪│┘ê┘è╪ر. ┘è╪▒╪ش┘ë ╪د┘┘à╪ص╪د┘ê┘╪ر ┘à╪▒╪ر ╪ث╪«╪▒┘ë.');
+@@ -134,107 +379,456 @@ export default function TreasurySettlementPage() {
+     }
+   };
+ 
++  const totalSelectedAmount = Array.from(selectedOrders).reduce((sum, orderId) => {
++    const order = pendingOrders.find(o => o.id === orderId);
++    return sum + (order ? order.totalAmount : 0);
++  }, 0);
++
+   return (
+     <div className={styles.container}>
+       <div className={styles.header}>
+         <h1 className={styles.title}>╪د┘╪«╪▓┘╪ر ╪د┘┘à╪د┘┘è╪ر (╪ز╪│┘ê┘è╪ر ╪د┘╪╖┘╪ذ╪د╪ز)</h1>
+       </div>
+ 
+-      {/* Cards Section */}
+-      <div className={styles.cardsContainer}>
+-        <div className={`${styles.card} ${styles.actualCard}`}>
+-          <div className={styles.cardContent}>
+-            <div className={styles.cardLabel}>╪د┘╪▒╪╡┘è╪» ╪د┘┘╪╣┘┘è (╪د┘┘é╪د╪╡╪ر)</div>
+-            <div className={`${styles.cardValue} ${styles.actualValue}`}>
+-              {actualBalance.toLocaleString()} ╪».╪╣
+-            </div>
+-          </div>
+-          <div className={styles.cardIcon}>≡اْ░</div>
+-        </div>
+ 
+-        <div className={`${styles.card} ${styles.pendingCard}`}>
+-          <div className={styles.cardContent}>
+-            <div className={styles.cardLabel}>╪د┘╪▒╪╡┘è╪» ╪د┘┘à╪╣┘┘é (┘╪»┘ë ╪د┘┘à┘╪»┘ê╪ذ┘è┘)</div>
+-            <div className={`${styles.cardValue} ${styles.pendingValue}`}>
+-              {pendingBalance.toLocaleString()} ╪».╪╣
+-            </div>
+-          </div>
+-          <div className={styles.cardIcon}>≡اأأ</div>
+-        </div>
+-      </div>
+ 
+       {/* Settlement Table Section */}
+       <div className={styles.tableSection}>
+         <div className={styles.sectionHeader}>
+-          <div className={styles.sectionTitle}>
+-            ╪د┘╪╖┘╪ذ╪د╪ز ╪د┘┘à╪╣┘┘é╪ر ({pendingOrders.length})
++          {/* Tabs Container */}
++          <div className={styles.tabsContainer}>
++            <button 
++              className={`${styles.tab} ${activeTab === 'pending' ? styles.activeTab : ''}`}
++              onClick={() => setActiveTab('pending')}
++            >
++              ╪د┘╪╖┘╪ذ╪د╪ز ╪د┘┘à╪╣┘┘é╪ر ({pendingOrders.length})
++            </button>
++            <button 
++              className={`${styles.tab} ${activeTab === 'settled' ? styles.activeTab : ''}`}
++              onClick={() => setActiveTab('settled')}
++            >
++              ╪د┘╪ز╪│┘ê┘è╪د╪ز ╪د┘┘à┘â╪ز┘à┘╪ر ({settledOrders.length})
++            </button>
+           </div>
+-          <button 
+-            className={styles.settleButton} 
+-            onClick={handleSettle}
+-            disabled={selectedOrders.size === 0 || isSettling}
+-          >
+-            {isSettling ? (
+-              <span className={styles.loader}></span>
+-            ) : (
+-              <>
+-                <span className={styles.settleIcon}>ظ£ô</span>
+-                ╪ز╪ث┘â┘è╪» ╪د╪│╪ز┘╪د┘à ╪د┘┘à╪ذ╪د┘╪║ (╪ز╪│┘ê┘è╪ر)
+-              </>
+-            )}
+-          </button>
++
++          {activeTab === 'pending' && (
++            <button 
++              className={styles.settleButton} 
++              onClick={handleSettle}
++              disabled={selectedOrders.size === 0 || isSettling}
++            >
++              {isSettling ? (
++                <span className={styles.loader}></span>
++              ) : (
++                <>
++                  <span className={styles.settleIcon}>ظ£ô</span>
++                  ╪ز╪ث┘â┘è╪» ╪د╪│╪ز┘╪د┘à ╪د┘┘à╪ذ╪د┘╪║ (╪ز╪│┘ê┘è╪ر)
++                </>
++              )}
++            </button>
++          )}
+         </div>
+ 
+         <div className={styles.tableContainer}>
+-          {pendingOrders.length > 0 ? (
+-            <table className={styles.table}>
+-              <thead>
+-                <tr>
+-                  <th className={styles.checkboxCell}>
+-                    <input 
+-                      type="checkbox" 
+-                      className={styles.checkbox}
+-                      checked={selectedOrders.size === pendingOrders.length && pendingOrders.length > 0}
+-                      onChange={handleSelectAll}
+-                    />
+-                  </th>
+-                  <th>╪▒┘é┘à ╪د┘╪╖┘╪ذ</th>
+-                  <th>╪د╪│┘à ╪د┘╪▓╪ذ┘ê┘</th>
+-                  <th>╪د┘┘ç╪د╪ز┘</th>
+-                  <th>╪د┘┘à╪ذ┘╪║</th>
+-                  <th>╪د┘╪ز╪د╪▒┘è╪«</th>
+-                </tr>
+-              </thead>
+-              <tbody>
+-                {pendingOrders.map(order => (
+-                  <tr key={order.id}>
+-                    <td className={styles.checkboxCell}>
++          {activeTab === 'pending' ? (
++            pendingOrders.length > 0 ? (
++              <table className={styles.table}>
++                <thead>
++                  <tr>
++                    <th className={styles.checkboxCell}>
+                       <input 
+                         type="checkbox" 
+                         className={styles.checkbox}
+-                        checked={selectedOrders.has(order.id)}
+-                        onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
++                        checked={selectedOrders.size === pendingOrders.length && pendingOrders.length > 0}
++                        onChange={handleSelectAll}
+                       />
+-                    </td>
+-                    <td>{order.id}</td>
+-                    <td>{order.customerName}</td>
+-                    <td dir="ltr" style={{ textAlign: 'right' }}>{order.customerPhone}</td>
+-                    <td className={styles.amountCol}>{order.totalAmount.toLocaleString()} ╪».╪╣</td>
+-                    <td className={styles.dateCol}>
+-                      {order.date?.toDate ? order.date.toDate().toLocaleDateString('ar-IQ') : 'N/A'}
+-                    </td>
++                    </th>
++                    <th>╪▒┘é┘à ╪د┘╪╖┘╪ذ</th>
++                    <th>╪د╪│┘à ╪د┘╪▓╪ذ┘ê┘</th>
++                    <th>╪┤╪▒┘â╪ر ╪د┘╪ز┘ê╪╡┘è┘ / ╪د┘┘à┘╪»┘ê╪ذ</th>
++                    <th>╪د┘┘à╪ذ┘╪║ ╪د┘┘à╪│╪ز╪ص┘é</th>
++                    <th style={{ width: '60px', textAlign: 'center' }}>╪د┘╪ز┘╪د╪╡┘è┘</th>
+                   </tr>
+-                ))}
+-              </tbody>
+-            </table>
++                </thead>
++                <tbody>
++                  {pendingOrders.map(order => (
++                    <tr key={order.id}>
++                      <td className={styles.checkboxCell}>
++                        <input 
++                          type="checkbox" 
++                          className={styles.checkbox}
++                          checked={selectedOrders.has(order.id)}
++                          onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
++                        />
++                      </td>
++                      <td>{order.id}</td>
++                      <td>{order.customerName}</td>
++                      <td>{order.shipmentCompany || '---'}</td>
++                      <td className={styles.amountCol}>{order.totalAmount.toLocaleString()} ╪».╪╣</td>
++                      <td style={{ textAlign: 'center' }}>
++                        <button
++                          type="button"
++                          onClick={() => setSelectedOrder(order)}
++                          style={{
++                            background: 'none',
++                            border: 'none',
++                            cursor: 'pointer',
++                            fontSize: '1.2rem',
++                            padding: '4px'
++                          }}
++                          title="╪╣╪▒╪╢ ╪ز┘╪د╪╡┘è┘ ╪د┘╪╖┘╪ذ"
++                        >
++                          ≡اّي╕
++                        </button>
++                      </td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            ) : (
++              <div className={styles.emptyState}>
++                <div className={styles.emptyIcon}>ظ£ذ</div>
++                <div>┘╪د ╪ز┘ê╪ش╪» ╪╖┘╪ذ╪د╪ز ┘à╪╣┘┘é╪ر ╪ذ╪د┘╪ز╪╕╪د╪▒ ╪د┘╪ز╪│┘ê┘è╪ر!</div>
++              </div>
++            )
+           ) : (
+-            <div className={styles.emptyState}>
+-              <div className={styles.emptyIcon}>ظ£ذ</div>
+-              <div>┘╪د ╪ز┘ê╪ش╪» ╪╖┘╪ذ╪د╪ز ┘à╪╣┘┘é╪ر ╪ذ╪د┘╪ز╪╕╪د╪▒ ╪د┘╪ز╪│┘ê┘è╪ر!</div>
+-            </div>
++            // Settled orders tab
++            settledOrders.length > 0 ? (
++              <table className={styles.table}>
++                <thead>
++                  <tr>
++                    <th>╪▒┘é┘à ╪د┘╪╖┘╪ذ</th>
++                    <th>╪د╪│┘à ╪د┘╪▓╪ذ┘ê┘</th>
++                    <th>╪ز╪د╪▒┘è╪« ╪د┘╪╖┘╪ذ</th>
++                    <th>╪د┘┘à╪ص┘╪╕╪ر ╪د┘┘à╪│╪ز┘┘à╪ر</th>
++                    <th>╪د┘┘à╪ذ┘╪║ ╪د┘┘à╪│╪ز┘┘à</th>
++                    <th style={{ width: '60px', textAlign: 'center' }}>╪د┘╪ز┘╪د╪╡┘è┘</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {settledOrders.map(order => (
++                    <tr key={order.id}>
++                      <td>{order.id}</td>
++                      <td>{order.customerName}</td>
++                      <td className={styles.dateCol}>{order.addDate} - {order.addTime}</td>
++                      <td>
++                        <span style={{
++                          backgroundColor: 'rgba(16, 185, 129, 0.1)',
++                          color: '#10b981',
++                          padding: '4px 8px',
++                          borderRadius: '6px',
++                          fontSize: '0.85rem',
++                          fontWeight: '600'
++                        }}>
++                          ≡اخ {order.settledWalletName || '╪║┘è╪▒ ┘à╪ص╪»╪»╪ر'}
++                        </span>
++                      </td>
++                      <td className={styles.amountCol}>{order.totalAmount.toLocaleString()} ╪».╪╣</td>
++                      <td style={{ textAlign: 'center' }}>
++                        <button
++                          type="button"
++                          onClick={() => setSelectedOrder(order)}
++                          style={{
++                            background: 'none',
++                            border: 'none',
++                            cursor: 'pointer',
++                            fontSize: '1.2rem',
++                            padding: '4px'
++                          }}
++                          title="╪╣╪▒╪╢ ╪ز┘╪د╪╡┘è┘ ╪د┘╪╖┘╪ذ"
++                        >
++                          ≡اّي╕
++                        </button>
++                      </td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            ) : (
++              <div className={styles.emptyState}>
++                <div className={styles.emptyIcon}>≡اôص</div>
++                <div>┘╪د ╪ز┘ê╪ش╪» ╪ز╪│┘ê┘è╪د╪ز ┘à┘â╪ز┘à┘╪ر ┘à╪│╪ش┘╪ر ╪ذ╪╣╪»!</div>
++              </div>
++            )
+           )}
+         </div>
+       </div>
++
++      {/* Wallet Selection Modal */}
++      {showWalletModal && (
++        <div className={styles.modalOverlay} onClick={() => setShowWalletModal(false)}>
++          <div className={styles.settlementModal} onClick={e => e.stopPropagation()}>
++            <div className={styles.settlementModalHeader}>
++              <h2 className={styles.modalTitle}>≡اد╛ ╪ح╪ز┘à╪د┘à ╪د┘╪ز╪│┘ê┘è╪ر ╪د┘┘à╪د┘┘è╪ر ┘┘╪╖┘╪ذ╪د╪ز</h2>
++              <button className={styles.closeBtnIcon} onClick={() => setShowWalletModal(false)}>├ù</button>
++            </div>
++            
++            <div className={styles.settlementSummary}>
++              <div className={styles.summaryItem}>
++                <span className={styles.summaryLabel}>╪╣╪»╪» ╪د┘╪╖┘╪ذ╪د╪ز ╪د┘┘à╪ص╪»╪»╪ر</span>
++                <span className={styles.summaryValue} style={{ color: '#10b981' }}>{selectedOrders.size} ╪╖┘╪ذ</span>
++              </div>
++              <div className={styles.summaryItem}>
++                <span className={styles.summaryLabel}>╪ح╪ش┘à╪د┘┘è ╪د┘┘à╪ذ┘╪║ ╪د┘┘à╪│╪ز╪ص┘é</span>
++                <span className={styles.summaryValue} style={{ color: '#38bdf8' }}>{totalSelectedAmount.toLocaleString()} ╪».╪╣</span>
++              </div>
++            </div>
++
++            <div className={styles.settlementModalBody}>
++              <div className={styles.modalFormGrid}>
++                <div className={styles.formGroup}>
++                  <label className={styles.label}>╪▒┘é┘à ┘â╪┤┘ ╪د┘╪┤╪▒┘â╪ر (╪▒┘é┘à ╪د┘┘â╪┤┘ ╪د┘┘ê╪▒┘é┘è)</label>
++                  <input
++                    type="text"
++                    className={styles.input}
++                    placeholder="╪ث╪»╪«┘ ╪▒┘é┘à ╪د┘┘â╪┤┘ ┘ç┘╪د..."
++                    value={externalStatementId}
++                    onChange={e => setExternalStatementId(e.target.value)}
++                  />
++                </div>
++
++                <div className={styles.formGroup}>
++                  <label className={styles.label}>╪د╪│┘à/╪▒┘é┘à ╪د┘┘à┘╪»┘ê╪ذ ╪د┘┘à╪│┘┘ّ┘┘à</label>
++                  <input
++                    type="text"
++                    className={styles.input}
++                    placeholder="╪ث╪»╪«┘ ╪د╪│┘à ╪ث┘ê ╪▒┘é┘à ╪د┘┘à┘╪»┘ê╪ذ..."
++                    value={deliveryAgent}
++                    onChange={e => setDeliveryAgent(e.target.value)}
++                  />
++                </div>
++
++                <div className={styles.formGroup}>
++                  <label className={styles.label}>╪د╪«╪ز╪▒ ╪د┘┘à╪ص┘╪╕╪ر ╪د┘┘à╪│╪ز┘ç╪»┘╪ر <span style={{ color: '#ef4444' }}>*</span></label>
++                  <select
++                    className={styles.select}
++                    value={selectedWalletId}
++                    onChange={e => setSelectedWalletId(e.target.value)}
++                    required
++                  >
++                    <option value="">╪د╪«╪ز╪▒ ╪د┘┘à╪ص┘╪╕╪ر ╪د┘╪ز┘è ╪│┘è┘ê╪»╪╣ ╪ذ┘ç╪د ╪د┘┘à╪ذ┘╪║...</option>
++                    {wallets.map(w => (
++                      <option key={w.id} value={w.id}>{w.name}</option>
++                    ))}
++                  </select>
++                </div>
++
++                <div className={styles.formGroup} style={{ gridColumn: 'span 2' }}>
++                  <label className={styles.label}>┘à┘╪د╪ص╪╕╪د╪ز / ╪د┘╪ذ┘è╪د┘</label>
++                  <textarea
++                    className={styles.textarea}
++                    placeholder="╪د┘â╪ز╪ذ ╪ث┘è ┘à┘╪د╪ص╪╕╪د╪ز╪î ╪ز┘╪د╪╡┘è┘ ╪ث┘ê ╪د╪│╪ز┘é╪╖╪د╪╣╪د╪ز ┘à╪د┘┘è╪ر ┘ç┘╪د..."
++                    value={settlementNotes}
++                    onChange={e => setSettlementNotes(e.target.value)}
++                    rows={3}
++                  />
++                </div>
++              </div>
++
++              {/* Multiple Image Uploader Section */}
++              <div className={styles.uploaderSection}>
++                <label className={styles.label} style={{ marginBottom: '0.8rem', display: 'block' }}>
++                  ≡اô╕ ┘à╪▒┘┘é╪د╪ز ┘ê╪╡┘ê╪▒ ╪د┘┘â╪┤┘ ╪د┘┘ê╪▒┘é┘è
++                </label>
++                
++                <div className={styles.uploadActions}>
++                  <button 
++                    type="button"
++                    className={styles.uploadBtn}
++                    onClick={() => fileInputRef.current?.click()}
++                  >
++                    ≡اôé ╪▒┘╪╣ ┘à┘ ┘à┘┘╪د╪ز ╪د┘╪ش┘ç╪د╪▓
++                  </button>
++                  <button 
++                    type="button"
++                    className={styles.cameraBtn}
++                    onClick={() => cameraInputRef.current?.click()}
++                  >
++                    ≡اô╖ ╪د┘╪ز┘é╪د╪╖ ╪ذ┘â╪د┘à┘è╪▒╪د ╪د┘┘ç╪د╪ز┘
++                  </button>
++                  
++                  <input
++                    type="file"
++                    ref={fileInputRef}
++                    style={{ display: 'none' }}
++                    accept="image/*"
++                    multiple
++                    onChange={handleImageChange}
++                  />
++                  <input
++                    type="file"
++                    ref={cameraInputRef}
++                    style={{ display: 'none' }}
++                    accept="image/*"
++                    capture="environment"
++                    onChange={handleImageChange}
++                  />
++                </div>
++
++                {isCompressing && (
++                  <div className={styles.compressionProgress}>
++                    <span className={styles.loaderSmall}></span>
++                    ╪ش╪د╪▒┘è ╪╢╪║╪╖ ┘ê┘à╪╣╪د┘╪ش╪ر ╪د┘╪╡┘ê╪▒ ┘╪ز╪ص╪│┘è┘ ╪د┘┘à╪│╪د╪ص╪ر...
++                  </div>
++                )}
++
++                {uploadedImages.length > 0 && (
++                  <div className={styles.thumbnailsContainer}>
++                    <div className={styles.thumbnailsTitle}>
++                      ╪د┘╪╡┘ê╪▒ ╪د┘┘à╪▒┘┘é╪ر ({uploadedImages.length}):
++                    </div>
++                    <div className={styles.thumbnailsGrid}>
++                      {uploadedImages.map(img => (
++                        <div key={img.id} className={styles.thumbnailCard}>
++                          <img src={img.dataUrl} alt={img.name} className={styles.thumbnailImg} />
++                          <button 
++                            type="button" 
++                            className={styles.deleteThumbnailBtn}
++                            onClick={() => removeImage(img.id)}
++                            title="╪ح╪▓╪د┘╪ر ╪د┘╪╡┘ê╪▒╪ر"
++                          >
++                            ظإî
++                          </button>
++                          <div className={styles.thumbnailInfo}>
++                            <span className={img.compressedSize > 200 * 1024 ? styles.thumbnailNameWarning : styles.thumbnailName} title={img.name}>{img.name}</span>
++                            <span className={styles.thumbnailSizes}>
++                              {(img.originalSize / 1024).toFixed(0)}KB ظئةي╕ <strong style={{ color: '#10b981' }}>{(img.compressedSize / 1024).toFixed(0)}KB</strong>
++                            </span>
++                          </div>
++                        </div>
++                      ))}
++                    </div>
++                  </div>
++                )}
++              </div>
++            </div>
++
++            <div className={styles.modalActions} style={{ padding: '1.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
++              <button 
++                className={styles.submitBtn} 
++                onClick={handleConfirmSettlement}
++                disabled={!selectedWalletId || isSettling || isCompressing}
++              >
++                {isSettling ? <span className={styles.loader}></span> : '╪ز╪ث┘â┘è╪» ╪د┘╪ز╪│┘ê┘è╪ر ┘ê╪ز╪╣╪»┘è┘ ╪د┘╪ص╪د┘╪ر'}
++              </button>
++              <button 
++                className={styles.cancelBtn} 
++                onClick={() => setShowWalletModal(false)}
++                disabled={isSettling}
++              >
++                ╪ح┘╪║╪د╪ة
++              </button>
++            </div>
++          </div>
++        </div>
++      )}
++
++      {/* Order Details Modal */}
++      {selectedOrder && (
++        <div className={styles.modalOverlay} onClick={() => setSelectedOrder(null)}>
++          <div className={styles.detailsModal} onClick={(e) => e.stopPropagation()}>
++            <div className={styles.modalHeader}>
++              <h2>≡اô ╪ز┘╪د╪╡┘è┘ ╪د┘╪╖┘╪ذ <span style={{ color: '#10b981', fontSize: '1rem', marginRight: '0.5rem' }}>#{selectedOrder.id.slice(-6).toUpperCase()}</span></h2>
++              <button className={styles.closeButton} onClick={() => setSelectedOrder(null)}>├ù</button>
++            </div>
++            
++            <div className={styles.modalBody}>
++              {/* Customer Information Grid */}
++              <div className={styles.detailsGrid}>
++                <div className={styles.detailsItem}>
++                  <span className={styles.detailsLabel}>╪د╪│┘à ╪د┘╪▓╪ذ┘ê┘</span>
++                  <span className={styles.detailsValue}>{selectedOrder.customerName || '---'}</span>
++                </div>
++                <div className={styles.detailsItem}>
++                  <span className={styles.detailsLabel}>╪▒┘é┘à ╪د┘┘ç╪د╪ز┘</span>
++                  <span className={styles.detailsValue} style={{direction: 'ltr', textAlign: 'right'}}>{selectedOrder.customerPhone || '---'}</span>
++                </div>
++                <div className={styles.detailsItem}>
++                  <span className={styles.detailsLabel}>╪د┘┘à╪ص╪د┘╪╕╪ر</span>
++                  <span className={styles.detailsValue}>{selectedOrder.governorate || '---'}</span>
++                </div>
++                <div className={styles.detailsItem}>
++                  <span className={styles.detailsLabel}>╪د┘┘à┘╪╖┘é╪ر</span>
++                  <span className={styles.detailsValue}>{selectedOrder.region || '---'}</span>
++                </div>
++                <div className={styles.detailsItem}>
++                  <span className={styles.detailsLabel}>╪ز╪د╪▒┘è╪« ┘ê┘ê┘é╪ز ╪د┘╪╖┘╪ذ</span>
++                  <span className={styles.detailsValue}>{selectedOrder.addDate} - {selectedOrder.addTime}</span>
++                </div>
++                <div className={styles.detailsItem}>
++                  <span className={styles.detailsLabel}>╪د┘┘à┘ê╪╕┘ ╪د┘┘à╪│╪ج┘ê┘</span>
++                  <span className={styles.detailsValue}>
++                    {selectedOrder.employeeName || '---'}
++                    {selectedOrder.isPaidToStaff && (
++                      <span style={{ color: '#10b981', fontSize: '0.8rem', marginRight: '0.5rem' }}>(ظ£¤ي╕ ╪ز┘à ╪»┘╪╣ ╪د┘╪╣┘à┘ê┘╪ر)</span>
++                    )}
++                  </span>
++                </div>
++                <div className={styles.detailsItem}>
++                  <span className={styles.detailsLabel}>╪ص╪د┘╪ر ╪د┘╪╖┘╪ذ / ╪د┘╪┤╪ص┘</span>
++                  <span className={styles.detailsValue} style={{ color: '#fbbf24' }}>
++                    {selectedOrder.status === 'delivered' ? '┘à┘â╪ز┘à┘' : selectedOrder.status} ({selectedOrder.fulfillmentStatus || '---'})
++                  </span>
++                </div>
++                {selectedOrder.shipmentCompany && (
++                  <div className={styles.detailsItem}>
++                    <span className={styles.detailsLabel}>╪┤╪▒┘â╪ر ╪د┘╪ز┘ê╪╡┘è┘</span>
++                    <span className={styles.detailsValue}>{selectedOrder.shipmentCompany}</span>
++                  </div>
++                )}
++              </div>
++
++              {/* Items Table */}
++              <div className={styles.itemsTableContainer}>
++                <table className={styles.itemsTable}>
++                  <thead>
++                    <tr>
++                      <th>#</th>
++                      <th>╪د┘╪╡┘┘</th>
++                      <th>╪د┘┘â┘à┘è╪ر</th>
++                      <th>╪د┘╪│╪╣╪▒ ╪د┘┘à┘╪▒╪»</th>
++                      <th>╪د┘╪ح╪ش┘à╪د┘┘è</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    {selectedOrder.items && selectedOrder.items.length > 0 ? (
++                      selectedOrder.items.map((item: any, idx: number) => (
++                        <tr key={idx}>
++                          <td>{idx + 1}</td>
++                          <td style={{ fontWeight: 'bold' }}>{item.productName || '╪╡┘┘ ╪║┘è╪▒ ┘à╪╣╪▒┘ê┘'}</td>
++                          <td>{item.quantity}</td>
++                          <td>{new Intl.NumberFormat('en-US').format(item.unitPrice || 0)} ╪».╪╣</td>
++                          <td style={{ color: '#10B981', fontWeight: 'bold' }}>
++                            {new Intl.NumberFormat('en-US').format((item.quantity || 0) * (item.unitPrice || 0))} ╪».╪╣
++                          </td>
++                        </tr>
++                      ))
++                    ) : (
++                      <tr>
++                        <td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8' }}>┘╪د ╪ز┘ê╪ش╪» ╪ث╪╡┘╪د┘ ┘┘è ╪د┘╪│┘╪ر ┘┘ç╪░╪د ╪د┘╪╖┘╪ذ</td>
++                      </tr>
++                    )}
++                  </tbody>
++                </table>
++              </div>
++            </div>
++
++            <div className={styles.modalFooterDetails}>
++              <div className={styles.notesSection}>
++                {selectedOrder.notes ? (
++                  <><strong>┘à┘╪د╪ص╪╕╪د╪ز:</strong> {selectedOrder.notes}</>
++                ) : (
++                  <span style={{opacity: 0.5}}>┘╪د ╪ز┘ê╪ش╪» ┘à┘╪د╪ص╪╕╪د╪ز</span>
++                )}
++              </div>
++              <div className={styles.totalHighlight}>
++                <span>╪د┘┘à╪ذ┘╪║ ╪د┘┘â┘┘è:</span>
++                <span>{selectedOrder.totalAmount.toLocaleString()} ╪».╪╣</span>
++              </div>
++            </div>
++          </div>
++        </div>
++      )}
+     </div>
+   );
+ }

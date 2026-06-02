@@ -615,7 +615,226 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+.salesCard {
+  min-height: 220px;
+  align-self: start;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.salesHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 2;
+  width: 100%;
+}
+
+.salesTitleContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.salesTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.salesSub {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 0.15rem;
+}
+
+.salesFiltersContainer {
+  display: flex;
+  gap: 0.25rem;
+  direction: ltr;
+}
+
+.salesFilterBtn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.salesFilterBtn:hover {
+  color: #ffffff;
+}
+
+.salesFilterBtnActive {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.chartContainer {
+  margin: 0.5rem -1.5rem;
+  height: 115px;
+  position: relative;
+  overflow: visible;
+  z-index: 1;
+}
+
+.chartYAxis {
+  position: absolute;
+  left: 1.5rem;
+  top: 8px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  z-index: 3;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+  font-family: monospace;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.chartBarPath {
+  transition: opacity 0.2s ease, filter 0.2s ease;
+  cursor: pointer;
+}
+
+.chartBarPath:hover {
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.8));
+  opacity: 0.95;
+}
+
+.salesChartSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.salesFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  z-index: 2;
+  width: 100%;
+  margin-top: auto;
+}
+
+.salesValueContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.salesValueRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.salesValueText {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+
+.salesTrendBadge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  direction: ltr;
+}
+
+.salesTrendUp {
+  color: #10b981;
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.salesTrendDown {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.salesStatusLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+
+.checkboxIcon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.salesActions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  direction: ltr;
+}
+
+.btnBuy {
+  background: linear-gradient(135deg, #a855f7, #7c3aed);
+  color: #ffffff;
+  border: none;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.35);
+}
+
+.btnBuy:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(168, 85, 247, 0.45);
+}
+
+.btnSell {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btnSell:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
 .gaugeCard {
+  min-height: 220px;
+  align-self: start;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -631,17 +850,17 @@
 .gaugeContainer {
   position: relative;
   width: 100%;
-  height: 170px;
+  height: 110px;
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  margin-top: 10px;
+  margin-top: 5px;
 }
 
 .gaugeSvg {
   width: 100%;
   height: auto;
-  max-width: 260px;
+  max-width: 170px;
   overflow: visible;
 }
 
@@ -655,26 +874,26 @@
 
 .gaugeValue {
   text-align: center;
-  font-size: 26px;
-  font-weight: bold;
-  margin-top: 10px;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-top: 4px;
   color: #ffffff;
-  text-shadow: 0 0 15px rgba(168, 85, 247, 0.9);
+  text-shadow: 0 0 10px rgba(168, 85, 247, 0.7);
   transition: all 0.3s ease;
 }
 
 .card:hover .gaugeValue {
   color: #d8b4fe;
-  text-shadow: 0 0 25px rgba(168, 85, 247, 1);
-  transform: scale(1.08);
+  text-shadow: 0 0 20px rgba(168, 85, 247, 0.9);
+  transform: scale(1.06);
 }
 
 .gaugeDescription {
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   font-weight: 600;
-  margin-top: 0.5rem;
+  margin-top: 2px;
 }
 
 .elevatedCard {

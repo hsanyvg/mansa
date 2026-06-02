@@ -339,6 +339,218 @@ export default function Dashboard() {
 
   const stockPercent = productsCount > 0 ? Math.round((inStockCount / productsCount) * 100) : 0;
 
+  const salesTrendData = React.useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const points: { value: number; time?: number; label: string }[] = [];
+
+    const getStartOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+    if (filter === 'اليوم') {
+      // 12 blocks of 2 hours for today (00:00, 02:00, ..., 22:00)
+      for (let i = 0; i < 12; i++) {
+        const hour = i * 2;
+        const label = hour === 0 ? '12ص' : hour === 12 ? '12م' : hour < 12 ? `${hour}ص` : `${hour - 12}م`;
+        points.push({ value: 0, label });
+      }
+      filteredOrders.forEach(order => {
+        if (order.status !== 'delivered' || !order.date) return;
+        const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
+        const hour = date.getHours();
+        const blockIndex = Math.min(11, Math.floor(hour / 2));
+        points[blockIndex].value += Number(order.totalAmount) || 0;
+      });
+    } else if (filter === 'هذا الأسبوع') {
+      // Last 7 days
+      const days = ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+        points.push({ value: 0, time: getStartOfDay(d), label: days[d.getDay()] });
+      }
+      filteredOrders.forEach(order => {
+        if (order.status !== 'delivered' || !order.date) return;
+        const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
+        const orderDayStart = getStartOfDay(new Date(orderTime));
+        const point = points.find(p => p.time === orderDayStart);
+        if (point) {
+          point.value += Number(order.totalAmount) || 0;
+        }
+      });
+    } else if (filter === 'هذا الشهر') {
+      // Last 15 days or last 30 days
+      for (let i = 14; i >= 0; i--) {
+        const d = new Date(today.getTime() - i * 2 * 24 * 60 * 60 * 1000);
+        points.push({ value: 0, time: getStartOfDay(d), label: `${d.getDate()}` });
+      }
+      filteredOrders.forEach(order => {
+        if (order.status !== 'delivered' || !order.date) return;
+        const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
+        const orderDayStart = getStartOfDay(new Date(orderTime));
+        let minDiff = Infinity;
+        let closestIndex = 0;
+        points.forEach((p, idx) => {
+          const diff = Math.abs(orderDayStart - p.time!);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = idx;
+          }
+        });
+        if (minDiff <= 2 * 24 * 60 * 60 * 1000) {
+          points[closestIndex].value += Number(order.totalAmount) || 0;
+        }
+      });
+    } else {
+      // هذا العام: last 12 months
+      const monthsShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        points.push({ value: 0, time: d.getTime(), label: monthsShort[d.getMonth()] });
+      }
+      filteredOrders.forEach(order => {
+        if (order.status !== 'delivered' || !order.date) return;
+        const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
+        const yr = date.getFullYear();
+        const mo = date.getMonth();
+        points.forEach(p => {
+          const d = new Date(p.time!);
+          if (d.getFullYear() === yr && d.getMonth() === mo) {
+            p.value += Number(order.totalAmount) || 0;
+          }
+        });
+      });
+    }
+
+    return points;
+  }, [filteredOrders, filter]);
+
+  const svgChartPath = React.useMemo(() => {
+    const width = 500;
+    const height = 115;
+    const padding = 8;
+    const chartWidth = width;
+    const chartHeight = 87; // drawing height range (95 - 8)
+
+    if (salesTrendData.length === 0) {
+      return { 
+        barPaths: [],
+        maxVal: 0,
+        minVal: 0
+      };
+    }
+
+    const values = salesTrendData.map(p => p.value);
+    const maxVal = Math.max(...values);
+    const minVal = Math.min(...values);
+    const range = maxVal - minVal;
+
+    const slotWidth = chartWidth / salesTrendData.length;
+    const barWidth = Math.min(24, Math.max(6, slotWidth * 0.45));
+    const r = Math.min(5, barWidth / 2);
+    const baseline = 95;
+
+    const barPaths = salesTrendData.map((point, idx) => {
+      const x = (idx + 0.5) * slotWidth;
+      const y = range === 0 
+        ? 8 + chartHeight / 2 
+        : 8 + chartHeight - ((point.value - minVal) / range) * chartHeight;
+      
+      const path = point.value === 0 
+        ? '' 
+        : `M ${x - barWidth / 2} ${baseline} 
+           L ${x - barWidth / 2} ${y + r} 
+           A ${r} ${r} 0 0 1 ${x - barWidth / 2 + r} ${y} 
+           L ${x + barWidth / 2 - r} ${y} 
+           A ${r} ${r} 0 0 1 ${x + barWidth / 2} ${y + r} 
+           L ${x + barWidth / 2} ${baseline} 
+           Z`;
+      return { path, val: point.value, label: point.label, x, y };
+    });
+
+    return { barPaths, maxVal, minVal };
+  }, [salesTrendData]);
+
+  const salesTrendPercentage = React.useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const oneDay = 24 * 60 * 60 * 1000;
+    const oneWeek = 7 * oneDay;
+    const oneMonth = 30 * oneDay;
+    const oneYear = 365 * oneDay;
+
+    let currentStart = 0;
+    let prevStart = 0;
+    let prevEnd = 0;
+
+    if (filter === 'اليوم') {
+      currentStart = today;
+      prevStart = today - oneDay;
+      prevEnd = today;
+    } else if (filter === 'هذا الأسبوع') {
+      currentStart = today - oneWeek;
+      prevStart = today - 2 * oneWeek;
+      prevEnd = today - oneWeek;
+    } else if (filter === 'هذا الشهر') {
+      currentStart = today - oneMonth;
+      prevStart = today - 2 * oneMonth;
+      prevEnd = today - oneMonth;
+    } else if (filter === 'هذا العام') {
+      currentStart = today - oneYear;
+      prevStart = today - 2 * oneYear;
+      prevEnd = today - oneYear;
+    } else {
+      return 0;
+    }
+
+    const currentSales = orders
+      .filter(o => {
+        if (o.status !== 'delivered' || !o.date) return false;
+        const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
+        return oTime >= currentStart;
+      })
+      .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+
+    const prevSales = orders
+      .filter(o => {
+        if (o.status !== 'delivered' || !o.date) return false;
+        const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
+        return oTime >= prevStart && oTime < prevEnd;
+      })
+      .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+
+    if (prevSales === 0) {
+      return currentSales > 0 ? 100 : 0;
+    }
+    return Math.round(((currentSales - prevSales) / prevSales) * 10000) / 100;
+  }, [orders, filter]);
+
+  const yAxisLabels = React.useMemo(() => {
+    const max = svgChartPath.maxVal || 0;
+    const min = svgChartPath.minVal || 0;
+
+    if (max === 0 && min === 0) {
+      return {
+        top: '100,000',
+        mid: '50,000',
+        bottom: '0'
+      };
+    }
+
+    if (max === min) {
+      return {
+        top: Math.round(max).toLocaleString(),
+        mid: Math.round(max / 2).toLocaleString(),
+        bottom: '0'
+      };
+    }
+
+    const range = max - min;
+    return {
+      top: Math.round(max).toLocaleString(),
+      mid: Math.round(min + range / 2).toLocaleString(),
+      bottom: Math.round(min).toLocaleString()
+    };
+  }, [svgChartPath.maxVal, svgChartPath.minVal]);
+
   const gaugeFilteredOrders = React.useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -444,14 +656,96 @@ export default function Dashboard() {
 
         <div className={styles.dashboardGrid}>
           {/* Card 1 */}
-          <div className={`${styles.card} ${styles.colSpan2}`}>
-            <div className={styles.cardHeader}>
-              <span>إجمالي المبيعات (الواصلة)</span>
+          <div className={`${styles.card} ${styles.colSpan2} ${styles.salesCard}`}>
+            <div className={styles.salesHeader}>
+              <div className={styles.salesTitleContainer}>
+                <div className={styles.salesTitle}>إجمالي المبيعات (الواصلة)</div>
+                <div className={styles.salesSub}>Mansa Sales</div>
+              </div>
+              <div className={styles.salesFiltersContainer}>
+                {['اليوم', 'هذا الأسبوع', 'هذا الشهر', 'هذا العام'].map((f) => {
+                  const label = f === 'اليوم' ? '1D' : f === 'هذا الأسبوع' ? '1W' : f === 'هذا الشهر' ? '1M' : '1Y';
+                  return (
+                    <button
+                      key={f}
+                      className={`${styles.salesFilterBtn} ${filter === f ? styles.salesFilterBtnActive : ''}`}
+                      onClick={() => setFilter(f)}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className={styles.cardValue} style={{ color: '#10b981' }}>{stats.totalSales.toLocaleString()} د.ع</div>
-            <div className={`${styles.trend} ${styles.up}`}>
-              <span>📈 {filter}</span>
-              <span style={{ color: 'var(--text-muted)' }}>حركات مستلمة ومكتملة</span>
+
+            <div className={styles.chartContainer}>
+              <div className={styles.chartYAxis}>
+                <span>{yAxisLabels.top}</span>
+                <span>{yAxisLabels.mid}</span>
+                <span>{yAxisLabels.bottom}</span>
+              </div>
+              <svg className={styles.salesChartSvg} viewBox="0 0 500 115" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="salesBarGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#c084fc" />
+                    <stop offset="30%" stopColor="#a855f7" />
+                    <stop offset="100%" stopColor="rgba(168, 85, 247, 0.05)" />
+                  </linearGradient>
+                </defs>
+
+                {/* Apple-style horizontal dashed gridlines corresponding to Top, Mid, Bottom */}
+                <line x1="0" y1="8" x2="500" y2="8" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
+                <line x1="0" y1="51.5" x2="500" y2="51.5" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
+                <line x1="0" y1="95" x2="500" y2="95" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+
+                {/* Render the bars */}
+                {svgChartPath.barPaths.map((bar, i) => bar.path && (
+                  <path
+                    key={i}
+                    d={bar.path}
+                    fill="url(#salesBarGradient)"
+                    className={styles.chartBarPath}
+                  />
+                ))}
+
+                {/* Render X-Axis weekday/period labels */}
+                {svgChartPath.barPaths.map((bar, i) => (
+                  <text
+                    key={`lbl-${i}`}
+                    x={bar.x}
+                    y="108"
+                    textAnchor="middle"
+                    fill="rgba(255, 255, 255, 0.3)"
+                     fontSize="9"
+                     fontWeight="700"
+                   >
+                      {bar.label}
+                   </text>
+                 ))}
+               </svg>
+             </div>
+
+            <div className={styles.salesFooter}>
+              <div className={styles.salesValueContainer}>
+                <div className={styles.salesValueRow}>
+                  <span className={styles.salesValueText}>{stats.totalSales.toLocaleString()} د.ع</span>
+                  <span className={`${styles.salesTrendBadge} ${salesTrendPercentage >= 0 ? styles.salesTrendUp : styles.salesTrendDown}`}>
+                    {salesTrendPercentage >= 0 ? '▲' : '▼'} {salesTrendPercentage >= 0 ? '+' : ''}{Math.abs(salesTrendPercentage)}%
+                  </span>
+                </div>
+                <div className={styles.salesStatusLabel}>
+                  <span>حركات مستلمة ومكتملة</span>
+                  <svg className={styles.checkboxIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <rect x="3" y="3" width="18" height="18" rx="4" fill="rgba(16, 185, 129, 0.1)" stroke="#10b981" />
+                    <path d="M9 12l2 2 4-4" stroke="#10b981" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className={styles.salesActions}>
+                <button className={styles.btnBuy}>التفاصيل</button>
+                <button className={styles.btnSell}>تصدير</button>
+              </div>
             </div>
           </div>
 
