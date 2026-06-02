@@ -1761,7 +1761,7 @@ export default function OrdersListPage() {
                       >
                         🗑️
                       </button>
-                      {(order.shipmentId || order.shipmentNumber) && !['cancelled', 'returned', 'delivered'].includes(order.status) && (
+                      {(order.shipmentId || order.shipmentNumber || order.jenniShipmentId) && !['cancelled', 'returned', 'delivered'].includes(order.status) && (
                         <button 
                           className={styles.actionButton} 
                           title="إلغاء الشحنة من شركة التوصيل"
@@ -1772,7 +1772,7 @@ export default function OrdersListPage() {
                                 const res = await fetch('/api/orders/cancel-jenni', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ orderId: order.id, shipmentId: order.shipmentId || order.shipmentNumber })
+                                  body: JSON.stringify({ orderId: order.id, shipmentId: order.shipmentId || order.shipmentNumber || order.jenniShipmentId })
                                 });
                                 const data = await res.json();
                                 if (data.success) {
