@@ -1507,6 +1507,24 @@ export default function OrdersListPage() {
           </div>
         </div>
         <div className={styles.controlsRight}>
+          <button 
+            className={styles.controlButton} 
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/orders/sync-jenni', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                  setNotificationModal({ show: true, message: `✅ ${data.message}` });
+                } else {
+                  setNotificationModal({ show: true, message: `❌ فشل المزامنة: ${data.message}` });
+                }
+              } catch (err) {
+                setNotificationModal({ show: true, message: '❌ حدث خطأ في الاتصال' });
+              }
+            }}
+          >
+            مزامنة الحالات 🔄
+          </button>
           <button className={styles.controlButton}>طباعة</button>
           <button className={styles.controlButton}>تصدير Excel</button>
         </div>
