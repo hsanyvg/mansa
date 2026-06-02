@@ -7,13 +7,33 @@ export const GOVERNORATE_CODES: Record<string, string> = {
   'بغداد': 'BGD',
   'البصرة': 'BAS',
   'نينوى': 'NIN',
+  'نينوى (الموصل)': 'NIN',
   'أربيل': 'ARB',
   'اربيل': 'ARB',
   'النجف': 'NJF',
   'كركوك': 'KRK',
-  'الأنبار': 'ANA',
-  'الانبار': 'ANA',
-  // يمكنك إضافة المزيد من المحافظات هنا
+  'الأنبار': 'ANB',
+  'الانبار': 'ANB',
+  'الأنبار (الرمادي)': 'ANB',
+  'بابل': 'BBL',
+  'بابل (الحلة)': 'BBL',
+  'ذي قار': 'DHI',
+  'ذي قار (الناصرية)': 'DHI',
+  'دهوك': 'DOH',
+  'ديالى': 'DYL',
+  'ديالى (بعقوبة)': 'DYL',
+  'كربلاء': 'KRB',
+  'المثنى': 'MTH',
+  'المثنى (السماوة)': 'MTH',
+  'ميسان': 'MYS',
+  'ميسان (العمارة)': 'MYS',
+  'القادسية': 'QAD',
+  'القادسية (الديوانية)': 'QAD',
+  'صلاح الدين': 'SAH',
+  'صلاح الدين (تكريت)': 'SAH',
+  'السليمانية': 'SMH',
+  'واسط': 'WST',
+  'واسط (الكوت)': 'WST'
 };
 
 export function getGovernorateCode(name: string): string {
@@ -112,7 +132,12 @@ export async function createJenniShipment(order: any, userId: string) {
   }
 
   if (!response.ok) {
-    throw new Error(data.message || 'فشل إرسال الطلب لشركة التوصيل');
+    throw new Error(data.message || data.error || 'فشل إرسال الطلب لشركة التوصيل');
+  }
+
+  if (data.success === false) {
+    const reason = data.rejected_shipments?.[0]?.reason || data.message || 'تم رفض الشحنة من قبل النظام';
+    throw new Error(`تم الرفض: ${reason}`);
   }
 
   // إعادة رقم التتبع والشحنة
