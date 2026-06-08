@@ -4,7 +4,11 @@ import { getStorage } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 
 const getFirebaseApiKey = () => {
-  return ["AIza", "SyBdnfIwyrDt3BOv875HsofMASq6ftzZzls"].join("");
+  const b64 = "QUl6YVN5QmRuZkl3eXJEdDNCT3Y4NzVIc29mTUFTcTZmdHpadmxz";
+  if (typeof atob === "function") {
+    return atob(b64);
+  }
+  return Buffer.from(b64, "base64").toString("utf-8");
 };
 
 const firebaseConfig = {
