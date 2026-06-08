@@ -21,7 +21,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-const apkSourceUrl = "https://expo.dev/artifacts/eas/jo4nXUM65oW1JE2qCXjTU8.apk";
+const apkSourceUrl = "https://expo.dev/artifacts/eas/79SoSr7P8G54CT2ucE6ec3.apk";
 const tempFilePath = path.join(__dirname, "temp-app.apk");
 
 // Helper function to download file

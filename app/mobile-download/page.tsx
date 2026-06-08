@@ -29,7 +29,7 @@ export default function MobileDownloadPage() {
     // 2. Fetch direct APK URL from Firestore settings
     const fetchApkUrl = async () => {
       try {
-        const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'settings', 'mobile_app');
+        const docRef = doc(db, 'settings', 'mobile_app');
         const docSnap = await getDoc(docRef);
         if (docSnap.exists() && docSnap.data().apkUrl) {
           setApkUrl(docSnap.data().apkUrl);

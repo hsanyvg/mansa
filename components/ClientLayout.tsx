@@ -167,6 +167,15 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   }
 
   if (!user) {
+    // Allow public access to mobile app download pages (so scanned phones don't get hit by the login screen)
+    if (pathname === '/mobile-download' || pathname === '/download') {
+      return (
+        <div style={{ minHeight: '100vh', backgroundColor: '#121216', width: '100%' }}>
+          {children}
+        </div>
+      );
+    }
+
     return (
       <div className={styles.authContainer}>
         <div className={styles.authCard}>
