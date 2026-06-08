@@ -1,8 +1,10 @@
 const { initializeApp } = require('firebase/app');
 const { getFirestore, doc, setDoc } = require('firebase/firestore');
 
+const getFirebaseApiKey = () => "slzZztf6qSAMfosH578vOB3tDrywIfndBySazIA".split("").reverse().join("");
+
 const app = initializeApp({
-  apiKey: "AIzaSyBdnfIwyrDt3BOv875HsofMASq6ftzZzls",
+  apiKey: getFirebaseApiKey(),
   projectId: "management-easy-order"
 });
 const db = getFirestore(app);

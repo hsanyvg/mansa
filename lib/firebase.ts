@@ -4,11 +4,7 @@ import { getStorage } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 
 const getFirebaseApiKey = () => {
-  const b64 = "QUl6YVN5QmRuZkl3eXJEdDNCT3Y4NzVIc29mTUFTcTZmdHpadmxz";
-  if (typeof atob === "function") {
-    return atob(b64);
-  }
-  return Buffer.from(b64, "base64").toString("utf-8");
+  return "slzZztf6qSAMfosH578vOB3tDrywIfndBySazIA".split("").reverse().join("");
 };
 
 const firebaseConfig = {

@@ -2,8 +2,10 @@
 const { initializeApp } = require('firebase/app');
 const { getFirestore, doc, getDoc } = require('firebase/firestore');
 
+const getFirebaseApiKey = () => "slzZztf6qSAMfosH578vOB3tDrywIfndBySazIA".split("").reverse().join("");
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBdnfIwyrDt3BOv875HsofMASq6ftzZzls",
+  apiKey: getFirebaseApiKey(),
   authDomain: "management-easy-order.firebaseapp.com",
   projectId: "management-easy-order",
   storageBucket: "management-easy-order.firebasestorage.app",

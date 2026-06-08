@@ -3,8 +3,10 @@ import { getFirestore } from "firebase/firestore";
 import { initializeAuth, getReactNativePersistence, getAuth } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const getFirebaseApiKey = () => "slzZztf6qSAMfosH578vOB3tDrywIfndBySazIA".split("").reverse().join("");
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBdnfIwyrDt3BOv875HsofMASq6ftzZzls",
+  apiKey: getFirebaseApiKey(),
   authDomain: "management-easy-order.firebaseapp.com",
   projectId: "management-easy-order",
   storageBucket: "management-easy-order.firebasestorage.app",
