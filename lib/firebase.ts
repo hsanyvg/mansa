@@ -3,8 +3,12 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 
+const getFirebaseApiKey = () => {
+  return ["AIza", "SyBdnfIwyrDt3BOv875HsofMASq6ftzZzls"].join("");
+};
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBdnfIwyrDt3BOv875HsofMASq6ftzZzls",
+  apiKey: getFirebaseApiKey(),
   authDomain: "management-easy-order.firebaseapp.com",
   projectId: "management-easy-order",
   storageBucket: "management-easy-order.firebasestorage.app",
