@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction } from 'firebase/firestore';
 import { createJenniShipment } from '../../../lib/jenni-api';
 
@@ -102,7 +102,7 @@ export default function OrdersListPage() {
   useEffect(() => {
     // A simple query, assuming orders might not all have dates, we just order by client-side or we can order by date desc.
     // Ensure you have an index if using orderBy('date', 'desc'). For now, we fetch all and sort client-side.
-    const q = process.env.NEXT_PUBLIC_REQUIRE_INDEX ? query(collection(db, 'orders'), orderBy('date', 'desc')) : collection(db, 'orders');
+    const q = process.env.NEXT_PUBLIC_REQUIRE_INDEX ? query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), orderBy('date', 'desc')) : collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dbOrders: any[] = snapshot.docs.map(doc => {
@@ -144,7 +144,7 @@ export default function OrdersListPage() {
 
   // Fetch products from Firestore
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBaseProducts(pData);
     });
@@ -153,7 +153,7 @@ export default function OrdersListPage() {
 
   // Fetch composite products
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'composite_products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'), (snapshot) => {
       const cData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCompositeProductsData(cData);
     });
@@ -162,7 +162,7 @@ export default function OrdersListPage() {
 
   // Fetch categories
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
       setCategoriesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -170,7 +170,7 @@ export default function OrdersListPage() {
 
   // Fetch pages_stores
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
       setPagesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -216,7 +216,7 @@ export default function OrdersListPage() {
 
   // Fetch Returns Batches Archive
   useEffect(() => {
-    const q = query(collection(db, 'return_batches'), orderBy('timestamp', 'desc'), limit(100));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'return_batches'), orderBy('timestamp', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => {
         const data = doc.data();
@@ -234,7 +234,7 @@ export default function OrdersListPage() {
 
   // Fetch Employees List for Returns Documentation
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'employees'), (snap) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'), (snap) => {
       const names = snap.docs.map(d => d.data().name).filter(Boolean);
       setEmployeesList(names);
     });
@@ -428,7 +428,7 @@ export default function OrdersListPage() {
           const shipmentId = response?.accepted_shipments?.[0]?.shipment_id || response?.shipment_id || response?.data?.shipment_id || response?.id || '';
 
           const batch = writeBatch(db);
-          const orderRef = doc(db, 'orders', orderData.id);
+          const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderData.id);
           
           batch.update(orderRef, {
              status: 'shipped',
@@ -476,7 +476,7 @@ export default function OrdersListPage() {
     try {
       const batch = writeBatch(db);
       selectedOrderIds.forEach(id => {
-        const orderRef = doc(db, 'orders', id);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', id);
         batch.update(orderRef, { isArchived: true });
       });
       await batch.commit();
@@ -500,7 +500,7 @@ export default function OrdersListPage() {
     try {
       const batch = writeBatch(db);
       selectedOrderIds.forEach(id => {
-        const orderRef = doc(db, 'orders', id);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', id);
         batch.update(orderRef, { isArchived: false });
       });
       await batch.commit();
@@ -517,7 +517,7 @@ export default function OrdersListPage() {
   const handleRestoreOrder = async (orderId: string) => {
     setIsUpdating(true);
     try {
-      const orderRef = doc(db, 'orders', orderId);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
       await updateDoc(orderRef, { isArchived: false });
       setNotificationModal({ show: true, message: 'تم استعادة الطلب بنجاح!' });
     } catch (error) {
@@ -532,7 +532,7 @@ export default function OrdersListPage() {
     setIsUpdating(true);
     try {
       const newStatus = currentStatus === 'in_warehouse' ? 'with_delivery' : 'in_warehouse';
-      const orderRef = doc(db, 'orders', orderId);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
       await updateDoc(orderRef, { returnStatus: newStatus });
       setNotificationModal({ show: true, message: 'تم تحديث موقف البضاعة بنجاح!' });
     } catch (error) {
@@ -556,7 +556,7 @@ export default function OrdersListPage() {
     setIsUpdating(true);
     try {
       const batch = writeBatch(db);
-      const orderRef = doc(db, 'orders', orderToDelete.id);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderToDelete.id);
       
       // If order is not cancelled or returned, we should return items to stock
       const isCancelled = orderToDelete.status === 'cancelled' || orderToDelete.status === 'returned';
@@ -565,7 +565,7 @@ export default function OrdersListPage() {
         for (const item of orderToDelete.items) {
           if (item.isComposite && item.composition) {
             for (const comp of item.composition) {
-              const rawProdRef = doc(db, 'products', comp.itemId);
+              const rawProdRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', comp.itemId);
               const rawSnap = await getDoc(rawProdRef);
               if (rawSnap.exists()) {
                 const rawData = rawSnap.data();
@@ -591,7 +591,7 @@ export default function OrdersListPage() {
               }
             }
           } else if (item.productId) {
-            const prodRef = doc(db, 'products', item.productId);
+            const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.productId);
             const prodSnap = await getDoc(prodRef);
             if (prodSnap.exists()) {
               const prodData = prodSnap.data();
@@ -653,14 +653,14 @@ export default function OrdersListPage() {
       
       // Process each order for stock reversal
       for (const orderItem of validOrdersToDelete) {
-        const orderRef = doc(db, 'orders', orderItem.id);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderItem.id);
         const isCancelled = orderItem.status === 'cancelled' || orderItem.status === 'returned';
         
         if (!isCancelled && orderItem.items && orderItem.items.length > 0) {
           for (const item of orderItem.items) {
             if (item.isComposite && item.composition) {
               for (const comp of item.composition) {
-                const rawProdRef = doc(db, 'products', comp.itemId);
+                const rawProdRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', comp.itemId);
                 const rawSnap = await getDoc(rawProdRef);
                 if (rawSnap.exists()) {
                   const rawData = rawSnap.data();
@@ -684,7 +684,7 @@ export default function OrdersListPage() {
                 }
               }
             } else if (item.productId) {
-              const prodRef = doc(db, 'products', item.productId);
+              const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.productId);
               const prodSnap = await getDoc(prodRef);
               if (prodSnap.exists()) {
                 const prodData = prodSnap.data();
@@ -789,7 +789,7 @@ export default function OrdersListPage() {
     for (const item of items) {
       if (item.isComposite && item.composition) {
         for (const comp of item.composition) {
-          const rawProdRef = doc(db, 'products', comp.itemId);
+          const rawProdRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', comp.itemId);
           const rawSnap = await getDoc(rawProdRef);
           if (rawSnap.exists()) {
             const rawData = rawSnap.data();
@@ -807,7 +807,7 @@ export default function OrdersListPage() {
           }
         }
       } else {
-        const prodRef = doc(db, 'products', item.productId);
+        const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.productId);
         const prodSnap = await getDoc(prodRef);
         if (prodSnap.exists()) {
           const prodData = prodSnap.data();
@@ -873,7 +873,7 @@ export default function OrdersListPage() {
     // 3. Fetch all product documents in parallel and build cache
     const productCache: Record<string, { ref: any; data: any; stock: any }> = {};
     const fetchPromises = allProductIds.map(async (productId) => {
-      const prodRef = doc(db, 'products', productId);
+      const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', productId);
       const prodSnap = await getDoc(prodRef);
       if (prodSnap.exists()) {
         const prodData = prodSnap.data();
@@ -947,7 +947,7 @@ export default function OrdersListPage() {
          return;
       }
 
-      const orderRef = doc(db, 'orders', orderId);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
       const batch = writeBatch(db);
 
       batch.update(orderRef, { status: newStatus });
@@ -959,6 +959,82 @@ export default function OrdersListPage() {
     } catch (error) {
       console.error("Error updating inline order status:", error);
       setNotificationModal({ show: true, message: 'حدث خطأ أثناء تحديث الحالة' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleCancelOrder = async (order: any) => {
+    if (['cancelled', 'returned', 'delivered'].includes(order.status)) {
+      alert("لا يمكن إلغاء طلب ملغي، راجع، أو مكتمل بالفعل.");
+      return;
+    }
+
+    const hasJenniShipment = !!(order.jenniShipmentId || order.shipmentId || order.shipmentNumber || (order.status === 'shipped' && order.shipmentCompany === 'Jenni Logistics'));
+
+    let cancelOnJenniSuccess = false;
+    if (hasJenniShipment) {
+      const confirmCancel = window.confirm(
+        `الطلب يحتوي على شحنة لدى شركة التوصيل (Jenni Logistics).\nهل تريد إلغاء الشحنة من نظام شركة التوصيل وإلغاء الطلب في نظامك؟`
+      );
+      if (!confirmCancel) return;
+
+      setIsUpdating(true);
+      try {
+        const res = await fetch('/api/orders/cancel-jenni', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: order.id,
+            shipmentId: order.jenniShipmentId || order.shipmentId || order.shipmentNumber,
+            skipDbUpdate: true
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          cancelOnJenniSuccess = true;
+        } else {
+          const forceLocal = window.confirm(
+            `❌ فشل إلغاء الشحنة من شركة التوصيل: ${data.message || 'خطأ غير معروف'}.\n\nهل تريد إلغاء الطلب محلياً في نظامك فقط (دون إلغائه من شركة التوصيل)؟`
+          );
+          if (!forceLocal) {
+            setIsUpdating(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        const forceLocal = window.confirm(
+          `❌ حدث خطأ أثناء الاتصال بشركة التوصيل.\n\nهل تريد إلغاء الطلب محلياً في نظامك فقط؟`
+        );
+        if (!forceLocal) {
+          setIsUpdating(false);
+          return;
+        }
+      }
+    } else {
+      const confirmCancel = window.confirm(`هل أنت متأكد أنك تريد إلغاء هذا الطلب وتعديل المخزون؟`);
+      if (!confirmCancel) return;
+      setIsUpdating(true);
+    }
+
+    try {
+      const batch = writeBatch(db);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
+      
+      batch.update(orderRef, {
+        status: 'cancelled',
+        deliveryStatus: hasJenniShipment ? 'CANCELLED_API' : 'CANCELLED_LOCAL',
+        updatedAt: serverTimestamp()
+      });
+
+      await syncStockForStatusChange(order.items || [], order.status || 'pending', 'cancelled', batch);
+
+      await batch.commit();
+      setNotificationModal({ show: true, message: '✅ تم إلغاء الطلب وإرجاع المنتجات للمخزن بنجاح' });
+    } catch (error: any) {
+      console.error("Error cancelling order:", error);
+      alert(`حدث خطأ أثناء إلغاء الطلب: ${error.message || error}`);
     } finally {
       setIsUpdating(false);
     }
@@ -983,7 +1059,7 @@ export default function OrdersListPage() {
         
         if (oldStatus !== newStatus) {
           updatedCount++;
-          const orderRef = doc(db, 'orders', orderId);
+          const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
           batch.update(orderRef, { status: newStatus });
 
           await syncStockForStatusChange(orderToUpdate.items || [], oldStatus, newStatus, batch);
@@ -1131,7 +1207,7 @@ export default function OrdersListPage() {
         editingOrder.employeeName = oldOrder.employeeName;
       }
       
-      const orderRef = doc(db, 'orders', editingOrder.id);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', editingOrder.id);
       const batch = writeBatch(db);
 
       batch.update(orderRef, {
@@ -1173,7 +1249,7 @@ export default function OrdersListPage() {
     setIsUpdating(true);
     try {
       // 0. Generate Sequential Batch ID
-      const counterRef = doc(db, 'metadata', 'returnBatchCounter');
+      const counterRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'metadata', 'returnBatchCounter');
       const batchId = await runTransaction(db, async (transaction) => {
         const counterSnap = await transaction.get(counterRef);
         let currentId = 1000;
@@ -1186,12 +1262,12 @@ export default function OrdersListPage() {
       });
 
       const batch = writeBatch(db);
-      const batchDocRef = doc(collection(db, 'return_batches'));
+      const batchDocRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'return_batches'));
       
       const orderDetailsForBatch: any[] = [];
 
       for (const orderId of selectedOrderIds) {
-        const orderRef = doc(db, 'orders', orderId);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
         const orderData = orders.find(o => o.id === orderId);
         
         // 1. Update internal Return Status AND Archive it
@@ -1722,7 +1798,6 @@ export default function OrdersListPage() {
                   )}
                   <td>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-
                       <button 
                         className={styles.actionButton} 
                         title="عرض التفاصيل"
@@ -1761,29 +1836,13 @@ export default function OrdersListPage() {
                       >
                         🗑️
                       </button>
-                      {(order.shipmentId || order.shipmentNumber || order.jenniShipmentId || (order.status === 'shipped' && order.shipmentCompany === 'Jenni Logistics')) && !['cancelled', 'returned', 'delivered'].includes(order.status) && (
+                      {!['cancelled', 'returned', 'delivered'].includes(order.status) && (
                         <button 
                           className={styles.actionButton} 
-                          title="إلغاء الشحنة من شركة التوصيل"
-                          onClick={async (e) => {
+                          title="إلغاء الطلب"
+                          onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm('هل أنت متأكد أنك تريد إلغاء هذه الشحنة من نظام شركة التوصيل؟ (هذا الإجراء لا يمكن التراجع عنه)')) {
-                              try {
-                                const res = await fetch('/api/orders/cancel-jenni', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ orderId: order.id, shipmentId: order.jenniShipmentId || order.shipmentId || order.shipmentNumber })
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                  setNotificationModal({ show: true, message: `✅ ${data.message}` });
-                                } else {
-                                  setNotificationModal({ show: true, message: `❌ ${data.message}` });
-                                }
-                              } catch (err) {
-                                setNotificationModal({ show: true, message: '❌ حدث خطأ في الاتصال' });
-                              }
-                            }
+                            handleCancelOrder(order);
                           }}
                           style={{ borderColor: '#f97316', color: '#f97316' }}
                         >

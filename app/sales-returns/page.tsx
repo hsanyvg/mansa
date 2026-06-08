@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { db } from '@/lib/firebase';
+import { db, auth } from "@/lib/firebase";
 import { 
   collection, 
   query, 
@@ -36,7 +36,7 @@ export default function SalesReturnsPage() {
 
   // Fetch Employees List
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'employees'), (snap) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'), (snap) => {
       const names = snap.docs.map(d => d.data().name).filter(Boolean);
       setEmployeesList(names);
     });
@@ -46,7 +46,7 @@ export default function SalesReturnsPage() {
   // Fetch Delivered Orders
   useEffect(() => {
     const q = query(
-      collection(db, 'orders'),
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'),
       where('status', '==', 'delivered'),
       orderBy('date', 'desc')
     );
@@ -156,13 +156,13 @@ export default function SalesReturnsPage() {
       const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
 
       for (const orderData of selectedOrdersData) {
-        const orderRef = doc(db, 'orders', orderData.id);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderData.id);
         
         // 1. Update order status
         batch.update(orderRef, { status: 'returned' });
 
         // 2. Create record in sales_returns
-        const returnRef = doc(collection(db, 'sales_returns'));
+        const returnRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'sales_returns'));
         batch.set(returnRef, {
           orderId: orderData.id,
           customerName: orderData.customerName,
@@ -181,7 +181,7 @@ export default function SalesReturnsPage() {
             
             if (item.isComposite && item.composition) {
               for (const comp of item.composition) {
-                const prodRef = doc(db, 'products', comp.itemId);
+                const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', comp.itemId);
                 const prodSnap = await getDoc(prodRef); // We must read to calculate new stock
                 if (prodSnap.exists()) {
                   const pData = prodSnap.data();
@@ -205,7 +205,7 @@ export default function SalesReturnsPage() {
                 }
               }
             } else {
-              const prodRef = doc(db, 'products', item.productId || item.id);
+              const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.productId || item.id);
               const prodSnap = await getDoc(prodRef);
               if (prodSnap.exists()) {
                 const pData = prodSnap.data();

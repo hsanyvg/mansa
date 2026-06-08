@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { collection, getDocs, query, where, doc, getDoc, setDoc, addDoc, onSnapshot, orderBy, deleteDoc } from 'firebase/firestore';
 
 // Types
@@ -57,7 +57,7 @@ export default function UnifiedCPOControlCenter() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'alerts_settings', 'cpo_alerts');
+        const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'alerts_settings', 'cpo_alerts');
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -81,7 +81,7 @@ export default function UnifiedCPOControlCenter() {
     }
     setIsSettingsSaving(true);
     try {
-      const docRef = doc(db, 'alerts_settings', 'cpo_alerts');
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'alerts_settings', 'cpo_alerts');
       await setDoc(docRef, {
         isActive: alertActive,
         intervalMinutes: Number(alertInterval),
@@ -120,7 +120,7 @@ export default function UnifiedCPOControlCenter() {
   useEffect(() => {
     const fetchAccounts = async () => {
       try {
-        const querySnap = await getDocs(collection(db, 'meta_api_accounts'));
+        const querySnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'meta_api_accounts'));
         if (!querySnap.empty) {
           setHasLiveAccounts(true);
           const allAccs = querySnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -141,7 +141,7 @@ export default function UnifiedCPOControlCenter() {
     setIsLiveLoading(true);
     setLiveFetchErrors([]);
     try {
-      const querySnap = await getDocs(collection(db, 'meta_api_accounts'));
+      const querySnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'meta_api_accounts'));
       const allAccs = querySnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       const active = allAccs.filter(a => a.isActive !== false);
 
@@ -160,13 +160,13 @@ export default function UnifiedCPOControlCenter() {
       setHasLiveAccounts(true);
       setLiveAccounts(active);
 
-      const categoriesSnap = await getDocs(collection(db, 'categories'));
+      const categoriesSnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'));
       const categoriesDb = categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-      const pagesSnap = await getDocs(collection(db, 'pages_stores'));
+      const pagesSnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'));
       const pagesDb = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-      const productsSnap = await getDocs(collection(db, 'products'));
+      const productsSnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'));
       const groupedTrackedMap = new Map<string, { trackingCode: string, productIds: string[], productNames: string[] }>();
       const allProductsMap = new Map<string, any>();
       
@@ -195,7 +195,7 @@ export default function UnifiedCPOControlCenter() {
         }
       });
 
-      const compProductsSnap = await getDocs(collection(db, 'composite_products'));
+      const compProductsSnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'));
       compProductsSnap.forEach(doc => {
         const data = doc.data();
         allProductsMap.set(doc.id, { id: doc.id, isComposite: true, ...data });
@@ -221,7 +221,7 @@ export default function UnifiedCPOControlCenter() {
         return;
       }
 
-      const ordersSnap = await getDocs(collection(db, 'orders'));
+      const ordersSnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'));
       const validOrdersCountByProduct = new Map<string, Set<string>>();
       const deliveredOrdersCountByProduct = new Map<string, Set<string>>();
       
@@ -410,7 +410,7 @@ export default function UnifiedCPOControlCenter() {
       });
 
       // Save directly to Firestore reports_archive collection
-      const archiveRef = collection(db, 'reports_archive');
+      const archiveRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'reports_archive');
       await addDoc(archiveRef, {
         month: yearMonth,
         day: dayKey,
@@ -433,7 +433,7 @@ export default function UnifiedCPOControlCenter() {
       return;
     }
     try {
-      await deleteDoc(doc(db, 'reports_archive', reportId));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'reports_archive', reportId));
       alert("✅ تم حذف التقرير بنجاح!");
     } catch (err: any) {
       console.error("Error deleting report:", err);
@@ -485,7 +485,7 @@ export default function UnifiedCPOControlCenter() {
   const fetchFlashbackData = async () => {
     setFbIsLoading(true);
     try {
-      const archiveRef = collection(db, 'reports_archive');
+      const archiveRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'reports_archive');
       const q = query(archiveRef, where("day", "==", fbDate));
       const snap = await getDocs(q);
       setFbReports(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -499,7 +499,7 @@ export default function UnifiedCPOControlCenter() {
   const seedDemoData = async () => {
     setIsSeeding(true);
     try {
-      const productsSnap = await getDocs(collection(db, 'products'));
+      const productsSnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'));
       const activeTrackingCodes: { code: string, name: string }[] = [];
       
       productsSnap.forEach(doc => {
@@ -510,7 +510,7 @@ export default function UnifiedCPOControlCenter() {
         }
       });
       
-      const compProductsSnap = await getDocs(collection(db, 'composite_products'));
+      const compProductsSnap = await getDocs(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'));
       compProductsSnap.forEach(doc => {
         const data = doc.data();
         const code = data.trackingCode?.trim();
@@ -525,7 +525,7 @@ export default function UnifiedCPOControlCenter() {
       }
 
       const batchDocs = [];
-      const archiveRef = collection(db, 'reports_archive');
+      const archiveRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'reports_archive');
       const today = new Date();
       
       for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
@@ -763,7 +763,7 @@ export default function UnifiedCPOControlCenter() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'reports_archive'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'reports_archive'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setArchiveReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setArchiveLoading(false);

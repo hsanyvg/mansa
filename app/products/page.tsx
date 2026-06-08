@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import Link from 'next/link';
 
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import CurrencyInput from '../../components/CurrencyInput';
 import Barcode from 'react-barcode';
@@ -114,7 +114,7 @@ export default function ProductsPage() {
 
   // Fetch real categories from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
       const catsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const processed = catsData.map((c: any) => ({
         ...c,
@@ -134,7 +134,7 @@ export default function ProductsPage() {
 
   // Fetch pages_stores from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
       setPagesStoresDb(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
     });
     return () => unsub();
@@ -142,7 +142,7 @@ export default function ProductsPage() {
 
   // Fetch real units from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'units'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'units'), (snapshot) => {
       const uData = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
       setAvailableUnits(uData);
     });
@@ -151,7 +151,7 @@ export default function ProductsPage() {
 
   // Fetch products from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       pData.sort((a: any, b: any) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       setProducts(pData);
@@ -161,7 +161,7 @@ export default function ProductsPage() {
 
   // Fetch stores from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'stores'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores'), (snapshot) => {
       const sData = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
       setStoresDb(sData);
     });
@@ -218,7 +218,7 @@ export default function ProductsPage() {
   const handleConfirmDelete = async () => {
     if (!productToDelete) return;
     try {
-      await deleteDoc(doc(db, 'products', productToDelete.id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', productToDelete.id));
       showToast("تم حذف الصنف بنجاح", "success");
       setShowDeleteModal(false);
       setProductToDelete(null);
@@ -271,10 +271,10 @@ export default function ProductsPage() {
       };
 
       if (editingProductId) {
-        await updateDoc(doc(db, 'products', editingProductId), productPayload);
+        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', editingProductId), productPayload);
         showToast("تم تعديل الصنف بنجاح!", "success");
       } else {
-        await addDoc(collection(db, 'products'), {
+        await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), {
           ...productPayload,
           createdAt: serverTimestamp()
         });
@@ -308,7 +308,7 @@ export default function ProductsPage() {
     if (!valueToSave) return; // Don't save empty string
 
     try {
-      await updateDoc(doc(db, 'products', prodId), { barcode: valueToSave });
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', prodId), { barcode: valueToSave });
       showToast("تم حفظ الباركود بنجاح", "success");
     } catch (err) {
       console.error("Error updating barcode: ", err);
@@ -335,7 +335,7 @@ export default function ProductsPage() {
     if (!currentBarcode) {
       currentBarcode = generateRandomBarcode();
       try {
-        await updateDoc(doc(db, 'products', prod.id), { barcode: currentBarcode });
+        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', prod.id), { barcode: currentBarcode });
         showToast("تم توليد الباركود بنجاح", "success");
       } catch (err) {
         console.error("Error generating barcode: ", err);

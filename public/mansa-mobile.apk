@@ -1,0 +1,3 @@
+Placeholder for Mansa Mobile App APK.
+Please build your standalone Expo app using "eas build -p android" or "npx expo prebuild" and place the compiled .apk file here, renaming it to "mansa-mobile.apk".
+This will allow direct barcode downloads to work seamlessly.

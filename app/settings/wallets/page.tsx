@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 
 interface Wallet {
@@ -25,7 +25,7 @@ export default function WalletsManagementPage() {
   useEffect(() => {
     if (!isMounted) return;
 
-    const q = query(collection(db, 'wallets'), orderBy('createdAt', 'asc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), orderBy('createdAt', 'asc'));
     const unsub = onSnapshot(q, (snapshot) => {
       setWallets(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Wallet)));
       setLoading(false);
@@ -51,7 +51,7 @@ export default function WalletsManagementPage() {
     }
 
     try {
-      await addDoc(collection(db, 'wallets'), {
+      await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), {
         name: newWalletName.trim(),
         createdAt: serverTimestamp()
       });
@@ -66,7 +66,7 @@ export default function WalletsManagementPage() {
     if (!window.confirm(`هل أنت متأكد من حذف خزنة "${name}"؟`)) return;
     
     try {
-      await deleteDoc(doc(db, 'wallets', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets', id));
       showToastMsg("تم الحذف بنجاح");
     } catch (err) {
       showToastMsg("حدث خطأ أثناء الحذف", "error");

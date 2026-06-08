@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import styles from './page.module.css';
 
@@ -291,7 +291,7 @@ export default function TreasurySettlementPage() {
 
   // Fetch wallets list
   useEffect(() => {
-    const unsubWallets = onSnapshot(collection(db, 'wallets'), (snapshot) => {
+    const unsubWallets = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), (snapshot) => {
       setWallets(snapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().name || '',
@@ -313,7 +313,7 @@ export default function TreasurySettlementPage() {
 
   useEffect(() => {
     // Fetch all orders for real-time calculations and filter delivered ones
-    const q = collection(db, 'orders');
+    const q = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let actual = 0;
@@ -483,7 +483,7 @@ export default function TreasurySettlementPage() {
         if (order) {
           totalAmount += order.totalAmount;
         }
-        const orderRef = doc(db, 'orders', orderId);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
         batch.update(orderRef, {
           is_settled: true,
           paymentStatus: 'settled',
@@ -502,7 +502,7 @@ export default function TreasurySettlementPage() {
       const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const dateStr = now.toISOString().split('T')[0];
 
-      const transactionRef = doc(collection(db, 'treasury_transactions'));
+      const transactionRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'));
       batch.set(transactionRef, {
         type: 'deposit',
         amount: totalAmount,
@@ -539,7 +539,7 @@ export default function TreasurySettlementPage() {
 
   const handleArchiveSettlement = async (orderId: string) => {
     try {
-      const orderRef = doc(db, 'orders', orderId);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
       await updateDoc(orderRef, { isSettlementArchived: true });
     } catch (error) {
       console.error("Error archiving settlement:", error);
@@ -549,7 +549,7 @@ export default function TreasurySettlementPage() {
 
   const handleRestoreSettlement = async (orderId: string) => {
     try {
-      const orderRef = doc(db, 'orders', orderId);
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
       await updateDoc(orderRef, { isSettlementArchived: false });
     } catch (error) {
       console.error("Error restoring settlement:", error);
@@ -560,7 +560,7 @@ export default function TreasurySettlementPage() {
   const handleDeleteSettlement = async (orderId: string) => {
     if (confirm("هل أنت متأكد من حذف هذا الطلب بشكل نهائي من النظام؟")) {
       try {
-        const orderRef = doc(db, 'orders', orderId);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
         await deleteDoc(orderRef);
       } catch (error) {
         console.error("Error deleting order:", error);
@@ -573,7 +573,7 @@ export default function TreasurySettlementPage() {
     try {
       const batch = writeBatch(db);
       group.orders.forEach(order => {
-        batch.update(doc(db, 'orders', order.id), { isSettlementArchived: true });
+        batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id), { isSettlementArchived: true });
       });
       await batch.commit();
       if (selectedStatement?.id === group.id) {
@@ -589,7 +589,7 @@ export default function TreasurySettlementPage() {
     try {
       const batch = writeBatch(db);
       group.orders.forEach(order => {
-        batch.update(doc(db, 'orders', order.id), { isSettlementArchived: false });
+        batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id), { isSettlementArchived: false });
       });
       await batch.commit();
       if (selectedStatement?.id === group.id) {
@@ -610,7 +610,7 @@ export default function TreasurySettlementPage() {
       try {
         const batch = writeBatch(db);
         group.orders.forEach(order => {
-          batch.delete(doc(db, 'orders', order.id));
+          batch.delete(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id));
         });
         await batch.commit();
         if (selectedStatement?.id === group.id) {
@@ -737,7 +737,7 @@ export default function TreasurySettlementPage() {
                           const group = settledGroups.find(g => g.id === id);
                           if (group) {
                             group.orders.forEach(order => {
-                              batch.update(doc(db, 'orders', order.id), { isSettlementArchived: true });
+                              batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id), { isSettlementArchived: true });
                             });
                           }
                         });
@@ -828,7 +828,7 @@ export default function TreasurySettlementPage() {
                           const group = archivedGroups.find(g => g.id === id);
                           if (group) {
                             group.orders.forEach(order => {
-                              batch.update(doc(db, 'orders', order.id), { isSettlementArchived: false });
+                              batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id), { isSettlementArchived: false });
                             });
                           }
                         });
@@ -865,7 +865,7 @@ export default function TreasurySettlementPage() {
                             const group = archivedGroups.find(g => g.id === id);
                             if (group) {
                               group.orders.forEach(order => {
-                                batch.delete(doc(db, 'orders', order.id));
+                                batch.delete(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id));
                               });
                             }
                           });

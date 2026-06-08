@@ -1,0 +1,195 @@
+.container {
+  min-height: 100vh;
+  background-color: #0c0c12;
+  background-image: radial-gradient(circle at top, rgba(139, 92, 246, 0.07), transparent 600px),
+                    radial-gradient(circle at bottom, rgba(236, 72, 153, 0.04), transparent 600px);
+  color: #f1f5f9;
+  font-family: 'Cairo', sans-serif;
+  padding: 3rem 1.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  direction: rtl;
+}
+
+.centeredContent {
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.headerCentered {
+  margin-bottom: 2rem;
+}
+
+.titleCentered {
+  font-size: 1.85rem;
+  font-weight: 800;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, #c084fc, #f472b6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitleCentered {
+  color: #94a3b8;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.mainQrCard {
+  width: 100%;
+  background: rgba(30, 30, 45, 0.5);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+  padding: 2.25rem;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.35);
+}
+
+.qrContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 20px;
+  padding: 1.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.qrWrapperWhite {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 1.75rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.largeQrImage {
+  width: 230px;
+  height: 230px;
+  border-radius: 14px;
+  border: 4px solid #111116;
+}
+
+.skeletonQr {
+  width: 230px;
+  height: 230px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  animation: pulse 1.5s infinite;
+}
+
+.qrLabelLarge {
+  font-size: 0.85rem;
+  color: #4c1d95;
+  font-weight: 700;
+}
+
+.copyLinkContainer {
+  margin-bottom: 1.5rem;
+  text-align: right;
+}
+
+.linkLabel {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  margin-bottom: 0.5rem;
+}
+
+.urlInputRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.urlReadOnlyInput {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 0.85rem;
+  direction: ltr;
+}
+
+.copyBtn {
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #c4b5fd;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  font-family: 'Cairo', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.copyBtn:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: #8b5cf6;
+}
+
+.copyBtnSuccess {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid #10b981;
+  color: #34d399;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  font-family: 'Cairo', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.linkSection {
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 1.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.downloadLinkBtn {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  color: #ffffff;
+  padding: 0.85rem 1.75rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35);
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-align: center;
+  width: 100%;
+  display: inline-block;
+}
+
+.downloadLinkBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+}
+
+.downloadLinkBtn:active {
+  transform: translateY(0);
+}
+
+@keyframes pulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.3; }
+}

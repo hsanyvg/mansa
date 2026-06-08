@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { 
   collection, 
   onSnapshot, 
@@ -70,17 +70,17 @@ export default function PurchaseInvoicePage() {
   // Initial Fetches
   useEffect(() => {
     // Suppliers
-    const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snap) => {
+    const unsubSuppliers = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'suppliers'), (snap) => {
       setSuppliers(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Supplier[]);
     });
 
     // Stores
-    const unsubStores = onSnapshot(collection(db, 'stores'), (snap) => {
+    const unsubStores = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores'), (snap) => {
       setStores(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Store[]);
     });
 
     // Products
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => {
+    const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snap) => {
       setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Product[]);
     });
 
@@ -131,7 +131,7 @@ export default function PurchaseInvoicePage() {
 
     try {
       // 1. Create Purchase Record
-      const purchaseRef = doc(collection(db, 'purchases'));
+      const purchaseRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'purchases'));
       batch.set(purchaseRef, {
         supplierId: selectedSupplier.id,
         supplierName: selectedSupplier.name,
@@ -154,7 +154,7 @@ export default function PurchaseInvoicePage() {
 
       // 2. Update Inventory (Products)
       for (const item of cart) {
-        const prodRef = doc(db, 'products', item.product.id);
+        const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.product.id);
         const prodSnap = await getDoc(prodRef);
         const prodData = prodSnap.data();
 
@@ -179,11 +179,11 @@ export default function PurchaseInvoicePage() {
       }
 
       // 3. Update Supplier Debt and record detailed transactions
-      const supplierRef = doc(db, 'suppliers', selectedSupplier.id);
+      const supplierRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'suppliers', selectedSupplier.id);
       let runningDebt = selectedSupplier.currentDebt || 0;
 
       // Transaction A: The Purchase (Increases Debt)
-      const purchaseTransRef = doc(collection(db, 'supplierTransactions'));
+      const purchaseTransRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'supplierTransactions'));
       runningDebt += totalAmount;
       batch.set(purchaseTransRef, {
         supplierId: selectedSupplier.id,
@@ -196,7 +196,7 @@ export default function PurchaseInvoicePage() {
 
       // Transaction B: The Cash Payment (Decreases Debt)
       if (cashPaid > 0) {
-        const paymentTransRef = doc(collection(db, 'supplierTransactions'));
+        const paymentTransRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'supplierTransactions'));
         runningDebt -= cashPaid;
         batch.set(paymentTransRef, {
           supplierId: selectedSupplier.id,

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, updateDoc } from 'firebase/firestore';
 
 interface MetaAccount {
@@ -44,7 +44,7 @@ export default function ApiIntegrationsPage() {
 
   // Real-time listener for accounts
   useEffect(() => {
-    const accountsRef = collection(db, 'meta_api_accounts');
+    const accountsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'meta_api_accounts');
     const unsubscribeMeta = onSnapshot(accountsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -168,11 +168,11 @@ export default function ApiIntegrationsPage() {
       };
 
       if (activeForm === 'edit' && selectedAccount) {
-        const docRef = doc(db, 'meta_api_accounts', selectedAccount.id);
+        const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'meta_api_accounts', selectedAccount.id);
         await updateDoc(docRef, payload);
         alert('تم تحديث الحساب بنجاح!');
       } else {
-        const collRef = collection(db, 'meta_api_accounts');
+        const collRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'meta_api_accounts');
         await addDoc(collRef, {
           ...payload,
           createdAt: new Date()
@@ -195,7 +195,7 @@ export default function ApiIntegrationsPage() {
     if (!window.confirm('هل أنت متأكد من رغبتك في حذف هذا الحساب الإعلاني بالكامل؟')) return;
 
     try {
-      const docRef = doc(db, 'meta_api_accounts', id);
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'meta_api_accounts', id);
       await deleteDoc(docRef);
       alert('تم حذف الحساب بالكامل.');
       if (selectedAccount?.id === id) {
@@ -210,7 +210,7 @@ export default function ApiIntegrationsPage() {
 
   const handleToggleStatusDirectly = async (account: MetaAccount, e: React.ChangeEvent<HTMLInputElement>) => {
     try {
-      const docRef = doc(db, 'meta_api_accounts', account.id);
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'meta_api_accounts', account.id);
       await updateDoc(docRef, { isActive: e.target.checked });
     } catch (err) {
       console.error('Error toggling status:', err);

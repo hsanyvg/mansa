@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, getDocs, writeBatch } from 'firebase/firestore';
 
 interface ExpenseCategory {
@@ -18,7 +18,7 @@ export default function ExpenseCategoriesPage() {
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    const categoriesRef = collection(db, 'expense_categories');
+    const categoriesRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expense_categories');
     
     const unsubscribe = onSnapshot(categoriesRef, async (snapshot) => {
       const catsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as ExpenseCategory[];
@@ -30,7 +30,7 @@ export default function ExpenseCategoriesPage() {
         try {
           const batch = writeBatch(db);
           defaults.forEach(name => {
-            const newDocRef = doc(collection(db, 'expense_categories'));
+            const newDocRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expense_categories'));
             batch.set(newDocRef, { name, createdAt: serverTimestamp() });
           });
           await batch.commit();
@@ -55,7 +55,7 @@ export default function ExpenseCategoriesPage() {
     if (!inputName.trim()) return;
 
     try {
-      await addDoc(collection(db, 'expense_categories'), {
+      await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expense_categories'), {
         name: inputName.trim(),
         createdAt: serverTimestamp()
       });
@@ -71,7 +71,7 @@ export default function ExpenseCategoriesPage() {
     if (!confirm("هل أنت متأكد من حذف هذه الفئة؟")) return;
 
     try {
-      await deleteDoc(doc(db, 'expense_categories', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'expense_categories', id));
       showToastMsg("تم حذف الفئة بنجاح");
     } catch (error) {
       console.error("Error deleting category:", error);

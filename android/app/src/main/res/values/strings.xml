@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mansa Inventory</string>
+    <string name="title_activity_main">Mansa Inventory</string>
+    <string name="package_name">com.mansa.inventory</string>
+    <string name="custom_url_scheme">com.mansa.inventory</string>
+</resources>

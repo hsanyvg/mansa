@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { 
   collection, 
   onSnapshot, 
@@ -62,7 +62,7 @@ export default function SuppliersPage() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'suppliers'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'suppliers'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -115,7 +115,7 @@ export default function SuppliersPage() {
       const openBal = parseFloat(formData.openingBalance) || 0;
 
       if (editingId) {
-        const supplierRef = doc(db, 'suppliers', editingId);
+        const supplierRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'suppliers', editingId);
         // Note: Changing opening balance after creation might need careful transaction logic, 
         // but for now we just update the profile fields.
         batch.update(supplierRef, {
@@ -128,7 +128,7 @@ export default function SuppliersPage() {
         await batch.commit();
         showToastMsg("تم تحديث بيانات المورد بنجاح");
       } else {
-        const supplierRef = doc(collection(db, 'suppliers'));
+        const supplierRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'suppliers'));
         batch.set(supplierRef, {
           name: formData.name,
           company: formData.company,
@@ -141,7 +141,7 @@ export default function SuppliersPage() {
         });
 
         if (openBal !== 0) {
-          const transRef = doc(collection(db, 'supplierTransactions'));
+          const transRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'supplierTransactions'));
           batch.set(transRef, {
             supplierId: supplierRef.id,
             date: serverTimestamp(),
@@ -167,7 +167,7 @@ export default function SuppliersPage() {
     setShowStatement(true);
     try {
       const q = query(
-        collection(db, 'supplierTransactions'), 
+        collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'supplierTransactions'), 
         where('supplierId', '==', supplier.id)
       );
       const snap = await getDocs(q);

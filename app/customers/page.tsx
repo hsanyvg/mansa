@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { 
   collection, 
   onSnapshot, 
@@ -53,7 +53,7 @@ export default function CustomersPage() {
   ];
 
   useEffect(() => {
-    const q = query(collection(db, 'customers'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'customers'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -115,10 +115,10 @@ export default function CustomersPage() {
       };
 
       if (editingId) {
-        await updateDoc(doc(db, 'customers', editingId), payload);
+        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'customers', editingId), payload);
         showToastMsg("تم تحديث بيانات العميل بنجاح");
       } else {
-        await addDoc(collection(db, 'customers'), {
+        await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'customers'), {
           ...payload,
           createdAt: serverTimestamp()
         });
@@ -134,7 +134,7 @@ export default function CustomersPage() {
   const handleDelete = async (id: string, name: string) => {
     if (confirm(`هل أنت متأكد من حذف العميل "${name}"؟`)) {
       try {
-        await deleteDoc(doc(db, 'customers', id));
+        await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'customers', id));
         showToastMsg("تم حذف العميل بنجاح");
       } catch (error) {
         console.error("Error deleting customer:", error);

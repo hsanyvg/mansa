@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { 
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, 
   doc, serverTimestamp, writeBatch 
@@ -85,16 +85,16 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     if (!isMounted) return;
-    const unsubCats = onSnapshot(collection(db, 'expense_categories'), s => setCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubPages = onSnapshot(collection(db, 'pages_stores'), s => setPages(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubBranches = onSnapshot(collection(db, 'categories'), s => setAllCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubProducts = onSnapshot(collection(db, 'products'), s => setAllProducts(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubExp = onSnapshot(collection(db, 'expenses'), s => {
+    const unsubCats = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expense_categories'), s => setCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubPages = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), s => setPages(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubBranches = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), s => setAllCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), s => setAllProducts(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubExp = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses'), s => {
       setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() })) as Expense[]);
       setLoading(false);
     });
-    const unsubWallets = onSnapshot(collection(db, 'wallets'), s => setWallets(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubTreasury = onSnapshot(collection(db, 'treasury_transactions'), s => setTreasuryTransactions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubWallets = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), s => setWallets(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubTreasury = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'), s => setTreasuryTransactions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     
     return () => { unsubCats(); unsubPages(); unsubBranches(); unsubProducts(); unsubExp(); unsubWallets(); unsubTreasury(); };
   }, [isMounted]);
@@ -160,12 +160,12 @@ export default function ExpensesPage() {
 
     try {
       if (editingId) {
-        await updateDoc(doc(db, 'expenses', editingId), data);
+        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses', editingId), data);
         showToastMsg("تم التحديث بنجاح");
       } else {
         const batch = writeBatch(db);
-        const expenseRef = doc(collection(db, 'expenses'));
-        const treasuryRef = doc(collection(db, 'treasury_transactions'));
+        const expenseRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses'));
+        const treasuryRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'));
 
         batch.set(expenseRef, { ...data, isArchived: false, createdAt: serverTimestamp() });
         batch.set(treasuryRef, {
@@ -213,7 +213,7 @@ export default function ExpensesPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'expenses', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses', id));
       showToastMsg("تم الحذف بنجاح");
       setDeleteConfirmId(null);
     } catch (err) { showToastMsg("فشل الحذف", "error"); }
@@ -221,14 +221,14 @@ export default function ExpensesPage() {
 
   const handleArchive = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'expenses', id), { isArchived: true });
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses', id), { isArchived: true });
       showToastMsg("تمت الأرشفة");
     } catch (err) { showToastMsg("فشل الأرشفة", "error"); }
   };
 
   const handleRestore = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'expenses', id), { isArchived: false });
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses', id), { isArchived: false });
       showToastMsg("تمت الاستعادة");
     } catch (err) { showToastMsg("فشل الاستعادة", "error"); }
   };
@@ -238,7 +238,7 @@ export default function ExpensesPage() {
     if (toArchive.length === 0) return showToastMsg("لا توجد مصروفات نشطة للأرشفة", "error");
     
     try {
-      await Promise.all(toArchive.map(e => updateDoc(doc(db, 'expenses', e.id), { isArchived: true })));
+      await Promise.all(toArchive.map(e => updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses', e.id), { isArchived: true })));
       showToastMsg("تمت أرشفة العمليات المحددة بنجاح");
     } catch (err) { showToastMsg("فشل الأرشفة الجماعية", "error"); }
   };

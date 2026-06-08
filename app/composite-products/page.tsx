@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
 
 interface RecipeItem {
@@ -58,7 +58,7 @@ export default function CompositeProductsPage() {
 
   // Fetch Categories
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const processed = data.map((c: any) => ({
         ...c,
@@ -71,7 +71,7 @@ export default function CompositeProductsPage() {
 
   // Fetch Products (Raw Materials)
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProducts(data);
     });
@@ -80,7 +80,7 @@ export default function CompositeProductsPage() {
 
   // Fetch Composite Products
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'composite_products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       data.sort((a: any, b: any) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       setCompositeProducts(data);
@@ -90,7 +90,7 @@ export default function CompositeProductsPage() {
 
   // Fetch pages_stores from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
       setPagesStoresDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -176,7 +176,7 @@ export default function CompositeProductsPage() {
         createdAt: serverTimestamp()
       };
 
-      await addDoc(collection(db, 'composite_products'), payload);
+      await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'), payload);
       
       showToast("تم إنشاء المنتج التجميعي بنجاح", "success");
       
@@ -205,7 +205,7 @@ export default function CompositeProductsPage() {
 
   const confirmDelete = async () => {
     try {
-      await deleteDoc(doc(db, 'composite_products', deleteConfirm.id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products', deleteConfirm.id));
       showToast("تم الحذف بنجاح من قاعدة البيانات", "success");
       setDeleteConfirm({ isOpen: false, id: '', name: '' });
     } catch (e) {

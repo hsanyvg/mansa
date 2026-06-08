@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 interface Connection {
@@ -32,7 +32,7 @@ export default function IntegrationsPage() {
 
   // Fetch connections in real-time
   useEffect(() => {
-    const connectionsRef = collection(db, 'integrations', 'meta', 'connections');
+    const connectionsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections');
     
     const unsubscribe = onSnapshot(connectionsRef, (snapshot) => {
       const connectionsData = snapshot.docs.map(doc => ({
@@ -52,7 +52,7 @@ export default function IntegrationsPage() {
 
   // Fetch products
   useEffect(() => {
-    const productsRef = collection(db, 'products');
+    const productsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products');
     const unsubscribe = onSnapshot(productsRef, (snapshot) => {
       const pData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -92,7 +92,7 @@ export default function IntegrationsPage() {
     if (!window.confirm('هل أنت متأكد من حذف هذا الربط؟')) return;
     
     try {
-      await deleteDoc(doc(db, 'integrations', 'meta', 'connections', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections', id));
       if (editingId === id) {
         resetForm();
       }
@@ -110,7 +110,7 @@ export default function IntegrationsPage() {
     }
 
     try {
-      const connectionsRef = collection(db, 'integrations', 'meta', 'connections');
+      const connectionsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections');
       const dataToSave = {
         name: connectionName,
         pixelId,

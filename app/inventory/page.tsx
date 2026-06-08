@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, doc, runTransaction, serverTimestamp, query, orderBy } from 'firebase/firestore';
 
 export default function InventoryPage() {
@@ -27,7 +27,7 @@ export default function InventoryPage() {
 
   // Fetch Products
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProducts(pData);
     });
@@ -36,7 +36,7 @@ export default function InventoryPage() {
 
   // Fetch Stores
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'stores'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores'), (snapshot) => {
       const sData = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
       setStores(sData);
     });
@@ -45,7 +45,7 @@ export default function InventoryPage() {
 
   // Fetch Inventory Logs
   useEffect(() => {
-    const q = query(collection(db, 'inventory_logs'), orderBy('created_at', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'inventory_logs'), orderBy('created_at', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       const lData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setLogs(lData);
@@ -55,10 +55,10 @@ export default function InventoryPage() {
 
   // Fetch Categories & Pages
   useEffect(() => {
-    const unsubCats = onSnapshot(collection(db, 'categories'), (snapshot) => {
+    const unsubCats = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
       setCategoriesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    const unsubPages = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+    const unsubPages = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
       setPagesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => {
@@ -105,8 +105,8 @@ export default function InventoryPage() {
 
     setIsSubmitting(true);
     try {
-      const productRef = doc(db, 'products', selectedProduct.id);
-      const logRef = doc(collection(db, 'inventory_logs'));
+      const productRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', selectedProduct.id);
+      const logRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'inventory_logs'));
 
       await runTransaction(db, async (transaction) => {
         const productDoc = await transaction.get(productRef);

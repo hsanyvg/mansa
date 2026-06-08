@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
-import { db } from '../lib/firebase';
+import { db, auth } from "../lib/firebase";
 import { collection, onSnapshot } from 'firebase/firestore';
 
 export default function Dashboard() {
@@ -167,7 +167,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     // Listen to orders
-    const unsubOrders = onSnapshot(collection(db, 'orders'), (snapshot) => {
+    const unsubOrders = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), (snapshot) => {
       setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (error) => {
@@ -175,7 +175,7 @@ export default function Dashboard() {
     });
 
     // Listen to products
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const prods = snapshot.docs.map(doc => doc.data());
       setProductsCount(prods.length);
       

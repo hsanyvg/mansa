@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import DateRangePicker from '../../components/DateRangePicker';
 import { 
   collection, 
@@ -107,7 +107,7 @@ export default function EmployeesPage() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'employees'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -163,7 +163,7 @@ export default function EmployeesPage() {
       const commRate = parseFloat(formData.commissionRate) || 0;
 
       if (editingId) {
-        const employeeRef = doc(db, 'employees', editingId);
+        const employeeRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees', editingId);
         batch.update(employeeRef, {
           name: formData.name,
           basicSalary: basicSal,
@@ -176,7 +176,7 @@ export default function EmployeesPage() {
         await batch.commit();
         showToastMsg("تم تحديث بيانات الموظف بنجاح");
       } else {
-        const employeeRef = doc(collection(db, 'employees'));
+        const employeeRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'));
         batch.set(employeeRef, {
           name: formData.name,
           basicSalary: basicSal,
@@ -201,7 +201,7 @@ export default function EmployeesPage() {
     if (!window.confirm(`هل أنت متأكد من حذف الموظف "${name}"؟ هذا الإجراء قد يسبب مشاكل في تقارير الرواتب القديمة المرتبطة به.`)) return;
     
     try {
-      await deleteDoc(doc(db, 'employees', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees', id));
       showToastMsg("تم حذف الموظف بنجاح");
     } catch (error) {
       console.error("Error deleting employee:", error);
@@ -218,7 +218,7 @@ export default function EmployeesPage() {
     
     try {
       const emp = employees.find(e => e.id === deductionForm.employeeId);
-      await addDoc(collection(db, 'deductions'), {
+      await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions'), {
         ...deductionForm,
         employeeName: emp?.name || '',
         amount: parseFloat(deductionForm.amount),
@@ -241,7 +241,7 @@ export default function EmployeesPage() {
   const handleDeleteDeduction = async (id: string) => {
     if (!window.confirm("هل أنت متأكد من حذف هذا الخصم؟")) return;
     try {
-      await deleteDoc(doc(db, 'deductions', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions', id));
       showToastMsg("تم حذف الخصم بنجاح");
     } catch (err) {
       console.error(err);
@@ -251,7 +251,7 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     if (activeTab !== 'deductions') return;
-    const q = query(collection(db, 'deductions'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setDeductionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -267,7 +267,7 @@ export default function EmployeesPage() {
     
     // Listen to Orders
     const ordersQ = query(
-      collection(db, 'orders'),
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'),
       where('employeeId', '==', selectedAttendanceEmployee.id),
       where('date', '>=', dateRange.start),
       where('date', '<=', new Date(dateRange.end.getTime() + 86400000)) // Incl. end day
@@ -276,7 +276,7 @@ export default function EmployeesPage() {
     const unsubOrders = onSnapshot(ordersQ, (ordersSnap) => {
       // Listen to Overrides
       const overridesQ = query(
-        collection(db, 'attendance_overrides'),
+        collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'attendance_overrides'),
         where('employeeId', '==', selectedAttendanceEmployee.id),
         where('date', '>=', dateRange.start.toISOString().split('T')[0]),
         where('date', '<=', dateRange.end.toISOString().split('T')[0])
@@ -368,7 +368,7 @@ export default function EmployeesPage() {
     
     setLoadingPayroll(true);
     const ordersQ = query(
-      collection(db, 'orders'),
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'),
       where('date', '>=', dateRange.start),
       where('date', '<=', new Date(dateRange.end.getTime() + 86400000))
     );
@@ -385,7 +385,7 @@ export default function EmployeesPage() {
     if (activeTab === 'management') return;
     
     const overridesQ = query(
-      collection(db, 'attendance_overrides'),
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'attendance_overrides'),
       where('date', '>=', dateRange.start.toISOString().split('T')[0]),
       where('date', '<=', dateRange.end.toISOString().split('T')[0])
     );
@@ -402,7 +402,7 @@ export default function EmployeesPage() {
     if (activeTab === 'management') return;
     
     const deductionsQ = query(
-      collection(db, 'deductions'),
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions'),
       where('date', '>=', dateRange.start.toISOString().split('T')[0]),
       where('date', '<=', dateRange.end.toISOString().split('T')[0])
     );
@@ -551,12 +551,12 @@ export default function EmployeesPage() {
       
       // 1. Mark orders as Paid
       pData.unpaidOrderIds.forEach((orderId: string) => {
-        const orderRef = doc(db, 'orders', orderId);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
         batch.update(orderRef, { isPaidToStaff: true });
       });
 
       // 2. Add salary payment record
-      const paymentRef = doc(collection(db, 'salary_payments'));
+      const paymentRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'salary_payments'));
       batch.set(paymentRef, {
         employeeId: empId,
         employeeName: pData.empDetails.name,
@@ -587,7 +587,7 @@ export default function EmployeesPage() {
   useEffect(() => {
     if (!showArchiveModal) return;
 
-    const q = query(collection(db, 'salary_payments'), orderBy('paymentDate', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'salary_payments'), orderBy('paymentDate', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -608,7 +608,7 @@ export default function EmployeesPage() {
     if (!window.confirm("هل أنت متأكد من نقل هذه العملية إلى الأرشيف النهائي؟ لن تظهر في القائمة الرئيسية بعد الآن.")) return;
     try {
       const batch = writeBatch(db);
-      batch.update(doc(db, 'salary_payments', id), { isArchivedFinal: true });
+      batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'salary_payments', id), { isArchivedFinal: true });
       await batch.commit();
       showToastMsg("تم نقل العملية للأرشيف النهائي");
     } catch (error) {
@@ -620,7 +620,7 @@ export default function EmployeesPage() {
   const handleRestoreFromFinal = async (id: string) => {
     try {
       const batch = writeBatch(db);
-      batch.update(doc(db, 'salary_payments', id), { isArchivedFinal: false });
+      batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'salary_payments', id), { isArchivedFinal: false });
       await batch.commit();
       showToastMsg("تمت استعادة العملية للأرشيف النشط");
     } catch (error) {
@@ -648,7 +648,7 @@ export default function EmployeesPage() {
         
         let allOrds: any[] = [];
         for (const chunk of chunks) {
-          const q = query(collection(db, 'orders'), where('__name__', 'in', chunk));
+          const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), where('__name__', 'in', chunk));
           const snap = await getDocs(q);
           snap.forEach(d => allOrds.push({ id: d.id, ...d.data() }));
         }
@@ -687,7 +687,7 @@ export default function EmployeesPage() {
   const performAttendanceToggle = async (empId: string, date: string, isCurrentlyPresent: boolean) => {
     try {
       const docId = `${empId}_${date}`;
-      const overRef = doc(db, 'attendance_overrides', docId);
+      const overRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'attendance_overrides', docId);
       
       const newStatus = !isCurrentlyPresent;
       const [year, month, day] = date.split('-');

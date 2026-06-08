@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebase';
+import { db, auth } from "../../../../lib/firebase";
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 export async function POST(req: Request) {
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        const orderRef = doc(db, 'orders', orderId);
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
         await updateDoc(orderRef, {
           status: newStatus,
           deliveryStatus: update.action_code || update.current_step,

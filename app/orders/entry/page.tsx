@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { 
   collection, 
   onSnapshot, 
@@ -39,6 +39,7 @@ export default function OrderEntryPage() {
   const [formData, setFormData] = useState({
     customerName: '',
     customerPhone: '',
+    customerPhone2: '',
     governorate: '',
     region: '',
     notes: '',
@@ -84,7 +85,7 @@ export default function OrderEntryPage() {
 
   // Fetch products from Firestore
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
       setBaseProducts(pData);
     });
@@ -93,7 +94,7 @@ export default function OrderEntryPage() {
 
   // Fetch employees
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'employees'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'), (snapshot) => {
       const empData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEmployees(empData.filter((e: any) => e.isActive));
     });
@@ -104,7 +105,7 @@ export default function OrderEntryPage() {
 
   // Fetch composite products
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'composite_products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'), (snapshot) => {
       const cData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCompositeProductsData(cData);
     });
@@ -113,7 +114,7 @@ export default function OrderEntryPage() {
 
   // Fetch customers
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'customers'), (snapshot) => {
       setCustomersDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -121,7 +122,7 @@ export default function OrderEntryPage() {
 
   // Fetch categories to filter search results
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
       setCategoriesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -129,7 +130,7 @@ export default function OrderEntryPage() {
 
   // Fetch pages_stores to filter search results
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
       setPagesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -149,7 +150,7 @@ export default function OrderEntryPage() {
         setIsSearchingHistory(true);
         try {
           // 1. Query Orders
-          const qOrders = fsQuery(collection(db, 'orders'), where('customerPhone', '==', searchPhone));
+          const qOrders = fsQuery(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), where('customerPhone', '==', searchPhone));
           const snapOrders = await getDocs(qOrders);
           
           let count = 0;
@@ -170,7 +171,7 @@ export default function OrderEntryPage() {
           });
 
           // 2. Query Profile
-          const qCust = fsQuery(collection(db, 'customers'), where('phone', '==', searchPhone));
+          const qCust = fsQuery(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'customers'), where('phone', '==', searchPhone));
           const snapCust = await getDocs(qCust);
           let lastProfile = null;
           if (!snapCust.empty) {
@@ -204,7 +205,7 @@ export default function OrderEntryPage() {
         
         // Search by Phone ONLY
         const qPhone = fsQuery(
-          collection(db, 'orders'), 
+          collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), 
           where('customerPhone', '>=', phoneQuery), 
           where('customerPhone', '<=', phoneQuery + '\uf8ff'),
           limit(5)
@@ -485,7 +486,7 @@ export default function OrderEntryPage() {
 
     try {
       // 0. Generate Numeric Sequential ID
-      const counterRef = doc(db, 'metadata', 'orderCounter');
+      const counterRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'metadata', 'orderCounter');
       const nextId = await runTransaction(db, async (transaction) => {
         const counterSnap = await transaction.get(counterRef);
         let currentId = 100000; // Start numeric IDs from 100,000
@@ -498,7 +499,7 @@ export default function OrderEntryPage() {
       });
 
       const batch = writeBatch(db);
-      const newOrderRef = doc(db, 'orders', nextId.toString());
+      const newOrderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', nextId.toString());
 
       const emp = employees.find(e => e.id === selectedEmployeeId);
 
@@ -509,7 +510,7 @@ export default function OrderEntryPage() {
         const productData = item.product as any;
         if (productData.isComposite && productData.composition) {
           for (const component of productData.composition) {
-            const rawProdRef = doc(db, 'products', component.itemId);
+            const rawProdRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', component.itemId);
             const rawSnap = await getDoc(rawProdRef);
             if (rawSnap.exists()) {
               const rawData = rawSnap.data();
@@ -524,7 +525,7 @@ export default function OrderEntryPage() {
             }
           }
         } else {
-           const prodRef = doc(db, 'products', item.product.id);
+           const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.product.id);
            const prodSnap = await getDoc(prodRef);
            if (prodSnap.exists()) {
               const prodData = prodSnap.data();
@@ -546,6 +547,7 @@ export default function OrderEntryPage() {
         employeeName: emp?.name || 'مجهول',
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
+        customerPhone2: formData.customerPhone2,
         governorate: formData.governorate,
         region: formData.region,
         notes: formData.notes,
@@ -579,7 +581,7 @@ export default function OrderEntryPage() {
         // --- Handle Composite Products (BOM) ---
         if (productData.isComposite && productData.composition) {
           for (const component of productData.composition) {
-            const rawProdRef = doc(db, 'products', component.itemId);
+            const rawProdRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', component.itemId);
             const rawSnap = await getDoc(rawProdRef);
             
             if (rawSnap.exists()) {
@@ -600,7 +602,7 @@ export default function OrderEntryPage() {
         } 
         // --- Handle Regular Products ---
         else {
-          const prodRef = doc(db, 'products', item.product.id);
+          const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.product.id);
           const prodSnap = await getDoc(prodRef);
           
           if (prodSnap.exists()) {
@@ -653,6 +655,7 @@ export default function OrderEntryPage() {
       setFormData({
         customerName: '', 
         customerPhone: '', 
+        customerPhone2: '', 
         governorate: '', 
         region: '', 
         notes: '',
@@ -720,7 +723,7 @@ export default function OrderEntryPage() {
                   onChange={handleChange}
                   onFocus={() => setShowPhoneDropdown(true)}
                   onBlur={() => setTimeout(() => setShowPhoneDropdown(false), 200)}
-                  onKeyDown={(e) => handleKeyDownForm(e, 'governorate')}
+                  onKeyDown={(e) => handleKeyDownForm(e, 'customerPhone2')}
                   autoComplete="off"
                 />
                 {isPhoneInvalid && (
@@ -758,6 +761,21 @@ export default function OrderEntryPage() {
                 </ul>
               )}
             </div>
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label}>رقم هاتف ثاني للزبون (اختياري)</label>
+            <input 
+              id="customerPhone2"
+              type="text" 
+              name="customerPhone2"
+              className={styles.input} 
+              value={formData.customerPhone2}
+              onChange={handleChange}
+              onKeyDown={(e) => handleKeyDownForm(e, 'governorate')}
+              placeholder="أدخل الهاتف الثاني إذا توفر..."
+              autoComplete="off"
+            />
           </div>
 
           <div className={styles.formGroup}>
@@ -814,21 +832,7 @@ export default function OrderEntryPage() {
               className={getInputClass('region')} 
               value={formData.region}
               onChange={handleChange}
-              onKeyDown={(e) => handleKeyDownForm(e, 'fbLoginId')}
-            />
-          </div>
-
-          <div className={styles.formGroup}>
-            <label className={styles.label}>معرف زبون فيسبوك (PSID) - اختياري</label>
-            <input 
-              id="fbLoginId"
-              type="text" 
-              name="fbLoginId"
-              className={styles.input} 
-              value={formData.fbLoginId}
-              onChange={handleChange}
               onKeyDown={(e) => handleKeyDownForm(e, 'notes')}
-              placeholder="أدخل المعرف إذا توفر..."
             />
           </div>
 
@@ -869,6 +873,7 @@ export default function OrderEntryPage() {
               </button>
             </div>
             <textarea 
+              id="notes"
               name="notes"
               className={styles.textarea} 
               value={formData.notes}

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export default function AlertsSettingsPage() {
@@ -16,7 +16,7 @@ export default function AlertsSettingsPage() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'alerts_settings', 'cpo_alerts');
+        const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'alerts_settings', 'cpo_alerts');
         const docSnap = await getDoc(docRef);
         
         if (docSnap.exists()) {
@@ -44,7 +44,7 @@ export default function AlertsSettingsPage() {
 
     setIsSaving(true);
     try {
-      const docRef = doc(db, 'alerts_settings', 'cpo_alerts');
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'alerts_settings', 'cpo_alerts');
       await setDoc(docRef, {
         isActive,
         intervalMinutes: Number(intervalMinutes),

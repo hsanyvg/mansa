@@ -4,7 +4,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export async function POST(req: Request) {
   try {
-    const { orderId, shipmentId } = await req.json();
+    const { orderId, shipmentId, skipDbUpdate } = await req.json();
 
     if (!orderId) {
       return NextResponse.json({ success: false, message: 'معرف الطلب مفقود' }, { status: 400 });
@@ -51,9 +51,13 @@ export async function POST(req: Request) {
 
     const token = loginData.token.replace('Bearer ', '').trim();
 
-    // Self-healing: if targetShipmentId is missing or matches orderId (since orderId is merchant order number), query Jenni API
-    if (!targetShipmentId || targetShipmentId === orderId) {
-      console.log(`jenniShipmentId is missing or equal to orderId for ${orderId}. Querying Jenni API to resolve...`);
+    // Self-healing: if targetShipmentId is missing, is a shipment/order number, or is not a pure numeric database ID, query Jenni API to resolve it
+    const isNumericId = targetShipmentId && /^\d+$/.test(String(targetShipmentId));
+    const isShipmentNumber = targetShipmentId === orderData.orderNumber || targetShipmentId === orderData.shipmentNumber || targetShipmentId === orderData.shipmentId || targetShipmentId === orderId;
+
+    if (!targetShipmentId || !isNumericId || isShipmentNumber) {
+      const searchNumber = orderData.shipmentNumber || orderData.shipmentId || orderData.orderNumber || orderId;
+      console.log(`targetShipmentId "${targetShipmentId}" is not a valid Jenni database ID. Querying Jenni API with shipment number "${searchNumber}" to resolve...`);
       try {
         const queryRes = await fetch('https://almasara.jenni.delivery/api/v2/shipments/query', {
           method: 'POST',
@@ -61,7 +65,7 @@ export async function POST(req: Request) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ shipment_numbers: [orderId] })
+          body: JSON.stringify({ shipment_numbers: [String(searchNumber)] })
         });
         const queryData = await queryRes.json();
         if (queryRes.ok && queryData.success && queryData.shipments?.length > 0) {
@@ -69,12 +73,14 @@ export async function POST(req: Request) {
           const resolvedId = foundShip.shipment_id || foundShip.id;
           if (resolvedId) {
             console.log(`Resolved targetShipmentId to: ${resolvedId}. Updating Firestore...`);
-            targetShipmentId = resolvedId;
+            targetShipmentId = String(resolvedId);
             await updateDoc(orderRef, {
               jenniShipmentId: resolvedId,
-              shipmentId: foundShip.shipment_number || orderId
+              shipmentId: foundShip.shipment_number || searchNumber
             });
           }
+        } else {
+          console.warn(`Query did not return shipment for number: ${searchNumber}. Response:`, queryData);
         }
       } catch (err) {
         console.error('Failed to self-heal shipment ID:', err);
@@ -113,11 +119,13 @@ export async function POST(req: Request) {
     }
 
     // 4. Update order in Firebase to cancelled
-    await updateDoc(orderRef, {
-      status: 'cancelled',
-      deliveryStatus: 'CANCELLED_API',
-      updatedAt: new Date()
-    });
+    if (!skipDbUpdate) {
+      await updateDoc(orderRef, {
+        status: 'cancelled',
+        deliveryStatus: 'CANCELLED_API',
+        updatedAt: new Date()
+      });
+    }
 
     return NextResponse.json({ success: true, message: 'تم إلغاء الشحنة بنجاح من شركة التوصيل ومن النظام' });
   } catch (err: any) {

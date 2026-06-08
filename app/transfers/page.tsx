@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, writeBatch, doc, serverTimestamp, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import CalendarPicker from './CalendarPicker';
 
@@ -50,10 +50,10 @@ export default function BulkTransferPage() {
 
   // Fetch Data
   useEffect(() => {
-    const unsubStores = onSnapshot(collection(db, 'stores'), (snapshot) => {
+    const unsubStores = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores'), (snapshot) => {
       setStores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => {
@@ -69,7 +69,7 @@ export default function BulkTransferPage() {
     const endTs = Timestamp.fromDate(new Date(endDate + 'T23:59:59'));
 
     const q = query(
-      collection(db, 'inventory_transfers'),
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'inventory_transfers'),
       where('createdAt', '>=', startTs),
       where('createdAt', '<=', endTs),
       orderBy('createdAt', 'desc')
@@ -131,7 +131,7 @@ export default function BulkTransferPage() {
       const batch = writeBatch(db);
 
       // 1. Create Transfer Receipt
-      const transferRef = doc(collection(db, 'inventory_transfers'));
+      const transferRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'inventory_transfers'));
       batch.set(transferRef, {
         sourceStoreId,
         destinationStoreId,
@@ -142,7 +142,7 @@ export default function BulkTransferPage() {
 
       // 2. Update Product Stocks
       for (const item of itemsToTransfer) {
-        const productRef = doc(db, 'products', item.productId);
+        const productRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.productId);
         
         // Find the actual current product state from `products` array
         const currentProd = products.find(p => p.id === item.productId);

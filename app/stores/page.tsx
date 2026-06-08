@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 export default function StoresPage() {
@@ -21,7 +21,7 @@ export default function StoresPage() {
 
   // Fetch Stores
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'stores'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setStoresData(data);
     });
@@ -30,7 +30,7 @@ export default function StoresPage() {
 
   // Fetch Products for calculation
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProductsData(data);
     });
@@ -44,9 +44,9 @@ export default function StoresPage() {
     }
     try {
       if (editingStoreId) {
-        await updateDoc(doc(db, 'stores', editingStoreId), { ...formData, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores', editingStoreId), { ...formData, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, 'stores'), { ...formData, createdAt: serverTimestamp() });
+        await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores'), { ...formData, createdAt: serverTimestamp() });
       }
       setShowAddModal(false);
       setFormData({ name: '', phone: '', notes: '' });
@@ -64,7 +64,7 @@ export default function StoresPage() {
   const confirmDelete = async () => {
     if (!storeToDelete) return;
     try {
-      await deleteDoc(doc(db, 'stores', storeToDelete.id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores', storeToDelete.id));
       setShowDeleteModal(false);
       setStoreToDelete(null);
     } catch (e) {

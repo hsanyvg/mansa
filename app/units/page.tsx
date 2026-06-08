@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
 export default function UnitsPage() {
@@ -15,7 +15,7 @@ export default function UnitsPage() {
   const [unitsData, setUnitsData] = useState<{id: string, name: string}[]>([]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'units'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'units'), (snapshot) => {
       const uData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as {id: string, name: string}[];
       setUnitsData(uData);
     });
@@ -25,10 +25,10 @@ export default function UnitsPage() {
   const handleSave = async () => {
     try {
       if (editUnit) {
-        await updateDoc(doc(db, 'units', editUnit.id), { name: inputValue });
+        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'units', editUnit.id), { name: inputValue });
       } else {
         if (inputValue.trim() !== '') {
-          await addDoc(collection(db, 'units'), { name: inputValue });
+          await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'units'), { name: inputValue });
         }
       }
       setShowModal(false);
@@ -40,7 +40,7 @@ export default function UnitsPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'units', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'units', id));
     } catch (err) {
       console.error(err);
       alert("حدث خطأ أثناء الحذف");

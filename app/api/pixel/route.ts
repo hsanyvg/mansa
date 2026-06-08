@@ -12,9 +12,10 @@ export async function GET(request: Request) {
     'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400'
   });
 
-  // استخراج المعامل name من الرابط
+  // استخراج المعامل name و userId من الرابط
   const { searchParams } = new URL(request.url);
   const name = searchParams.get('name');
+  const userId = searchParams.get('userId');
 
   if (!name) {
     const errorScript = `console.error("Meta Pixel Dynamic API: Missing 'name' query parameter.");`;
@@ -23,7 +24,9 @@ export async function GET(request: Request) {
 
   try {
     // الاتصال بـ Firestore والبحث عن الربط المطابق
-    const connectionsRef = collection(db, 'integrations', 'meta', 'connections');
+    const connectionsRef = userId
+      ? collection(db, 'users', userId, 'integrations', 'meta', 'connections')
+      : collection(db, 'integrations', 'meta', 'connections');
     const q = query(connectionsRef, where("name", "==", name));
     const querySnapshot = await getDocs(q);
 

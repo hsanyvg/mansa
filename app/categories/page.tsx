@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../lib/firebase';
+import { db, auth } from "../../lib/firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 interface PageStore {
@@ -53,12 +53,12 @@ export default function CategoriesPage() {
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    const unsubPages = onSnapshot(collection(db, 'pages_stores'), (snapshot) => {
+    const unsubPages = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
       const pData = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as PageStore[];
       setPagesStores(pData);
     });
 
-    const unsubCats = onSnapshot(collection(db, 'categories'), (snapshot) => {
+    const unsubCats = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
       const catsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as MainCategory[];
       const processed = catsData.map(c => ({
         ...c,
@@ -67,7 +67,7 @@ export default function CategoriesPage() {
       setCategories(processed);
     });
     
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     
@@ -110,28 +110,28 @@ export default function CategoriesPage() {
     (async () => {
       try {
         if (currentMode === 'addPage') {
-          await addDoc(collection(db, 'pages_stores'), { name: currentName, createdAt: serverTimestamp() });
+          await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), { name: currentName, createdAt: serverTimestamp() });
           showToastMsg("تم إضافة البيج بنجاح");
         } else if (currentMode === 'editPage' && currentTargetPageId) {
-          await updateDoc(doc(db, 'pages_stores', currentTargetPageId), { name: currentName });
+          await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores', currentTargetPageId), { name: currentName });
           showToastMsg("تم التعديل بنجاح");
         } else if (currentMode === 'addMain' && currentTargetPageId) {
           let subs: SubCategory[] = [];
           if (currentHasSubCategory && currentSubName) {
             subs.push({ id: Date.now().toString(), name: currentSubName });
           }
-          await addDoc(collection(db, 'categories'), { name: currentName, pageId: currentTargetPageId, subcategories: subs });
+          await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), { name: currentName, pageId: currentTargetPageId, subcategories: subs });
           setExpandedPageId(currentTargetPageId);
           showToastMsg("تم إضافة الفئة الرئيسية بنجاح");
         } else if (currentMode === 'editMain' && currentTargetMainId) {
-          await updateDoc(doc(db, 'categories', currentTargetMainId), { name: currentName });
+          await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', currentTargetMainId), { name: currentName });
           showToastMsg("تم التعديل بنجاح");
         } else if (currentMode === 'addSub' && currentTargetMainId) {
           const cat = categories.find(c => c.id === currentTargetMainId);
           if (cat) {
             const newSubId = Date.now().toString();
             const subcategories = [...cat.subcategories, { id: newSubId, name: currentName }];
-            await updateDoc(doc(db, 'categories', currentTargetMainId), { subcategories });
+            await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', currentTargetMainId), { subcategories });
             setExpandedMainCatId(currentTargetMainId);
             showToastMsg("تم إضافة الفئة الفرعية بنجاح");
           }
@@ -139,11 +139,11 @@ export default function CategoriesPage() {
           const cat = categories.find(c => c.id === currentTargetMainId);
           if (cat) {
             const subcategories = cat.subcategories.map(s => s.id === currentTargetSubId ? { ...s, name: currentName } : s);
-            await updateDoc(doc(db, 'categories', currentTargetMainId), { subcategories });
+            await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', currentTargetMainId), { subcategories });
             showToastMsg("تم التعديل بنجاح");
           }
         } else if (currentMode === 'addProduct' && currentTargetMainId) {
-          await addDoc(collection(db, 'products'), {
+          await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), {
             name: currentName,
             categoryId: currentTargetMainId,
             subcategoryId: currentTargetSubId || "",
@@ -204,20 +204,20 @@ export default function CategoriesPage() {
       if (deleteMode === 'page') {
         const catsToDelete = categories.filter(c => c.pageId === itemToDelete.id);
         for (const cat of catsToDelete) {
-          await deleteDoc(doc(db, 'categories', cat.id));
+          await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', cat.id));
         }
-        await deleteDoc(doc(db, 'pages_stores', itemToDelete.id));
+        await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores', itemToDelete.id));
         if (expandedPageId === itemToDelete.id) setExpandedPageId(null);
         showToastMsg("تم حذف البيج بنجاح");
       } else if (deleteMode === 'main') {
-        await deleteDoc(doc(db, 'categories', itemToDelete.id));
+        await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', itemToDelete.id));
         if (expandedMainCatId === itemToDelete.id) setExpandedMainCatId(null);
         showToastMsg("تم حذف الفئة الرئيسية");
       } else if (deleteMode === 'sub' && itemToDelete.parentId) {
         const cat = categories.find(c => c.id === itemToDelete.parentId);
         if (cat) {
           const subcategories = cat.subcategories.filter(s => s.id !== itemToDelete.id);
-          await updateDoc(doc(db, 'categories', itemToDelete.parentId), { subcategories });
+          await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', itemToDelete.parentId), { subcategories });
           showToastMsg("تم حذف الفئة الفرعية");
         }
       }

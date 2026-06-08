@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { db } from '../../../lib/firebase';
+import { db, auth } from "../../../lib/firebase";
 import { 
   collection, onSnapshot, addDoc, deleteDoc, doc,
   serverTimestamp, query, orderBy, getDocs, getDoc
@@ -60,7 +60,7 @@ export default function TreasuryPage() {
       setSettledOrders([]);
       try {
         const promises = t.settledOrderIds.map(async (id) => {
-          const docSnap = await getDoc(doc(db, 'orders', id));
+          const docSnap = await getDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', id));
           if (docSnap.exists()) {
             const data = docSnap.data();
             let addDate = '---';
@@ -104,12 +104,12 @@ export default function TreasuryPage() {
     if (!isMounted) return;
 
     // Listen to Wallets
-    const unsubWallets = onSnapshot(collection(db, 'wallets'), (snapshot) => {
+    const unsubWallets = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), (snapshot) => {
       setWallets(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Wallet)));
     });
 
     // Listen to Transactions
-    const q = query(collection(db, 'treasury_transactions'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'), orderBy('createdAt', 'desc'));
     const unsubTrans = onSnapshot(q, (snapshot) => {
       const fetchedTrans = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
       // Sort by date descending (newest dates first) to replace Firebase compound sorting
@@ -191,7 +191,7 @@ export default function TreasuryPage() {
     }
 
     try {
-      await addDoc(collection(db, 'treasury_transactions'), data);
+      await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'), data);
       showToastMsg("تمت العملية بنجاح");
       setActiveModal(null);
     } catch (err) {
@@ -209,7 +209,7 @@ export default function TreasuryPage() {
     setDeleteConfirmId(null);
     
     try {
-      await deleteDoc(doc(db, 'treasury_transactions', id));
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions', id));
       showToastMsg("تم إلغاء الحركة وتحديث الأرصدة بنجاح");
     } catch (err) {
       showToastMsg("حدث خطأ أثناء الإلغاء", "error");

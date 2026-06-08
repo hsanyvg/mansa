@@ -21,14 +21,16 @@ const corsHeaders = {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { productId, value, currency, email, phone, firstName, state, externalId, fb_login_id } = body;
+    const { productId, value, currency, email, phone, firstName, state, externalId, fb_login_id, userId } = body;
 
     if (!productId) {
       return NextResponse.json({ error: "Missing productId parameter" }, { status: 400, headers: corsHeaders });
     }
 
-    // 1. الاتصال بفايربيس والبحث عن إعدادات الربط
-    const connectionsRef = collection(db, 'integrations', 'meta', 'connections');
+    // 1. Connection settings lookup scoped to user
+    const connectionsRef = userId
+      ? collection(db, 'users', userId, 'integrations', 'meta', 'connections')
+      : collection(db, 'integrations', 'meta', 'connections');
     const q = query(connectionsRef, where("linkedProducts", "array-contains", productId));
     const querySnapshot = await getDocs(q);
 

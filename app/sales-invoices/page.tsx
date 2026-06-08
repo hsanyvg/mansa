@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
+import { db, auth } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
 import styles from './page.module.css';
 
@@ -13,7 +13,7 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     // We fetch orders that are marked as 'delivered' (مكتمل)
     const q = query(
-      collection(db, 'orders'),
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'),
       where('status', '==', 'delivered'),
       orderBy('date', 'desc')
     );
