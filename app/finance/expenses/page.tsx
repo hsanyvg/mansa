@@ -2,12 +2,54 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
-import { db, auth, storage } from "../../../lib/firebase";
+import { db, auth } from "../../../lib/firebase";
 import { 
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, 
   doc, serverTimestamp, writeBatch 
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+// Helper to compress and convert image to low-quality JPEG Base64
+const compressImageToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas context not available'));
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Export as low-quality JPEG (0.6 quality is highly compressed and small)
+        const base64 = canvas.toDataURL('image/jpeg', 0.6);
+        resolve(base64);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
 
 // Types
 interface Expense {
@@ -53,6 +95,7 @@ export default function ExpensesPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
+  const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   
   // Filtering & Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -152,30 +195,6 @@ export default function ExpensesPage() {
     const now = new Date();
     const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-    setIsUploading(true);
-    let uploadedImageUrl = imageUrl;
-    if (imageFile) {
-      try {
-        const formData = new FormData();
-        formData.append('file', imageFile);
-        
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (!res.ok) {
-          throw new Error('Upload failed');
-        }
-        
-        const resData = await res.json();
-        uploadedImageUrl = resData.url;
-      } catch (error) {
-        setIsUploading(false);
-        return showToastMsg("فشل تحميل الصورة للسيرفر المحلي", "error");
-      }
-    }
-
     const data: any = {
       categoryId, 
       categoryName: cat?.name || 'غير محدد',
@@ -189,7 +208,7 @@ export default function ExpensesPage() {
       itemName: it?.name || '',
       walletId: selectedWalletId,
       walletName: selectedWallet?.name || '',
-      imageUrl: uploadedImageUrl || ''
+      imageUrl: imageUrl || ''
     };
 
     try {
@@ -225,8 +244,6 @@ export default function ExpensesPage() {
       resetForm();
     } catch (err) { 
       showToastMsg("حدث خطأ أثناء الحفظ", "error"); 
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -398,11 +415,19 @@ export default function ExpensesPage() {
               <input 
                 type="file" 
                 accept="image/*" 
-                onChange={e => {
+                onChange={async e => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    setImageFile(file);
-                    setImagePreview(URL.createObjectURL(file));
+                    setIsUploading(true);
+                    try {
+                      const base64 = await compressImageToBase64(file);
+                      setImagePreview(base64);
+                      setImageUrl(base64);
+                    } catch (err) {
+                      showToastMsg("فشل معالجة وضغط الصورة", "error");
+                    } finally {
+                      setIsUploading(false);
+                    }
                   }
                 }} 
                 className={styles.fileInput}
@@ -427,7 +452,7 @@ export default function ExpensesPage() {
           </div>
           <div className={styles.formActions}>
             <button type="submit" className={styles.submitBtn} disabled={isUploading}>
-              {isUploading ? '⏳ جاري الحفظ...' : editingId ? '🔄 تحديث العملية' : '💾 حفظ العملية'}
+              {isUploading ? '⏳ جاري ضغط الصورة...' : editingId ? '🔄 تحديث العملية' : '💾 حفظ العملية'}
             </button>
             {editingId && <button type="button" className={styles.cancelBtn} onClick={resetForm} disabled={isUploading}>إلغاء التعديل</button>}
           </div>
@@ -490,9 +515,13 @@ export default function ExpensesPage() {
                           </td>
                           <td>
                             {exp.imageUrl ? (
-                              <a href={exp.imageUrl} target="_blank" rel="noopener noreferrer" className={styles.attachmentLink}>
+                              <button 
+                                type="button"
+                                onClick={() => setActiveImageUrl(exp.imageUrl || null)} 
+                                className={styles.attachmentBtnLink}
+                              >
                                 🖼️ عرض الوصل
-                              </a>
+                              </button>
                             ) : (
                               <span className={styles.noAttachment}>-</span>
                             )}
@@ -529,9 +558,13 @@ export default function ExpensesPage() {
                     </td>
                     <td>
                       {exp.imageUrl ? (
-                        <a href={exp.imageUrl} target="_blank" rel="noopener noreferrer" className={styles.attachmentLink}>
+                        <button 
+                          type="button"
+                          onClick={() => setActiveImageUrl(exp.imageUrl || null)} 
+                          className={styles.attachmentBtnLink}
+                        >
                           🖼️ عرض الوصل
-                        </a>
+                        </button>
                       ) : (
                         <span className={styles.noAttachment}>-</span>
                       )}
@@ -570,6 +603,16 @@ export default function ExpensesPage() {
               <button className={styles.confirmDeleteBtn} onClick={() => handleDelete(deleteConfirmId)}>تأكيد الحذف</button>
               <button className={styles.cancelDeleteBtn} onClick={() => setDeleteConfirmId(null)}>إلغاء</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Attachment Viewer Modal */}
+      {activeImageUrl && (
+        <div className={styles.modalOverlay} onClick={() => setActiveImageUrl(null)}>
+          <div className={styles.imageModalContent} onClick={e => e.stopPropagation()}>
+            <img src={activeImageUrl} alt="Attachment" className={styles.fullImage} />
+            <button className={styles.closeImageModalBtn} onClick={() => setActiveImageUrl(null)}>❌ إغلاق المعاينة</button>
           </div>
         </div>
       )}
