@@ -691,3 +691,60 @@
   margin-bottom: 1rem;
   display: block;
 }
+
+.fileInput {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.5rem 0;
+}
+
+.previewContainer {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.previewImage {
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.removeImageBtn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.removeImageBtn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.attachmentLink {
+  color: #60a5fa;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.attachmentLink:hover {
+  text-decoration: underline;
+}
+
+.noAttachment {
+  opacity: 0.5;
+  color: var(--text-muted);
+}

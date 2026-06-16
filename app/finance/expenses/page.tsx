@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
-import { db, auth } from "../../../lib/firebase";
+import { db, auth, storage } from "../../../lib/firebase";
 import { 
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, 
   doc, serverTimestamp, writeBatch 
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Types
 interface Expense {
@@ -25,6 +26,7 @@ interface Expense {
   walletName?: string;
   isArchived?: boolean;
   createdAt: any;
+  imageUrl?: string;
 }
 
 export default function ExpensesPage() {
@@ -47,6 +49,10 @@ export default function ExpensesPage() {
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedWalletId, setSelectedWalletId] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
   
   // Filtering & Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,6 +115,9 @@ export default function ExpensesPage() {
     setSelectedPageId(''); setSelectedBranchId(''); setSelectedItemId(''); setSelectedWalletId('');
     setDate(new Date().toISOString().split('T')[0]);
     setEditingId(null);
+    setImageFile(null);
+    setImagePreview(null);
+    setImageUrl('');
   };
 
   const getWalletBalance = (walletId: string, curr: string) => {
@@ -143,6 +152,19 @@ export default function ExpensesPage() {
     const now = new Date();
     const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
+    setIsUploading(true);
+    let uploadedImageUrl = imageUrl;
+    if (imageFile) {
+      try {
+        const fileRef = ref(storage, `users/${auth.currentUser?.uid || 'anonymous'}/expenses/${Date.now()}_${imageFile.name}`);
+        const snapshot = await uploadBytes(fileRef, imageFile);
+        uploadedImageUrl = await getDownloadURL(snapshot.ref);
+      } catch (error) {
+        setIsUploading(false);
+        return showToastMsg("فشل تحميل الصورة للسيرفر", "error");
+      }
+    }
+
     const data: any = {
       categoryId, 
       categoryName: cat?.name || 'غير محدد',
@@ -155,7 +177,8 @@ export default function ExpensesPage() {
       branchName: br?.name || '', 
       itemName: it?.name || '',
       walletId: selectedWalletId,
-      walletName: selectedWallet?.name || ''
+      walletName: selectedWallet?.name || '',
+      imageUrl: uploadedImageUrl || ''
     };
 
     try {
@@ -191,6 +214,8 @@ export default function ExpensesPage() {
       resetForm();
     } catch (err) { 
       showToastMsg("حدث خطأ أثناء الحفظ", "error"); 
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -198,6 +223,9 @@ export default function ExpensesPage() {
     setEditingId(exp.id); setCategoryId(exp.categoryId); setAmount(exp.amount.toString());
     setCurrency(exp.currency); setDate(exp.date); setDetails(exp.details);
     if (exp.walletId) setSelectedWalletId(exp.walletId);
+    setImageUrl(exp.imageUrl || '');
+    setImagePreview(exp.imageUrl || null);
+    setImageFile(null);
     const pg = pages.find(p => p.name === exp.pageName);
     if (pg) {
       setSelectedPageId(pg.id);
@@ -354,8 +382,44 @@ export default function ExpensesPage() {
             <div className={styles.formGroup}><label className={styles.label}>البيج (اختياري)</label><select className={styles.select} value={selectedPageId} onChange={e => { setSelectedPageId(e.target.value); setSelectedBranchId(''); setSelectedItemId(''); }}><option value="">اختر البيج...</option>{pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الفرع (اختياري)</label><select className={styles.select} value={selectedBranchId} onChange={e => { setSelectedBranchId(e.target.value); setSelectedItemId(''); }} disabled={!selectedPageId}><option value="">اختر الفرع...</option>{allCategories.filter(b => b.pageId === selectedPageId).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الصنف (اختياري)</label><select className={styles.select} value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} disabled={!selectedBranchId}><option value="">اختر الصنف...</option>{allProducts.filter(i => i.categoryId === selectedBranchId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>صورة الفاتورة / الوصل (اختياري)</label>
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setImageFile(file);
+                    setImagePreview(URL.createObjectURL(file));
+                  }
+                }} 
+                className={styles.fileInput}
+              />
+              {imagePreview && (
+                <div className={styles.previewContainer}>
+                  <img src={imagePreview} alt="Preview" className={styles.previewImage} />
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setImageFile(null);
+                      setImagePreview(null);
+                      setImageUrl('');
+                    }} 
+                    className={styles.removeImageBtn}
+                  >
+                    ❌ حذف الصورة
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <div className={styles.formActions}><button type="submit" className={styles.submitBtn}>{editingId ? '🔄 تحديث العملية' : '💾 حفظ العملية'}</button>{editingId && <button type="button" className={styles.cancelBtn} onClick={resetForm}>إلغاء التعديل</button>}</div>
+          <div className={styles.formActions}>
+            <button type="submit" className={styles.submitBtn} disabled={isUploading}>
+              {isUploading ? '⏳ جاري الحفظ...' : editingId ? '🔄 تحديث العملية' : '💾 حفظ العملية'}
+            </button>
+            {editingId && <button type="button" className={styles.cancelBtn} onClick={resetForm} disabled={isUploading}>إلغاء التعديل</button>}
+          </div>
         </form>
       )}
 
@@ -402,7 +466,7 @@ export default function ExpensesPage() {
                 </div>
                 <div className={styles.tableContainer}>
                   <table className={styles.table}>
-                    <thead><tr><th>التاريخ</th><th>الفئة</th><th>المركز المالي</th><th>البيان</th><th>المبلغ</th><th style={{ textAlign: 'center' }}>إجراءات</th></tr></thead>
+                    <thead><tr><th>التاريخ</th><th>الفئة</th><th>المركز المالي</th><th>البيان</th><th>المرفقات</th><th>المبلغ</th><th style={{ textAlign: 'center' }}>إجراءات</th></tr></thead>
                     <tbody>
                       {grouped[m].map((exp:any) => (
                         <tr key={exp.id}>
@@ -412,6 +476,15 @@ export default function ExpensesPage() {
                           <td>
                             {exp.details}
                             {exp.isArchived && <span className={styles.archivedBadge}>مؤرشف</span>}
+                          </td>
+                          <td>
+                            {exp.imageUrl ? (
+                              <a href={exp.imageUrl} target="_blank" rel="noopener noreferrer" className={styles.attachmentLink}>
+                                🖼️ عرض الوصل
+                              </a>
+                            ) : (
+                              <span className={styles.noAttachment}>-</span>
+                            )}
                           </td>
                           <td className={styles.amountCell}>{exp.amount.toLocaleString('en-US')} {exp.currency === 'IQD' ? 'د.ع' : '$'}</td>
                           <td>
@@ -432,7 +505,7 @@ export default function ExpensesPage() {
         ) : (
           <div className={styles.tableContainer}>
             <table className={styles.table}>
-              <thead><tr><th>التاريخ</th><th>الفئة</th><th>المركز المالي</th><th>البيان / التفاصيل</th><th>المبلغ</th><th style={{ textAlign: 'center' }}>إجراءات</th></tr></thead>
+              <thead><tr><th>التاريخ</th><th>الفئة</th><th>المركز المالي</th><th>البيان / التفاصيل</th><th>المرفقات</th><th>المبلغ</th><th style={{ textAlign: 'center' }}>إجراءات</th></tr></thead>
               <tbody>
                 {filteredAndSearched.map(exp => (
                   <tr key={exp.id} className={`${editingId === exp.id ? styles.editingRow : ''} ${exp.isArchived ? styles.archivedRow : ''}`}>
@@ -442,6 +515,15 @@ export default function ExpensesPage() {
                     <td>
                       {exp.details}
                       {exp.isArchived && <span className={styles.archivedBadge}>مؤرشف</span>}
+                    </td>
+                    <td>
+                      {exp.imageUrl ? (
+                        <a href={exp.imageUrl} target="_blank" rel="noopener noreferrer" className={styles.attachmentLink}>
+                          🖼️ عرض الوصل
+                        </a>
+                      ) : (
+                        <span className={styles.noAttachment}>-</span>
+                      )}
                     </td>
                     <td className={styles.amountCell}>{exp.amount.toLocaleString('en-US')} {exp.currency === 'IQD' ? 'د.ع' : '$'}</td>
                     <td>
