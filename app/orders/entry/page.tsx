@@ -440,12 +440,25 @@ export default function OrderEntryPage() {
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      // If exact barcode match, auto-add
-      const exactMatch = products.find(p => p.barcode === searchQuery);
+      const query = e.currentTarget.value;
+      if (!query) return;
+
+      const exactMatch = products.find(p => p.barcode === query);
       if (exactMatch) {
          addToCart(exactMatch);
-      } else if (filteredProducts.length === 1) {
-         addToCart(filteredProducts[0]);
+      } else {
+         const validProducts = products.filter(p => {
+           const pNameClean = p.name?.trim().toLowerCase();
+           if (!pNameClean) return false;
+           const isPageName = pagesDb.some(page => page.name?.trim().toLowerCase() === pNameClean);
+           const isMainCatName = categoriesDb.some(cat => cat.name?.trim().toLowerCase() === pNameClean);
+           if (isPageName || isMainCatName) return false;
+           return p.name?.toLowerCase().includes(query.toLowerCase()) || p.barcode === query;
+         });
+         
+         if (validProducts.length === 1) {
+           addToCart(validProducts[0]);
+         }
       }
     }
   };
@@ -737,7 +750,7 @@ export default function OrderEntryPage() {
                     <li 
                       key={customer.id} 
                       className={styles.dropdownItem}
-                      onClick={() => handleSelectCustomer(customer)}
+                      onPointerDown={(e) => { e.preventDefault(); handleSelectCustomer(customer); }}
                     >
                       <div className={styles.customerRow}>
                         <div className={styles.customerMain}>
@@ -807,7 +820,8 @@ export default function OrderEntryPage() {
                       <li 
                         key={index} 
                         className={styles.dropdownItem}
-                        onClick={() => {
+                        onPointerDown={(e) => {
+                          e.preventDefault();
                           setFormData(prev => ({ ...prev, governorate: gov }));
                           setShowGovDropdown(false);
                         }}
@@ -994,7 +1008,7 @@ export default function OrderEntryPage() {
           {showProductDropdown && searchQuery && (
             <ul className={styles.dropdownList} style={{ top: 'calc(100% - 1.5rem)', left: '1.5rem', right: '1.5rem' }}>
               {filteredProducts.map(p => (
-                <li key={p.id} className={styles.dropdownItem} onClick={() => addToCart(p)}>
+                <li key={p.id} className={styles.dropdownItem} onPointerDown={(e) => { e.preventDefault(); addToCart(p); }}>
                   <strong>{p.name}</strong> {p.barcode && <small style={{color: 'var(--text-muted)'}}>({p.barcode})</small>}
                 </li>
               ))}

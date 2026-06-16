@@ -13,7 +13,8 @@ import {
   Platform,
   StatusBar,
   Animated,
-  Easing
+  Easing,
+  AppState
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Circle, G, Polygon, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
@@ -25,6 +26,7 @@ import {
   writeBatch, 
   serverTimestamp, 
   getDoc, 
+  updateDoc,
   query as fsQuery, 
   where, 
   getDocs,
@@ -37,7 +39,8 @@ import {
   signOut, 
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 
 export default function App() {
@@ -46,20 +49,82 @@ export default function App() {
 
   // Authentication State
   const [user, setUser] = useState(null);
+  const [adminUid, setAdminUid] = useState(null);
+  const [isEmployee, setIsEmployee] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  const handleLogout = async () => {
+    if (isEmployee && adminUid && user) {
+      try {
+        const sysUserRef = doc(db, 'users', adminUid, 'system_users', user.uid);
+        await updateDoc(sysUserRef, { isOnline: false, lastActive: serverTimestamp() });
+      } catch(e){}
+    }
+    await signOut(auth);
+  };
+
   // Listen for Auth changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+    const unsubscribe = onAuthStateChanged(auth, async (usr) => {
+      if (usr) {
+        try {
+          const mappingRef = doc(db, 'employee_mappings', usr.uid);
+          const mappingSnap = await getDoc(mappingRef);
+          if (mappingSnap.exists()) {
+             const data = mappingSnap.data();
+             setAdminUid(data.adminUid);
+             setSelectedEmployeeId(data.employeeId);
+             setIsEmployee(true);
+             
+             try {
+                const sysUserRef = doc(db, 'users', data.adminUid, 'system_users', usr.uid);
+                await updateDoc(sysUserRef, { isOnline: true, lastActive: serverTimestamp() });
+             } catch(e){}
+             
+          } else {
+             setAdminUid(usr.uid);
+             setIsEmployee(false);
+          }
+        } catch(err) {
+           console.log("Error checking mapping", err);
+           setAdminUid(usr.uid);
+           setIsEmployee(false);
+        }
+      } else {
+        setAdminUid(null);
+        setIsEmployee(false);
+      }
       setUser(usr);
       setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
+
+  // Presence tracker (AppState)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async nextAppState => {
+      if (isEmployee && adminUid && user) {
+        try {
+          const sysUserRef = doc(db, 'users', adminUid, 'system_users', user.uid);
+          if (nextAppState === 'active') {
+            await updateDoc(sysUserRef, { isOnline: true, lastActive: serverTimestamp() });
+          } else if (nextAppState.match(/inactive|background/)) {
+            await updateDoc(sysUserRef, { isOnline: false, lastActive: serverTimestamp() });
+          }
+        } catch(err) {
+          console.log("Presence err", err);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isEmployee, adminUid, user]);
 
   // Animated Neon Glow for Search Input
   const neonAnim = useRef(new Animated.Value(0.45)).current;
@@ -126,7 +191,7 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState('كاش عند التوصيل');
   const [fbLoginId, setFbLoginId] = useState('');
   const [cart, setCart] = useState([]);
-  const [customTotalAmount, setCustomTotalAmount] = useState('');
+  const [customTotalAmount, setCustomTotalAmount] = useState(null);
   const [ordersFilter, setOrdersFilter] = useState('all');
   const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
 
@@ -166,7 +231,7 @@ export default function App() {
 
   // Fetch Firestore Orders
   useEffect(() => {
-    if (!user) {
+    if (!user || !adminUid) {
       setOrders([]);
       setTodaySales(0);
       setTodayOrdersCount(0);
@@ -180,7 +245,7 @@ export default function App() {
       return;
     }
     setLoading(true);
-    const unsub = onSnapshot(collection(db, 'users', user.uid, 'orders'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', adminUid, 'orders'), (snapshot) => {
       const allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       // Sort newest first
@@ -255,60 +320,64 @@ export default function App() {
     });
 
     return () => unsub();
-  }, [user]);
+  }, [user, adminUid]);
 
   // Fetch active employees
   useEffect(() => {
-    if (!user) {
+    if (!user || !adminUid) {
       setEmployees([]);
       return;
     }
-    const unsub = onSnapshot(collection(db, 'users', user.uid, 'employees'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', adminUid, 'employees'), (snapshot) => {
       const empData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setEmployees(empData.filter((e) => e.isActive));
+      const activeEmps = empData.filter((e) => e.isActive);
+      setEmployees(activeEmps);
+      if (!isEmployee && !selectedEmployeeId && activeEmps.length > 0) {
+        setSelectedEmployeeId(activeEmps[0].id);
+      }
     });
     return () => unsub();
-  }, [user]);
+  }, [user, adminUid, selectedEmployeeId, isEmployee]);
 
   // Fetch base products
   useEffect(() => {
-    if (!user) {
+    if (!user || !adminUid) {
       setBaseProducts([]);
       return;
     }
-    const unsub = onSnapshot(collection(db, 'users', user.uid, 'products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', adminUid, 'products'), (snapshot) => {
       setBaseProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
-  }, [user]);
+  }, [user, adminUid]);
 
   // Fetch composite products
   useEffect(() => {
-    if (!user) {
+    if (!user || !adminUid) {
       setCompositeProductsData([]);
       return;
     }
-    const unsub = onSnapshot(collection(db, 'users', user.uid, 'composite_products'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', adminUid, 'composite_products'), (snapshot) => {
       setCompositeProductsData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
-  }, [user]);
+  }, [user, adminUid]);
 
   // Fetch customers
   useEffect(() => {
-    if (!user) {
+    if (!user || !adminUid) {
       setCustomersDb([]);
       return;
     }
-    const unsub = onSnapshot(collection(db, 'users', user.uid, 'customers'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'users', adminUid, 'customers'), (snapshot) => {
       setCustomersDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
-  }, [user]);
+  }, [user, adminUid]);
 
   // Search orders archive for matching phone when customer phone length >= 10
   useEffect(() => {
-    if (!user) {
+    if (!user || !adminUid) {
       setOrdersMatches([]);
       return;
     }
@@ -320,7 +389,7 @@ export default function App() {
     const searchOrders = async () => {
       try {
         const qPhone = fsQuery(
-          collection(db, 'users', user.uid, 'orders'), 
+          collection(db, 'users', adminUid, 'orders'), 
           where('customerPhone', '>=', phone), 
           where('customerPhone', '<=', phone + '\uf8ff'),
           limit(3)
@@ -345,7 +414,7 @@ export default function App() {
     };
     const timer = setTimeout(searchOrders, 300);
     return () => clearTimeout(timer);
-  }, [customerPhone, user]);
+  }, [customerPhone, user, adminUid]);
 
   // Combine products and composite packages
   const productsList = useMemo(() => {
@@ -442,10 +511,10 @@ export default function App() {
   };
 
   const calculatedTotal = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-  const totalAmount = customTotalAmount !== '' ? (parseInt(customTotalAmount.replace(/[^0-9]/g, '')) || 0) : calculatedTotal;
+  const totalAmount = customTotalAmount !== null && customTotalAmount !== '' ? (parseInt(customTotalAmount.replace(/[^0-9]/g, '')) || 0) : calculatedTotal;
 
   useEffect(() => {
-    setCustomTotalAmount('');
+    setCustomTotalAmount(null);
   }, [cart]);
 
   const filteredProductsSearch = productsList.filter(p => {
@@ -525,6 +594,26 @@ export default function App() {
       else if (err.code === 'auth/email-already-in-use') errMsg = 'البريد الإلكتروني مستخدم بالفعل.';
       else if (err.code === 'auth/weak-password') errMsg = 'كلمة المرور ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل).';
       else if (err.code === 'auth/invalid-credential') errMsg = 'بيانات الاعتماد المدخلة غير صحيحة.';
+      setAlertModal({ visible: true, message: errMsg });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setAlertModal({ visible: true, message: 'يرجى إدخال البريد الإلكتروني أولاً لإرسال رابط إعادة تعيين كلمة المرور.' });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setAlertModal({ visible: true, message: 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.' });
+    } catch (err) {
+      console.log("Reset password error:", err);
+      let errMsg = 'حدث خطأ أثناء إرسال رابط إعادة التعيين.';
+      if (err.code === 'auth/user-not-found') errMsg = 'لا يوجد حساب مرتبط بهذا البريد الإلكتروني.';
+      else if (err.code === 'auth/invalid-email') errMsg = 'البريد الإلكتروني غير صالح.';
       setAlertModal({ visible: true, message: errMsg });
     } finally {
       setIsSubmitting(false);
@@ -627,67 +716,12 @@ export default function App() {
     }
 
     setIsSubmitting(true);
-    const userId = user.uid;
+    let orderDocId = null;
 
     try {
-      // Generate sequential transaction numeric ID
-      const counterRef = doc(db, 'users', userId, 'metadata', 'orderCounter');
-      const nextId = await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        let currentId = 100000;
-        if (counterSnap.exists()) {
-          currentId = counterSnap.data().lastId;
-        }
-        const newId = currentId + 1;
-        transaction.set(counterRef, { lastId: newId }, { merge: true });
-        return newId;
-      });
-
-      const batch = writeBatch(db);
-      const newOrderRef = doc(db, 'users', userId, 'orders', nextId.toString());
-      const emp = employees.find(e => e.id === selectedEmployeeId);
-
-      let isOrderBackordered = false;
-
-      // Check stock availability
-      for (const item of cart) {
-        const productData = item.product;
-        if (productData.isComposite && productData.composition) {
-          for (const component of productData.composition) {
-            const rawProdRef = doc(db, 'users', userId, 'products', component.itemId);
-            const rawSnap = await getDoc(rawProdRef);
-            if (rawSnap.exists()) {
-              const rawData = rawSnap.data();
-              let totalAvailable = 0;
-              Object.values(rawData.stock || {}).forEach((s) => {
-                const uMul = rawData.units?.find((u) => u.type === s.unit)?.count || 1;
-                totalAvailable += ((Number(s.quantity) || 0) - (Number(s.reserved) || 0)) * uMul;
-              });
-              if (totalAvailable < component.quantityNeeded * item.quantity) {
-                isOrderBackordered = true;
-              }
-            }
-          }
-        } else {
-          const prodRef = doc(db, 'users', userId, 'products', item.product.id);
-          const prodSnap = await getDoc(prodRef);
-          if (prodSnap.exists()) {
-            const prodData = prodSnap.data();
-            let totalAvailable = 0;
-            Object.values(prodData.stock || {}).forEach((s) => {
-              const uMul = prodData.units?.find((u) => u.type === s.unit)?.count || 1;
-              totalAvailable += ((Number(s.quantity) || 0) - (Number(s.reserved) || 0)) * uMul;
-            });
-            if (totalAvailable < item.quantity) {
-              isOrderBackordered = true;
-            }
-          }
-        }
-      }
-
       const orderData = {
         employeeId: selectedEmployeeId,
-        employeeName: emp?.name || 'مجهول',
+        employeeName: employees.find(e => e.id === selectedEmployeeId)?.name || 'مجهول',
         customerName: customerName,
         customerPhone: customerPhone,
         customerPhone2: customerPhone2,
@@ -707,18 +741,34 @@ export default function App() {
           composition: item.product.composition || null
         })),
         date: serverTimestamp(),
-        status: isOrderBackordered ? 'backordered' : 'pending',
+        status: 'pending',
         is_settled: false
       };
 
-      batch.set(newOrderRef, orderData);
+      const batch = writeBatch(db);
+      const counterRef = doc(db, 'users', adminUid, 'metadata', 'orderCounter');
+      let newOrderId = 100000;
+        
+      await runTransaction(db, async (transaction) => {
+          const counterDoc = await transaction.get(counterRef);
+          if (counterDoc.exists()) {
+            newOrderId = (counterDoc.data().lastId || 100000) + 1;
+            transaction.update(counterRef, { lastId: newOrderId });
+          } else {
+            transaction.set(counterRef, { lastId: newOrderId });
+          }
+          
+          const newOrderRef = doc(collection(db, 'users', adminUid, 'orders'));
+          transaction.set(newOrderRef, orderData);
+          orderDocId = newOrderRef.id;
+      });
 
       // Reserve stock
       for (const item of cart) {
         const productData = item.product;
         if (productData.isComposite && productData.composition) {
           for (const component of productData.composition) {
-            const rawProdRef = doc(db, 'users', userId, 'products', component.itemId);
+            const rawProdRef = doc(db, 'users', adminUid, 'products', component.itemId);
             const rawSnap = await getDoc(rawProdRef);
             if (rawSnap.exists()) {
               const rawData = rawSnap.data();
@@ -734,7 +784,7 @@ export default function App() {
             }
           }
         } else {
-          const prodRef = doc(db, 'users', userId, 'products', item.product.id);
+          const prodRef = doc(db, 'users', adminUid, 'products', item.product.id);
           const prodSnap = await getDoc(prodRef);
           if (prodSnap.exists()) {
             const prodData = prodSnap.data();
@@ -755,21 +805,20 @@ export default function App() {
 
       // Trigger Webhook
       try {
-        const orderId = newOrderRef.id;
-        for (const item of cart) {
-          fetch('https://management-easy-order.firebaseapp.com/api/webhooks/meta-purchase', { // Absolute url since native has no next.js server context
+        if (orderDocId) {
+          fetch('https://management-easy-order.firebaseapp.com/api/webhooks/meta-purchase', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              productId: item.id,
-              value: item.quantity * item.unitPrice,
+              productId: cart[0]?.id,
+              value: totalAmount,
               currency: 'IQD',
               phone: customerPhone,
               firstName: customerName.split(' ')[0] || customerName,
               state: governorate,
-              externalId: orderId,
+              externalId: orderDocId,
               fb_login_id: fbLoginId,
-              userId: userId
+              userId: adminUid
             })
           }).catch(err => console.log("Webhook fail:", err));
         }
@@ -788,7 +837,7 @@ export default function App() {
       setNotes('');
       setFbLoginId('');
       setCart([]);
-      setCustomTotalAmount('');
+      setCustomTotalAmount(null);
       setHasAttemptedSubmit(false);
 
     } catch (err) {
@@ -922,17 +971,11 @@ export default function App() {
   if (!user) {
     return (
       <SafeAreaView style={styles.authContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#0a0a12" />
+        <StatusBar barStyle="light-content" backgroundColor="#121216" />
         <ScrollView contentContainerStyle={styles.authScroll}>
-          <View style={styles.authHeaderContainer}>
-            <Text style={styles.authTitle}>منصة منسا</Text>
-            <Text style={styles.authSubtitle}>نظام إدارة المبيعات والمخازن الذكي</Text>
-          </View>
-
           <View style={styles.authCard}>
-            <Text style={styles.authCardTitle}>
-              {authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
-            </Text>
+            <Text style={styles.authTitle}>منصة منسا</Text>
+            <Text style={styles.authSubtitle}>لوحة التحكم وإدارة المخازن والمبيعات</Text>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>البريد الإلكتروني</Text>
@@ -973,6 +1016,12 @@ export default function App() {
                   autoCapitalize="none"
                 />
               </View>
+            )}
+
+            {authMode === 'login' && (
+              <TouchableOpacity style={styles.forgotPasswordBtn} onPress={handleForgotPassword}>
+                <Text style={styles.forgotPasswordText}>نسيت كلمة المرور؟</Text>
+              </TouchableOpacity>
             )}
 
             <TouchableOpacity 
@@ -1059,14 +1108,6 @@ export default function App() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>منصة منسا - الجوال</Text>
-        <TouchableOpacity 
-          style={styles.empBadgeBtn} 
-          onPress={() => setEmpModalVisible(true)}
-        >
-          <Text style={styles.empBadgeText} numberOfLines={1}>
-            👤 {selectedEmployeeName}
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {/* Main Tab View */}
@@ -1368,15 +1409,19 @@ export default function App() {
                   <View style={styles.totalInputRow}>
                     <TextInput
                       style={styles.totalAmountInput}
-                      value={customTotalAmount !== '' ? customTotalAmount : String(calculatedTotal)}
+                      value={customTotalAmount !== null ? customTotalAmount : (calculatedTotal === 0 ? '' : String(calculatedTotal))}
                       keyboardType="numeric"
                       onChangeText={(text) => {
-                        const cleanVal = text.replace(/[^0-9]/g, '');
+                        let cleanVal = text.replace(/[^0-9]/g, '');
+                        if (cleanVal.length > 1 && cleanVal.startsWith('0')) {
+                          cleanVal = cleanVal.replace(/^0+/, '');
+                          if (cleanVal === '') cleanVal = '0';
+                        }
                         setCustomTotalAmount(cleanVal);
                       }}
                       onEndEditing={() => {
                         if (customTotalAmount === '0' || customTotalAmount === '') {
-                          setCustomTotalAmount('');
+                          setCustomTotalAmount(null);
                         }
                       }}
                     />
@@ -1440,45 +1485,7 @@ export default function App() {
             </TouchableOpacity>
           </View>
         </ScrollView>
-      ) : activeTab === 'account' ? (
-        <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
-          {/* Account Tab Content */}
-          <View style={styles.tabHeaderCard}>
-            <Text style={styles.tabHeaderTitle}>👤 ملف الموظف التعريفي</Text>
-          </View>
-          <View style={styles.statCardBig}>
-            <Text style={styles.profileLabel}>الموظف الحالي:</Text>
-            <Text style={styles.profileValue}>{selectedEmployeeName}</Text>
-            <Text style={styles.profileDescription}>
-              مسؤول عن إدخال الطلبات الحالية وتعديلها.
-            </Text>
-            <TouchableOpacity 
-              style={styles.profileSwitchBtn} 
-              onPress={() => setEmpModalVisible(true)}
-            >
-              <Text style={styles.profileSwitchBtnText}>🔄 تغيير الموظف</Text>
-            </TouchableOpacity>
-          </View>
 
-          <View style={styles.tabHeaderCard}>
-            <Text style={styles.tabHeaderTitle}>🔐 حساب المستخدم</Text>
-          </View>
-          <View style={styles.statCardBig}>
-            <Text style={styles.profileLabel}>البريد الإلكتروني:</Text>
-            <Text style={styles.profileValue}>{user?.email}</Text>
-            <Text style={styles.profileDescription}>
-              هذا هو حساب المنصة المسجل دخولك به حالياً.
-            </Text>
-            <TouchableOpacity 
-              style={[styles.profileSwitchBtn, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }]} 
-              onPress={() => {
-                signOut(auth).catch(err => console.log("Signout error:", err));
-              }}
-            >
-              <Text style={[styles.profileSwitchBtnText, { color: '#ef4444' }]}>🚪 تسجيل الخروج</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
       ) : activeTab === 'orders' ? (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
           {/* Header row in screenshot */}
@@ -1686,6 +1693,31 @@ export default function App() {
           <View style={styles.tabHeaderCard}>
             <Text style={styles.tabHeaderTitle}>⚙️ إعدادات النظام</Text>
           </View>
+
+          <View style={styles.statCardBig}>
+            <Text style={styles.profileLabel}>الموظف الحالي:</Text>
+            <Text style={styles.profileValue}>{selectedEmployeeName}</Text>
+            <Text style={styles.profileDescription}>
+              مسؤول عن إدخال الطلبات الحالية وتعديلها.
+            </Text>
+            <TouchableOpacity 
+              style={styles.profileSwitchBtn} 
+              onPress={() => setEmpModalVisible(true)}
+            >
+              <Text style={styles.profileSwitchBtnText}>🔄 تغيير الموظف</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.statCardBig}>
+            <Text style={styles.profileLabel}>تسجيل الخروج:</Text>
+            <Text style={styles.profileValue}>{user?.email}</Text>
+            <TouchableOpacity 
+              style={[styles.profileSwitchBtn, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444', marginTop: 10 }]} 
+              onPress={handleLogout}
+            >
+              <Text style={[styles.profileSwitchBtnText, { color: '#ef4444' }]}>🚪 تسجيل الخروج</Text>
+            </TouchableOpacity>
+          </View>
           
           <View style={styles.statCardBig}>
             <Text style={styles.settingLabel}>حالة الاتصال بـ Firebase:</Text>
@@ -1715,14 +1747,7 @@ export default function App() {
           <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>التقارير</Text>
         </TouchableOpacity>
         
-        {/* Tab 2: حسابي */}
-        <TouchableOpacity 
-          style={[styles.navItem, activeTab === 'account' && styles.navItemActive]}
-          onPress={() => setActiveTab('account')}
-        >
-          {renderProfileIcon(activeTab === 'account')}
-          <Text style={[styles.navText, activeTab === 'account' && styles.navTextActive]}>حسابي</Text>
-        </TouchableOpacity>
+
         
         {/* Tab 3: إضافة طلب (الزر العائم بالمنتصف) */}
         <View style={styles.centerNavWrapper}>
@@ -2958,97 +2983,98 @@ const styles = StyleSheet.create({
   },
   authContainer: {
     flex: 1,
-    backgroundColor: '#0a0a12',
+    backgroundColor: '#121216',
   },
   authScroll: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
-  },
-  authHeaderContainer: {
     alignItems: 'center',
-    marginBottom: 30,
+    padding: 20,
   },
   authTitle: {
     color: '#ffffff',
     fontSize: 28,
     fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 8,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
-    textShadowColor: '#8b5cf6',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
   },
   authSubtitle: {
     color: '#94a3b8',
     fontSize: 14,
-    marginTop: 8,
+    textAlign: 'center',
+    marginBottom: 32,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authCard: {
-    backgroundColor: '#1e1e28',
+    backgroundColor: '#1e1e24',
     borderRadius: 16,
-    padding: 24,
+    padding: 40,
+    width: '100%',
+    maxWidth: 420,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.2)',
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  authCardTitle: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 32,
+    elevation: 8,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   inputLabel: {
     color: '#94a3b8',
     fontSize: 13,
-    marginBottom: 6,
+    marginBottom: 8,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authInput: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 16,
     paddingVertical: 12,
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'right',
+  },
+  forgotPasswordBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+  },
+  forgotPasswordText: {
+    color: '#a78bfa',
+    fontSize: 13,
+    fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authSubmitBtn: {
     backgroundColor: '#8b5cf6',
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderRadius: 8,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 16,
     shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 4,
   },
   authSubmitBtnText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authToggleBtn: {
-    marginTop: 16,
+    marginTop: 24,
     alignItems: 'center',
   },
   authToggleText: {
     color: '#a78bfa',
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authSeparatorContainer: {
@@ -3075,14 +3101,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.02)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 10,
+    borderRadius: 8,
     paddingVertical: 12,
     marginTop: 2,
   },
   authGoogleBtnText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   }
 });

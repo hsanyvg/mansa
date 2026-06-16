@@ -233,6 +233,24 @@ export default function PurchaseInvoicePage() {
     p.barcode?.includes(searchQuery)
   );
 
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const query = e.currentTarget.value;
+      if (!query) return;
+
+      const exactMatch = products.find(p => p.barcode === query);
+      if (exactMatch) {
+         addToCart(exactMatch);
+      } else {
+         const validProducts = products.filter(p => p.name?.toLowerCase().includes(query.toLowerCase()) || p.barcode === query);
+         if (validProducts.length === 1) {
+           addToCart(validProducts[0]);
+         }
+      }
+    }
+  };
+
   return (
     <div className={styles.container}>
       <main className={styles.mainSection}>
@@ -248,13 +266,14 @@ export default function PurchaseInvoicePage() {
                 value={searchQuery}
                 onFocus={() => setShowProductDropdown(true)}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
               />
               <span className={styles.searchIcon}>🔍</span>
               
               {showProductDropdown && searchQuery && (
                 <div className={styles.productDropdown}>
                   {filteredProducts.map(p => (
-                    <div key={p.id} className={styles.productItem} onClick={() => addToCart(p)}>
+                    <div key={p.id} className={styles.productItem} onPointerDown={(e) => { e.preventDefault(); addToCart(p); }}>
                       <span>{p.name}</span>
                       <small style={{ opacity: 0.5 }}>{p.barcode || 'بدون باركود'}</small>
                     </div>

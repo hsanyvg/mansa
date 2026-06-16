@@ -255,7 +255,9 @@ export default function ProductsPage() {
 
       const updatedProductStock = { ...productStock };
       for (const storeId in updatedProductStock) {
-        if (updatedProductStock[storeId].reserved === undefined) {
+        if (!storesDb.find(s => s.id === storeId)) {
+          delete updatedProductStock[storeId];
+        } else if (updatedProductStock[storeId].reserved === undefined) {
           updatedProductStock[storeId].reserved = 0;
         }
       }
@@ -602,9 +604,12 @@ export default function ProductsPage() {
                               multiplier: Number(u.count) || 1
                             }));
                           } else if (prod.stock && prod.units && prod.units.length > 0) {
-                            Object.values(prod.stock).forEach((s: any) => {
-                              const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
-                              totalQty += (Number(s.quantity) || 0) * uMul;
+                            Object.keys(prod.stock).forEach((storeId: string) => {
+                              if (storesDb.find(s => s.id === storeId)) {
+                                const s = prod.stock[storeId];
+                                const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                                totalQty += (Number(s.quantity) || 0) * uMul;
+                              }
                             });
                             mappedUnits = prod.units.map((u: any) => ({
                               name: u.type,
@@ -640,9 +645,12 @@ export default function ProductsPage() {
                           let mappedUnits: any[] = [];
                           
                           if (prod.stock && prod.units && prod.units.length > 0) {
-                            Object.values(prod.stock).forEach((s: any) => {
-                              const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
-                              totalReserved += (Number(s.reserved) || 0) * uMul;
+                            Object.keys(prod.stock).forEach((storeId: string) => {
+                              if (storesDb.find(s => s.id === storeId)) {
+                                const s = prod.stock[storeId];
+                                const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                                totalReserved += (Number(s.reserved) || 0) * uMul;
+                              }
                             });
                             mappedUnits = prod.units.map((u: any) => ({
                               name: u.type,
@@ -679,14 +687,20 @@ export default function ProductsPage() {
                           
                           if (prod.stock && prod.units && prod.units.length > 0) {
                             if (prod.totalBaseQuantity === undefined) {
-                               Object.values(prod.stock).forEach((s: any) => {
-                                 const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
-                                 totalQty += (Number(s.quantity) || 0) * uMul;
+                               Object.keys(prod.stock).forEach((storeId: string) => {
+                                 if (storesDb.find(s => s.id === storeId)) {
+                                   const s = prod.stock[storeId];
+                                   const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                                   totalQty += (Number(s.quantity) || 0) * uMul;
+                                 }
                                });
                             }
-                            Object.values(prod.stock).forEach((s: any) => {
-                              const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
-                              totalReserved += (Number(s.reserved) || 0) * uMul;
+                            Object.keys(prod.stock).forEach((storeId: string) => {
+                              if (storesDb.find(s => s.id === storeId)) {
+                                const s = prod.stock[storeId];
+                                const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                                totalReserved += (Number(s.reserved) || 0) * uMul;
+                              }
                             });
                             mappedUnits = prod.units.map((u: any) => ({
                               name: u.type,
@@ -720,9 +734,12 @@ export default function ProductsPage() {
                         {(() => {
                           let totalValue = 0;
                           if (prod.stock) {
-                            Object.values(prod.stock).forEach((s: any) => {
-                              const unitPrice = prod.units?.find((u: any) => u.type === s.unit)?.purchase || 0;
-                              totalValue += (s.quantity || 0) * unitPrice;
+                            Object.keys(prod.stock).forEach((storeId: string) => {
+                              if (storesDb.find(st => st.id === storeId)) {
+                                const s = prod.stock[storeId];
+                                const unitPrice = prod.units?.find((u: any) => u.type === s.unit)?.purchase || 0;
+                                totalValue += (s.quantity || 0) * unitPrice;
+                              }
                             });
                           }
                           return new Intl.NumberFormat('en-US').format(totalValue) + ' د.ع';

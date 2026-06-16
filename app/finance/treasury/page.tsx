@@ -248,12 +248,13 @@ export default function TreasuryPage() {
     const toWalletName = wallets.find(w => w.id === t.toWalletId)?.name || '';
     
     return (
-      t.details.toLowerCase().includes(q) ||
+      (t.details || '').toLowerCase().includes(q) ||
       walletName.toLowerCase().includes(q) ||
       fromWalletName.toLowerCase().includes(q) ||
       toWalletName.toLowerCase().includes(q) ||
       t.amount.toString().includes(q) ||
-      t.date.includes(q)
+      t.date.includes(q) ||
+      (t.notes || '').toLowerCase().includes(q)
     );
   });
 

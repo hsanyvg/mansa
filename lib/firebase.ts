@@ -7,7 +7,7 @@ const getFirebaseApiKey = () => {
   return "slzZztf6qSAMfosH578vOB3tDrywIfndBySazIA".split("").reverse().join("");
 };
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: getFirebaseApiKey(),
   authDomain: "management-easy-order.firebaseapp.com",
   projectId: "management-easy-order",

@@ -31,7 +31,20 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+    const unsubscribe = onAuthStateChanged(auth, async (usr) => {
+      if (usr) {
+        try {
+           const mappingRef = doc(db, 'employee_mappings', usr.uid);
+           const mappingSnap = await getDoc(mappingRef);
+           if (mappingSnap.exists()) {
+             setErrorMsg('هذا الحساب مخصص لتسجيل الدخول من تطبيق الجوال فقط.');
+             await signOut(auth);
+             setUser(null);
+             setAuthLoading(false);
+             return;
+           }
+        } catch(err) {}
+      }
       setUser(usr);
       setAuthLoading(false);
     });
@@ -378,10 +391,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span className={styles.submenuIcon}>👤</span>
           </Link>
 
-          <div className={styles.submenuItem}>
+          <Link href="/users" className={`${styles.submenuItem} ${pathname === '/users' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>المستخدمين</span>
             <span className={styles.submenuIcon}>👥</span>
-          </div>
+          </Link>
           <div className={styles.submenuItem}>
             <span>صلاحيات المستخدمين</span>
             <span className={styles.submenuIcon}>👮</span>
@@ -502,6 +515,14 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>بوابة الربط (API)</span>
             <span className={styles.submenuIcon}>🔌</span>
           </Link>
+          <div 
+            className={styles.submenuItem} 
+            onClick={() => signOut(auth).catch(err => console.error(err))}
+            style={{ color: '#ef4444', cursor: 'pointer', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: '0.5rem', paddingTop: '0.5rem' }}
+          >
+            <span>تسجيل الخروج</span>
+            <span className={styles.submenuIcon}>🚪</span>
+          </div>
         </div>
         <Link href="/integrations" className={`${styles.menuItem} ${pathname === '/integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }} title="الربط والتتبع">
           <span></span>
@@ -518,32 +539,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           </div>
         </Link>
 
-        {/* User Info & Logout */}
-        {user && (
-          <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.05)', padding: isSidebarOpen ? '1rem' : '1rem 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-            {isSidebarOpen && (
-              <span style={{ fontSize: '0.8rem', color: '#adb5bd', wordBreak: 'break-all', textAlign: 'center', padding: '0 0.5rem' }} title={user.email || ''}>
-                👤 {user.email}
-              </span>
-            )}
-            <button 
-              className={styles.logoutBtn} 
-              onClick={() => signOut(auth).catch(err => console.error(err))}
-              title="تسجيل الخروج"
-              style={{ 
-                width: isSidebarOpen ? '85%' : '36px', 
-                height: isSidebarOpen ? 'auto' : '36px', 
-                padding: isSidebarOpen ? '0.5rem 0.25rem' : '0', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                margin: '0.25rem 0'
-              }}
-            >
-              <span>{isSidebarOpen ? '🚪 تسجيل الخروج' : '🚪'}</span>
-            </button>
-          </div>
-        )}
       </aside>
 
       {/* Main Content Area */}

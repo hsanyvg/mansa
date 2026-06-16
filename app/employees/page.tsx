@@ -15,7 +15,8 @@ import {
   where,
   getDocs,
   deleteDoc,
-  addDoc
+  addDoc,
+  updateDoc
 } from 'firebase/firestore';
 
 interface Employee {
@@ -30,6 +31,11 @@ interface Employee {
   createdAt: any;
 }
 
+const toLocalDate = (d: Date) => {
+  const date = new Date(d.getTime() - (d.getTimezoneOffset() * 60000));
+  return date.toISOString().split('T')[0];
+};
+
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,7 +44,21 @@ export default function EmployeesPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'management' | 'payroll' | 'attendance' | 'deductions'>('management');
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [treasuryTransactions, setTreasuryTransactions] = useState<any[]>([]);
+  const [payModal, setPayModal] = useState<{isOpen: boolean, empId: string, netDue: number, empName: string, walletId: string} | null>(null);
+
+  const [activeTab, setActiveTab] = useState<'management' | 'payroll' | 'attendance' | 'deductions' | 'bonuses'>('management');
+
+  // Bonuses State
+  const [bonusesList, setBonusesList] = useState<any[]>([]);
+  const [bonusForm, setBonusForm] = useState({
+    employeeId: '',
+    amount: '',
+    reason: '',
+    date: toLocalDate(new Date()),
+    notes: ''
+  });
 
   // Deductions State
   const [deductionsList, setDeductionsList] = useState<any[]>([]);
@@ -46,7 +66,7 @@ export default function EmployeesPage() {
     employeeId: '',
     amount: '',
     reason: '',
-    date: new Date().toISOString().split('T')[0],
+    date: toLocalDate(new Date()),
     notes: ''
   });
 
@@ -94,6 +114,8 @@ export default function EmployeesPage() {
   const [ordersSnapshot, setOrdersSnapshot] = useState<any[]>([]);
   const [overridesSnapshot, setOverridesSnapshot] = useState<any[]>([]);
   const [deductionsSnapshot, setDeductionsSnapshot] = useState<any[]>([]);
+  const [bonusesSnapshot, setBonusesSnapshot] = useState<any[]>([]);
+  const [paymentsSnapshot, setPaymentsSnapshot] = useState<any[]>([]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -103,8 +125,18 @@ export default function EmployeesPage() {
     paymentType: 'salary',
     isActive: true,
     trackAbsence: true,
-    joinDate: new Date().toISOString().split('T')[0]
+    joinDate: toLocalDate(new Date())
   });
+
+  useEffect(() => {
+    const unsubWallets = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), (snap) => {
+      setWallets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubTreasury = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'), (snap) => {
+      setTreasuryTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => { unsubWallets(); unsubTreasury(); };
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'), orderBy('createdAt', 'desc'));
@@ -133,7 +165,7 @@ export default function EmployeesPage() {
         paymentType: employee.paymentType || 'salary',
         isActive: employee.isActive ?? true,
         trackAbsence: employee.trackAbsence ?? true,
-        joinDate: employee.joinDate || new Date().toISOString().split('T')[0]
+        joinDate: employee.joinDate || toLocalDate(new Date())
       });
     } else {
       setEditingId(null);
@@ -144,7 +176,7 @@ export default function EmployeesPage() {
         paymentType: 'salary',
         isActive: true,
         trackAbsence: true,
-        joinDate: new Date().toISOString().split('T')[0]
+        joinDate: toLocalDate(new Date())
       });
     }
     setShowModal(true);
@@ -229,7 +261,7 @@ export default function EmployeesPage() {
         employeeId: '',
         amount: '',
         reason: '',
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDate(new Date()),
         notes: ''
       });
     } catch (err) {
@@ -238,11 +270,73 @@ export default function EmployeesPage() {
     }
   };
 
+  const handleRestoreDeduction = async (id: string) => {
+    if (!window.confirm("هل تريد إرجاع هذا الخصم كخصم (غير مدفوع) ليتم خصمه من الراتب القادم؟")) return;
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions', id), { isPaid: false });
+      showToastMsg("تم إرجاع الخصم بنجاح، سيتم احتسابه في الراتب القادم.");
+    } catch (err) {
+      console.error(err);
+      showToastMsg("حدث خطأ أثناء الإرجاع", "error");
+    }
+  };
+
   const handleDeleteDeduction = async (id: string) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا الخصم؟")) return;
+    if (!window.confirm("هل أنت متأكد من إلغاء هذه العملية؟")) return;
     try {
       await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions', id));
       showToastMsg("تم حذف الخصم بنجاح");
+    } catch (err) {
+      console.error(err);
+      showToastMsg("حدث خطأ أثناء الحذف", "error");
+    }
+  };
+
+  const handleSaveBonus = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bonusForm.employeeId || !bonusForm.amount || !bonusForm.reason) {
+      showToastMsg("يرجى تعبئة الحقول الإجبارية", "error");
+      return;
+    }
+    
+    try {
+      const emp = employees.find(e => e.id === bonusForm.employeeId);
+      await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'bonuses'), {
+        ...bonusForm,
+        employeeName: emp?.name || '',
+        amount: parseFloat(bonusForm.amount),
+        createdAt: serverTimestamp()
+      });
+      showToastMsg("تم حفظ المكافأة بنجاح");
+      setBonusForm({
+        employeeId: '',
+        amount: '',
+        reason: '',
+        date: toLocalDate(new Date()),
+        notes: ''
+      });
+    } catch (err) {
+      console.error(err);
+      showToastMsg("حدث خطأ أثناء الحفظ", "error");
+    }
+  };
+
+  const handleRestoreBonus = async (id: string) => {
+    if (!window.confirm("هل تريد إرجاع هذه المكافأة كمكافأة (غير مدفوعة) ليتم إضافتها للراتب القادم؟")) return;
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'bonuses', id), { isPaid: false });
+      showToastMsg("تم إرجاع المكافأة بنجاح، سيتم احتسابها في الراتب القادم.");
+    } catch (err) {
+      console.error(err);
+      showToastMsg("حدث خطأ أثناء الإرجاع", "error");
+    }
+  };
+
+  const handleDeleteBonus = async (id: string) => {
+    if (!window.confirm("هل أنت متأكد من إلغاء هذه العملية؟")) return;
+    try {
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'bonuses', id));
+      showToastMsg("تم حذف المكافأة بنجاح");
     } catch (err) {
       console.error(err);
       showToastMsg("حدث خطأ أثناء الحذف", "error");
@@ -258,7 +352,14 @@ export default function EmployeesPage() {
     return () => unsub();
   }, [activeTab]);
 
-
+  useEffect(() => {
+    if (activeTab !== 'bonuses') return;
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'bonuses'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setBonusesList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [activeTab]);
 
   useEffect(() => {
     if ((!showAttendanceModal && !showPayrollModal) || !selectedAttendanceEmployee) return;
@@ -278,15 +379,15 @@ export default function EmployeesPage() {
       const overridesQ = query(
         collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'attendance_overrides'),
         where('employeeId', '==', selectedAttendanceEmployee.id),
-        where('date', '>=', dateRange.start.toISOString().split('T')[0]),
-        where('date', '<=', dateRange.end.toISOString().split('T')[0])
+        where('date', '>=', toLocalDate(dateRange.start)),
+        where('date', '<=', toLocalDate(dateRange.end))
       );
 
       const unsubOverrides = onSnapshot(overridesQ, (overridesSnap) => {
         const activeDays = new Set<string>();
         ordersSnap.forEach(doc => {
           const d = doc.data().date?.toDate();
-          if (d) activeDays.add(d.toISOString().split('T')[0]);
+          if (d) activeDays.add(toLocalDate(d));
         });
 
         const overridesMap = new Map<string, boolean>();
@@ -304,7 +405,7 @@ export default function EmployeesPage() {
         const endIter = new Date(dateRange.end);
         
         while (iterDate <= endIter) {
-          const dateKey = iterDate.toISOString().split('T')[0];
+          const dateKey = toLocalDate(iterDate);
           let isPresent = false;
           let isOverride = false;
 
@@ -386,8 +487,8 @@ export default function EmployeesPage() {
     
     const overridesQ = query(
       collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'attendance_overrides'),
-      where('date', '>=', dateRange.start.toISOString().split('T')[0]),
-      where('date', '<=', dateRange.end.toISOString().split('T')[0])
+      where('date', '>=', toLocalDate(dateRange.start)),
+      where('date', '<=', toLocalDate(dateRange.end))
     );
 
     return onSnapshot(overridesQ, (snap) => {
@@ -403,8 +504,8 @@ export default function EmployeesPage() {
     
     const deductionsQ = query(
       collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions'),
-      where('date', '>=', dateRange.start.toISOString().split('T')[0]),
-      where('date', '<=', dateRange.end.toISOString().split('T')[0])
+      where('date', '>=', toLocalDate(dateRange.start)),
+      where('date', '<=', toLocalDate(dateRange.end))
     );
 
     return onSnapshot(deductionsQ, (snap) => {
@@ -413,6 +514,28 @@ export default function EmployeesPage() {
       console.error("Deductions Snapshot Error:", error);
     });
   }, [dateRange, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'management') return;
+    
+    const bonusesQ = query(
+      collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'bonuses'),
+      where('date', '>=', toLocalDate(dateRange.start)),
+      where('date', '<=', toLocalDate(dateRange.end))
+    );
+
+    return onSnapshot(bonusesQ, (snap) => {
+      setBonusesSnapshot(snap.docs);
+    }, (error) => {
+      console.error("Bonuses Snapshot Error:", error);
+    });
+  }, [dateRange, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'management') return;
+    const q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'salary_payments'));
+    return onSnapshot(q, (snap) => setPaymentsSnapshot(snap.docs));
+  }, [activeTab]);
 
   // --- Global Payroll & Attendance Calculation Effect ---
   useEffect(() => {
@@ -431,6 +554,7 @@ export default function EmployeesPage() {
         eligibleDays: 0,
         deductions: 0,
         manualDeductions: 0,
+        manualBonuses: 0,
         netDue: 0,
         unpaidOrderIds: [] as string[]
       };
@@ -440,7 +564,7 @@ export default function EmployeesPage() {
       
       empOrders.forEach(doc => {
         const d = doc.data().date?.toDate();
-        if (d) activeDays.add(d.toISOString().split('T')[0]);
+        if (d) activeDays.add(toLocalDate(d));
         
         if (doc.data().status === 'delivered' && !doc.data().isPaidToStaff) {
             payrollMap[emp.id].deliveredOrdersCount++;
@@ -463,8 +587,21 @@ export default function EmployeesPage() {
       const daysInMonth = new Date(dateRange.end.getFullYear(), dateRange.end.getMonth() + 1, 0).getDate();
       let eligibleDays = 0;
 
+      const empPayments = paymentsSnapshot.filter(p => p.data().employeeId === emp.id).map(p => ({
+        start: p.data().dateRangeStart?.toDate ? p.data().dateRangeStart.toDate().getTime() : new Date(p.data().dateRangeStart).getTime(),
+        end: p.data().dateRangeEnd?.toDate ? p.data().dateRangeEnd.toDate().getTime() : new Date(p.data().dateRangeEnd).getTime()
+      }));
+
       while (iterDate <= endIter) {
-        const dateKey = iterDate.toISOString().split('T')[0];
+        const dTime = iterDate.getTime();
+        const isDayPaid = empPayments.some(p => dTime >= p.start && dTime <= p.end);
+        
+        if (isDayPaid) {
+          iterDate.setDate(iterDate.getDate() + 1);
+          continue;
+        }
+
+        const dateKey = toLocalDate(iterDate);
         const hasOrders = activeDays.has(dateKey);
         const override = overridesMap.get(dateKey); // undefined, true, or false
         
@@ -520,22 +657,41 @@ export default function EmployeesPage() {
       }
 
       let manualDeductionsSum = 0;
-      deductionsSnapshot.filter(d => d.data().employeeId === emp.id).forEach(doc => {
+      deductionsSnapshot.filter(d => d.data().employeeId === emp.id && !d.data().isPaid).forEach(doc => {
         manualDeductionsSum += (Number(doc.data().amount) || 0);
       });
       payrollMap[emp.id].manualDeductions = manualDeductionsSum;
 
+      let manualBonusesSum = 0;
+      bonusesSnapshot.filter(b => b.data().employeeId === emp.id && !b.data().isPaid).forEach(doc => {
+        manualBonusesSum += (Number(doc.data().amount) || 0);
+      });
+      payrollMap[emp.id].manualBonuses = manualBonusesSum;
+
       let baseToUse = emp.paymentType !== 'commission' ? payrollMap[emp.id].proRatedBase : 0;
       let comm = emp.paymentType !== 'salary' ? payrollMap[emp.id].payableCommission : 0;
-      payrollMap[emp.id].netDue = baseToUse + comm - payrollMap[emp.id].deductions - manualDeductionsSum;
+      payrollMap[emp.id].netDue = baseToUse + comm + manualBonusesSum - payrollMap[emp.id].deductions - manualDeductionsSum;
       if (payrollMap[emp.id].netDue < 0) payrollMap[emp.id].netDue = 0;
     });
 
     setGlobalPayrollData(payrollMap);
     setLoadingPayroll(false);
-  }, [activeTab, dateRange, employees, ordersSnapshot, overridesSnapshot, deductionsSnapshot]);
+  }, [activeTab, dateRange, employees, ordersSnapshot, overridesSnapshot, deductionsSnapshot, bonusesSnapshot, paymentsSnapshot]);
 
-  const handlePaySalary = async (empId: string) => {
+  const getWalletBalance = (walletId: string, curr: string = 'IQD') => {
+    return treasuryTransactions.reduce((total, t) => {
+      if (t.currency !== curr) return total;
+      if (t.type === 'deposit' && t.walletId === walletId) return total + t.amount;
+      if (t.type === 'withdraw' && t.walletId === walletId) return total - t.amount;
+      if (t.type === 'transfer') {
+        if (t.fromWalletId === walletId) return total - t.amount;
+        if (t.toWalletId === walletId) return total + t.amount;
+      }
+      return total;
+    }, 0);
+  };
+
+  const handlePaySalary = (empId: string) => {
     const pData = globalPayrollData[empId];
     if (!pData) return;
 
@@ -544,7 +700,33 @@ export default function EmployeesPage() {
       return;
     }
 
-    if (!window.confirm(`هل أنت متأكد من تسديد مبلغ ${formatCurrency(pData.netDue)} للموظف ${pData.empDetails.name}؟`)) return;
+    setPayModal({
+      isOpen: true,
+      empId: empId,
+      netDue: pData.netDue,
+      empName: pData.empDetails.name,
+      walletId: ''
+    });
+  };
+
+  const confirmPaySalary = async () => {
+    if (!payModal) return;
+    if (!payModal.walletId && payModal.netDue > 0) {
+      showToastMsg("يرجى اختيار المحفظة", "error");
+      return;
+    }
+
+    if (payModal.netDue > 0 && payModal.walletId) {
+      const currentBalance = getWalletBalance(payModal.walletId, 'IQD');
+      if (payModal.netDue > currentBalance) {
+        showToastMsg("عذراً، الرصيد المتوفر في هذه المحفظة غير كافٍ لتسديد الراتب.", "error");
+        return;
+      }
+    }
+
+    const empId = payModal.empId;
+    const pData = globalPayrollData[empId];
+    if (!pData) return;
 
     try {
       const batch = writeBatch(db);
@@ -569,13 +751,46 @@ export default function EmployeesPage() {
           totalCommission: pData.payableCommission,
           absentDays: pData.absentDays,
           deductions: pData.deductions,
+          manualBonuses: pData.manualBonuses || 0,
           basicSalary: pData.empDetails.paymentType !== 'commission' ? pData.empDetails.basicSalary : 0,
           paymentType: pData.empDetails.paymentType
         },
         paymentDate: serverTimestamp()
       });
 
+      // 3. Mark deductions and bonuses as paid
+      deductionsSnapshot.filter(d => d.data().employeeId === empId && !d.data().isPaid).forEach(d => {
+        const ref = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'deductions', d.id);
+        batch.update(ref, { isPaid: true });
+      });
+
+      bonusesSnapshot.filter(b => b.data().employeeId === empId && !b.data().isPaid).forEach(b => {
+        const ref = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'bonuses', b.id);
+        batch.update(ref, { isPaid: true });
+      });
+
+      // 4. Record Treasury Transaction
+      if (payModal.netDue > 0 && payModal.walletId) {
+        const selectedWallet = wallets.find(w => w.id === payModal.walletId);
+        const treasuryRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'));
+        const now = new Date();
+        const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        
+        batch.set(treasuryRef, {
+          type: 'withdraw',
+          walletId: payModal.walletId,
+          walletName: selectedWallet?.name || 'غير محددة',
+          amount: payModal.netDue,
+          currency: 'IQD',
+          date: toLocalDate(now),
+          time: currentTime,
+          details: `تسديد راتب الموظف: ${pData.empDetails.name}`,
+          createdAt: serverTimestamp()
+        });
+      }
+
       await batch.commit();
+      setPayModal(null);
       showToastMsg(`تم تسديد راتب ${pData.empDetails.name} بنجاح!`, "success");
     } catch (error) {
       console.error("Error paying salary:", error);
@@ -626,6 +841,43 @@ export default function EmployeesPage() {
     } catch (error) {
       console.error(error);
       showToastMsg("حدث خطأ أثناء المحاولة", "error");
+    }
+  };
+
+  const handleHideArchiveRecord = async (id: string) => {
+    if (!window.confirm("هل أنت متأكد من إخفاء هذه العملية من الأرشيف النهائي؟ (لن يتم استرجاع الراتب للموظف، فقط تنظيف الشاشة)")) return;
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'salary_payments', id), { isHidden: true });
+      showToastMsg("تم إخفاء العملية بنجاح");
+    } catch (error) {
+      console.error(error);
+      showToastMsg("حدث خطأ أثناء المحاولة", "error");
+    }
+  };
+
+  const handleUndoSalaryPayment = async (item: any) => {
+    if (!window.confirm("تحذير ⚠️: هل أنت متأكد من إلغاء تسديد هذا الراتب بالكامل؟ سيتم إرجاع كافة الطلبات والرواتب للموظف ليتم الدفع له من جديد.")) return;
+    
+    try {
+      const batch = writeBatch(db);
+      
+      // Unpay Orders
+      if (item.orderIds && item.orderIds.length > 0) {
+        item.orderIds.forEach((orderId: string) => {
+          const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
+          batch.update(orderRef, { isPaidToStaff: false });
+        });
+      }
+
+      // Delete the payment document entirely
+      const paymentRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'salary_payments', item.id);
+      batch.delete(paymentRef);
+      
+      await batch.commit();
+      showToastMsg("تم إلغاء العملية واسترجاع الراتب! يرجى إلغاء حركة الخزنة يدوياً.", "success");
+    } catch (error) {
+      console.error(error);
+      showToastMsg("حدث خطأ أثناء الإلغاء", "error");
     }
   };
 
@@ -747,13 +999,20 @@ export default function EmployeesPage() {
         >
           الخصومات
         </button>
+        <button 
+          className={`${styles.tabButton} ${activeTab === 'bonuses' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('bonuses')}
+        >
+          المكافآت والزيادات
+        </button>
       </div>
 
       <header className={styles.header}>
         <h1 className={styles.title}>
           {activeTab === 'management' ? 'قائمة الموظفين' : 
            activeTab === 'payroll' ? 'الرواتب والعمولات' : 
-           activeTab === 'deductions' ? 'خصومات الموظفين' : 'سجل الغيابات والحضور'}
+           activeTab === 'deductions' ? 'خصومات الموظفين' : 
+           activeTab === 'bonuses' ? 'مكافآت وزيادات الموظفين' : 'سجل الغيابات والحضور'}
         </h1>
         
         {activeTab === 'management' ? (
@@ -852,7 +1111,8 @@ export default function EmployeesPage() {
                   <th>اسم الموظف</th>
                   <th>الطلبات المكتملة</th>
                   <th>إجمالي العمولات</th>
-                  <th>الخصميات (أيام الغياب)</th>
+                  <th>الخصميات (والغياب)</th>
+                  <th>المكافآت والزيادات</th>
                   <th>الصافي المستحق</th>
                   <th>العمليات</th>
                 </tr>
@@ -881,15 +1141,21 @@ export default function EmployeesPage() {
                           <span style={{ fontSize: '0.8rem', opacity: 0.6, marginRight: '4px' }}>+ يدوي</span>
                         )}
                       </td>
-                      <td style={{ color: '#10b981', fontWeight: 'bold' }}>{formatCurrency(pData.netDue)}</td>
+                      <td style={{ color: pData.manualBonuses > 0 ? '#10b981' : 'inherit' }}>
+                        {formatCurrency(pData.manualBonuses)}
+                      </td>
+                      <td style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.1rem' }}>{formatCurrency(pData.netDue)}</td>
                       <td>
-                        <button 
-                          className={styles.payButton} 
-                          onClick={() => handlePaySalary(emp.id)}
-                          disabled={pData.netDue <= 0 && pData.unpaidOrderIds.length === 0}
-                        >
-                          تسديد الراتب
-                        </button>
+                        {(pData.netDue > 0 || pData.unpaidOrderIds.length > 0) ? (
+                          <button 
+                            className={styles.payButton} 
+                            onClick={() => handlePaySalary(emp.id)}
+                          >
+                            تسديد الراتب
+                          </button>
+                        ) : (
+                          <span style={{ color: '#10b981', fontSize: '0.9rem', fontWeight: 'bold' }}>تم التسديد ✓</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -900,6 +1166,9 @@ export default function EmployeesPage() {
                   <td colSpan={3} style={{ textAlign: 'left', padding: '1rem' }}>الإجمالي الكلي:</td>
                   <td style={{ color: '#ef4444' }}>
                     {formatCurrency(employees.reduce((sum, emp) => sum + (globalPayrollData[emp.id]?.deductions || 0) + (globalPayrollData[emp.id]?.manualDeductions || 0), 0))}
+                  </td>
+                  <td style={{ color: '#10b981' }}>
+                    {formatCurrency(employees.reduce((sum, emp) => sum + (globalPayrollData[emp.id]?.manualBonuses || 0), 0))}
                   </td>
                   <td style={{ color: '#10b981', fontSize: '1.1rem' }}>
                     {formatCurrency(employees.reduce((sum, emp) => sum + (globalPayrollData[emp.id]?.netDue || 0), 0))}
@@ -1011,13 +1280,22 @@ export default function EmployeesPage() {
                       <td style={{ color: '#ef4444', fontWeight: 'bold' }}>{formatCurrency(d.amount)}</td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{d.notes || '-'}</td>
                       <td>
-                        <button 
-                          onClick={() => handleDeleteDeduction(d.id)}
-                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.5rem', borderRadius: '4px' }}
-                          title="حذف الخصم"
-                        >
-                          🗑️
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <button 
+                            onClick={() => handleRestoreDeduction(d.id)}
+                            style={{ background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)', color: '#3b82f6', padding: '0.4rem 0.6rem', borderRadius: '4px', cursor: 'pointer', border: '1px solid' }}
+                            title="إرجاع الخصم كغير مدفوع"
+                          >
+                            🔄
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteDeduction(d.id)}
+                            style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', padding: '0.4rem 0.6rem', borderRadius: '4px', cursor: 'pointer', border: '1px solid' }}
+                            title="حذف الخصم نهائياً"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1028,7 +1306,132 @@ export default function EmployeesPage() {
         </main>
       )}
 
-      {activeTab === 'attendance' && (
+      {activeTab === 'bonuses' && (
+        <main className={styles.mainContent}>
+          <div className={styles.bonusFormContainer} style={{ background: 'var(--surface)', padding: '2rem', borderRadius: '12px', marginBottom: '2rem', border: '1px solid var(--border)' }}>
+            <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-main)', fontSize: '1.25rem' }}>تسجيل مكافأة جديدة (أو زيادة)</h2>
+            <form onSubmit={handleSaveBonus} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              
+              <div className={styles.formGroup}>
+                <label>اسم الموظف</label>
+                <select 
+                  className={styles.input}
+                  value={bonusForm.employeeId}
+                  onChange={(e) => setBonusForm({...bonusForm, employeeId: e.target.value})}
+                  required
+                >
+                  <option value="">-- اختر الموظف --</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>مبلغ المكافأة (د.ع)</label>
+                <input 
+                  type="number"
+                  className={styles.input}
+                  min="0"
+                  value={bonusForm.amount}
+                  onChange={(e) => setBonusForm({...bonusForm, amount: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>تاريخ المكافأة</label>
+                <input 
+                  type="date"
+                  className={styles.input}
+                  value={bonusForm.date}
+                  onChange={(e) => setBonusForm({...bonusForm, date: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>سبب المكافأة \/ الزيادة</label>
+                <input 
+                  type="text"
+                  className={styles.input}
+                  placeholder="مثال: مكافأة الأداء، زيادة يومية، تعويض..."
+                  value={bonusForm.reason}
+                  onChange={(e) => setBonusForm({...bonusForm, reason: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup} style={{ gridColumn: '1 / -1' }}>
+                <label>ملاحظات إضافية (اختياري)</label>
+                <textarea 
+                  className={styles.input}
+                  rows={2}
+                  value={bonusForm.notes}
+                  onChange={(e) => setBonusForm({...bonusForm, notes: e.target.value})}
+                ></textarea>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button type="submit" className={styles.payButton} style={{ padding: '0.75rem 2rem' }}>حفظ المكافأة</button>
+              </div>
+            </form>
+          </div>
+
+          <div className={styles.tableContainer}>
+            <h2 style={{ marginBottom: '1rem', padding: '0 1rem', color: 'var(--text-main)', fontSize: '1.25rem' }}>المكافآت والزيادات المسجلة</h2>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>تاريخ المكافأة</th>
+                  <th>اسم الموظف</th>
+                  <th>السبب</th>
+                  <th>المبلغ</th>
+                  <th>ملاحظات</th>
+                  <th>العمليات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bonusesList.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>لا توجد مكافآت مسجلة</td>
+                  </tr>
+                ) : (
+                  bonusesList.map((d) => (
+                    <tr key={d.id}>
+                      <td>{d.date}</td>
+                      <td style={{ fontWeight: 'bold' }}>{d.employeeName}</td>
+                      <td>{d.reason}</td>
+                      <td style={{ color: '#10b981', fontWeight: 'bold' }}>{formatCurrency(d.amount)}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{d.notes || '-'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <button 
+                            onClick={() => handleRestoreBonus(d.id)}
+                            style={{ background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)', color: '#3b82f6', padding: '0.4rem 0.6rem', borderRadius: '4px', cursor: 'pointer', border: '1px solid' }}
+                            title="إرجاع المكافأة كغير مدفوعة"
+                          >
+                            🔄
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteBonus(d.id)}
+                            style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#10b981', padding: '0.4rem 0.6rem', borderRadius: '4px', cursor: 'pointer', border: '1px solid' }}
+                            title="حذف المكافأة نهائياً"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </main>
+      )}
+
+      \n\n      {activeTab === 'attendance' && (
         <main className={styles.mainContent}>
           {loadingPayroll ? (
             <div style={{ textAlign: 'center', padding: '3rem' }}>جاري التحميل...</div>
@@ -1369,6 +1772,21 @@ export default function EmployeesPage() {
                         </>
                       )}
 
+                      {/* Manual Deductions & Bonuses Row */}
+                      {globalPayrollData[selectedAttendanceEmployee.id]?.manualDeductions > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444', marginTop: '0.5rem' }}>
+                          <span>الخصومات والسلف:</span>
+                          <span style={{ fontWeight: 'bold' }}>- {formatCurrency(globalPayrollData[selectedAttendanceEmployee.id]?.manualDeductions)}</span>
+                        </div>
+                      )}
+                      
+                      {globalPayrollData[selectedAttendanceEmployee.id]?.manualBonuses > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', marginTop: '0.5rem' }}>
+                          <span>المكافآت والزيادات:</span>
+                          <span style={{ fontWeight: 'bold' }}>+ {formatCurrency(globalPayrollData[selectedAttendanceEmployee.id]?.manualBonuses)}</span>
+                        </div>
+                      )}
+
                       {/* Total Calculation */}
                       <div style={{ 
                         marginTop: '1.5rem', 
@@ -1387,9 +1805,7 @@ export default function EmployeesPage() {
                             textShadow: '0 0 20px rgba(16, 185, 129, 0.3)'
                           }}>
                             {formatCurrency(
-                              (selectedAttendanceEmployee.paymentType !== 'commission' ? (globalPayrollData[selectedAttendanceEmployee.id]?.proRatedBase || 0) : 0) +
-                              (selectedAttendanceEmployee.paymentType !== 'salary' ? attendanceData.totalCommission : 0) -
-                              (selectedAttendanceEmployee.paymentType !== 'commission' ? (globalPayrollData[selectedAttendanceEmployee.id]?.deductions || 0) : 0)
+                              globalPayrollData[selectedAttendanceEmployee.id]?.netDue || 0
                             )}
                           </span>
                         </div>
@@ -1475,8 +1891,10 @@ export default function EmployeesPage() {
                   </thead>
                   <tbody>
                     {archiveData
+                      .filter(item => !item.isHidden)
                       .filter(item => archiveTab === 'final' ? item.isArchivedFinal === true : !item.isArchivedFinal)
                       .length > 0 ? archiveData
+                      .filter(item => !item.isHidden)
                       .filter(item => archiveTab === 'final' ? item.isArchivedFinal === true : !item.isArchivedFinal)
                       .map((item) => {
                       const payDate = item.paymentDate?.toDate();
@@ -1512,23 +1930,43 @@ export default function EmployeesPage() {
                                 👁️ عرض
                               </button>
                               {archiveTab === 'active' ? (
-                                <button 
-                                  className={styles.actionBtn} 
-                                  style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444' }}
-                                  onClick={() => handleMoveToFinalArchive(item.id)}
-                                  title="نقل للأرشيف النهائي"
-                                >
-                                  🗑️
-                                </button>
+                                <>
+                                  <button 
+                                    className={styles.actionBtn} 
+                                    style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444' }}
+                                    onClick={() => handleMoveToFinalArchive(item.id)}
+                                    title="نقل للأرشيف النهائي"
+                                  >
+                                    🗑️
+                                  </button>
+                                  <button 
+                                    className={styles.actionBtn} 
+                                    style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.3)', color: '#f59e0b' }}
+                                    onClick={() => handleUndoSalaryPayment(item)}
+                                    title="إلغاء العملية بالكامل (استرجاع الراتب)"
+                                  >
+                                    ⚠️
+                                  </button>
+                                </>
                               ) : (
-                                <button 
-                                  className={styles.actionBtn} 
-                                  style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#10b981' }}
-                                  onClick={() => handleRestoreFromFinal(item.id)}
-                                  title="استعادة"
-                                >
-                                  🔄
-                                </button>
+                                <>
+                                  <button 
+                                    className={styles.actionBtn} 
+                                    style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#10b981' }}
+                                    onClick={() => handleRestoreFromFinal(item.id)}
+                                    title="استعادة للأرشيف النشط"
+                                  >
+                                    🔄
+                                  </button>
+                                  <button 
+                                    className={styles.actionBtn} 
+                                    style={{ background: 'rgba(75, 85, 99, 0.15)', borderColor: 'rgba(75, 85, 99, 0.3)', color: '#9ca3af' }}
+                                    onClick={() => handleHideArchiveRecord(item.id)}
+                                    title="إخفاء من الشاشة"
+                                  >
+                                    👁‍🗨
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -1622,6 +2060,42 @@ export default function EmployeesPage() {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {payModal?.isOpen && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent} style={{ maxWidth: '400px' }}>
+            <div className={styles.modalHeader}>
+              <h2>تسديد الراتب</h2>
+              <button className={styles.closeBtn} onClick={() => setPayModal(null)}>&times;</button>
+            </div>
+            <div className={styles.modalBody}>
+              <p style={{ marginBottom: '1rem' }}>
+                هل أنت متأكد من تسديد مبلغ <strong>{formatCurrency(payModal.netDue)}</strong> للموظف <strong>{payModal.empName}</strong>؟
+              </p>
+              {payModal.netDue > 0 && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>اختر المحفظة لدفع الراتب منها:</label>
+                  <select 
+                    className={styles.select}
+                    value={payModal.walletId}
+                    onChange={(e) => setPayModal({ ...payModal, walletId: e.target.value })}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                  >
+                    <option value="">-- اختر المحفظة --</option>
+                    {wallets.map(w => (
+                      <option key={w.id} value={w.id}>{w.name} (الرصيد: {formatCurrency(getWalletBalance(w.id, 'IQD'))})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className={styles.modalActions} style={{ marginTop: '2rem' }}>
+                <button className={styles.btnSecondary} onClick={() => setPayModal(null)}>إلغاء</button>
+                <button className={styles.btnPrimary} onClick={confirmPaySalary}>تأكيد التسديد</button>
+              </div>
             </div>
           </div>
         </div>
