@@ -20,7 +20,7 @@ async function run() {
   try {
     const docRef = doc(db, 'settings', 'mobile_app');
     await setDoc(docRef, {
-      apkUrl: "https://expo.dev/artifacts/eas/79SoSr7P8G54CT2ucE6ec3.apk",
+      apkUrl: "https://expo.dev/artifacts/eas/DIoCttXZGROoxVE5C6rAY_SlEh-Yg9nKdBlEmEPmqUY.apk",
       updatedAt: new Date()
     }, { merge: true });
     console.log("SUCCESS: Firestore updated with direct APK download URL.");

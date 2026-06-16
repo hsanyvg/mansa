@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import { db, auth } from "../../lib/firebase";
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 export default function MobileDownloadPage() {
   const [localIp, setLocalIp] = useState<string>('localhost');
@@ -26,19 +26,19 @@ export default function MobileDownloadPage() {
         setLoadingIp(false);
       });
 
-    // 2. Fetch direct APK URL from Firestore settings
-    const fetchApkUrl = async () => {
-      try {
-        const docRef = doc(db, 'settings', 'mobile_app');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists() && docSnap.data().apkUrl) {
-          setApkUrl(docSnap.data().apkUrl);
-        }
-      } catch (err) {
-        console.error("Error fetching APK URL from Firestore:", err);
+    // 2. Listen to direct APK URL from Firestore settings in real-time
+    const docRef = doc(db, 'settings', 'mobile_app');
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists() && docSnap.data().apkUrl) {
+        setApkUrl(docSnap.data().apkUrl);
       }
+    }, (err) => {
+      console.error("Error listening to APK URL from Firestore:", err);
+    });
+
+    return () => {
+      unsubscribe();
     };
-    fetchApkUrl();
   }, []);
 
   // Fallback to local server download link if Firestore config is empty
