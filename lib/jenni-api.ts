@@ -95,6 +95,14 @@ export async function createJenniShipment(order: any, userId: string) {
     throw new Error('رمز النظام (System Code) غير متوفر، يرجى تحديث الإعدادات.');
   }
 
+  const itemsText = order.items && order.items.length > 0
+    ? order.items.map((it: any) => `${it.productName || it.name} (${it.quantity})`).join(' - ')
+    : '';
+
+  const shipmentNote = order.notes 
+    ? (itemsText ? `${itemsText} | ${order.notes}` : order.notes)
+    : itemsText;
+
   const payload = {
     system_code: systemCode,
     shipments: [
@@ -107,6 +115,8 @@ export async function createJenniShipment(order: any, userId: string) {
         city: order.region || order.district || order.city || 'المركز',
         address: order.address || order.region || 'غير محدد',
         amount_iqd: Number(order.totalAmount || 0),
+        note: shipmentNote,
+        notes: shipmentNote
       }
     ]
   };
