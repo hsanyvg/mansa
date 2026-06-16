@@ -776,7 +776,7 @@ export default function App() {
             transaction.set(counterRef, { lastId: newOrderId });
           }
           
-          const newOrderRef = doc(collection(db, 'users', adminUid, 'orders'));
+          const newOrderRef = doc(db, 'users', adminUid, 'orders', newOrderId.toString());
           transaction.set(newOrderRef, orderData);
           orderDocId = newOrderRef.id;
       });
