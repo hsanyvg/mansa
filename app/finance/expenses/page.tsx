@@ -156,12 +156,23 @@ export default function ExpensesPage() {
     let uploadedImageUrl = imageUrl;
     if (imageFile) {
       try {
-        const fileRef = ref(storage, `users/${auth.currentUser?.uid || 'anonymous'}/expenses/${Date.now()}_${imageFile.name}`);
-        const snapshot = await uploadBytes(fileRef, imageFile);
-        uploadedImageUrl = await getDownloadURL(snapshot.ref);
+        const formData = new FormData();
+        formData.append('file', imageFile);
+        
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!res.ok) {
+          throw new Error('Upload failed');
+        }
+        
+        const resData = await res.json();
+        uploadedImageUrl = resData.url;
       } catch (error) {
         setIsUploading(false);
-        return showToastMsg("فشل تحميل الصورة للسيرفر", "error");
+        return showToastMsg("فشل تحميل الصورة للسيرفر المحلي", "error");
       }
     }
 
