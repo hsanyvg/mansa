@@ -1,0 +1,36 @@
+name: EAS Update
+
+on:
+  push:
+    branches:
+      - main
+    # تشغيل الأكشن فقط إذا كان هناك تغييرات داخل مجلد تطبيق الهاتف
+    paths:
+      - 'mansa-mobile/**'
+
+jobs:
+  update:
+    name: Publish EAS Update
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: ./mansa-mobile
+        run: npm ci || npm install
+
+      - name: Publish update
+        working-directory: ./mansa-mobile
+        run: eas update --auto --non-interactive
