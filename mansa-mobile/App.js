@@ -17,6 +17,7 @@ import {
   AppState
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Updates from 'expo-updates';
 import Svg, { Path, Circle, G, Polygon, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { db, auth } from './firebase';
 import { 
@@ -44,6 +45,23 @@ import {
 } from 'firebase/auth';
 
 export default function App() {
+  // Check for OTA Updates on startup
+  useEffect(() => {
+    async function checkUpdates() {
+      if (__DEV__) return;
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch (e) {
+        console.log("Error checking for updates:", e);
+      }
+    }
+    checkUpdates();
+  }, []);
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(true);
 

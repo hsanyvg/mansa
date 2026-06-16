@@ -6,6 +6,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~56.0.9",
     "expo-status-bar": "~56.0.4",
+    "expo-updates": "~56.0.19",
     "firebase": "^12.14.0",
     "lottie-react-native": "~7.3.4",
     "react": "19.2.3",

@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "platforms": ["ios", "android"],
     "ios": {
       "supportsTablet": true
     },
@@ -25,6 +26,12 @@
       "eas": {
         "projectId": "4ce17f86-2c69-4494-8912-4d94118dd1a5"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/4ce17f86-2c69-4494-8912-4d94118dd1a5"
     }
   }
 }
