@@ -801,3 +801,78 @@
 .closeImageModalBtn:hover {
   background: var(--surface-hover);
 }
+
+.previewsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.previewItem {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.previewItem img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.removeImageBtnSmall {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  transition: transform 0.2s;
+}
+
+.removeImageBtnSmall:hover {
+  transform: scale(1.2);
+  background: #dc2626;
+}
+
+.galleryContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  max-height: 70vh;
+  width: 100%;
+  padding: 0.5rem;
+}
+
+.galleryItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
+}
+
+.galleryItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.galleryCounter {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}

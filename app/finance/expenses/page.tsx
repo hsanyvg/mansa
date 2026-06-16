@@ -69,6 +69,7 @@ interface Expense {
   isArchived?: boolean;
   createdAt: any;
   imageUrl?: string;
+  imageUrls?: string[];
 }
 
 export default function ExpensesPage() {
@@ -91,11 +92,10 @@ export default function ExpensesPage() {
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedWalletId, setSelectedWalletId] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string>('');
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
+  const [activeImagesList, setActiveImagesList] = useState<string[] | null>(null);
   
   // Filtering & Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -158,9 +158,8 @@ export default function ExpensesPage() {
     setSelectedPageId(''); setSelectedBranchId(''); setSelectedItemId(''); setSelectedWalletId('');
     setDate(new Date().toISOString().split('T')[0]);
     setEditingId(null);
-    setImageFile(null);
-    setImagePreview(null);
-    setImageUrl('');
+    setImagePreviews([]);
+    setImageUrls([]);
   };
 
   const getWalletBalance = (walletId: string, curr: string) => {
@@ -208,7 +207,8 @@ export default function ExpensesPage() {
       itemName: it?.name || '',
       walletId: selectedWalletId,
       walletName: selectedWallet?.name || '',
-      imageUrl: imageUrl || ''
+      imageUrl: imageUrls[0] || '',
+      imageUrls: imageUrls
     };
 
     try {
@@ -251,9 +251,10 @@ export default function ExpensesPage() {
     setEditingId(exp.id); setCategoryId(exp.categoryId); setAmount(exp.amount.toString());
     setCurrency(exp.currency); setDate(exp.date); setDetails(exp.details);
     if (exp.walletId) setSelectedWalletId(exp.walletId);
-    setImageUrl(exp.imageUrl || '');
-    setImagePreview(exp.imageUrl || null);
-    setImageFile(null);
+    
+    const urls = exp.imageUrls || (exp.imageUrl ? [exp.imageUrl] : []);
+    setImageUrls(urls);
+    setImagePreviews(urls);
     const pg = pages.find(p => p.name === exp.pageName);
     if (pg) {
       setSelectedPageId(pg.id);
@@ -411,20 +412,23 @@ export default function ExpensesPage() {
             <div className={styles.formGroup}><label className={styles.label}>الفرع (اختياري)</label><select className={styles.select} value={selectedBranchId} onChange={e => { setSelectedBranchId(e.target.value); setSelectedItemId(''); }} disabled={!selectedPageId}><option value="">اختر الفرع...</option>{allCategories.filter(b => b.pageId === selectedPageId).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الصنف (اختياري)</label><select className={styles.select} value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} disabled={!selectedBranchId}><option value="">اختر الصنف...</option>{allProducts.filter(i => i.categoryId === selectedBranchId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>
             <div className={styles.formGroup}>
-              <label className={styles.label}>صورة الفاتورة / الوصل (اختياري)</label>
+              <label className={styles.label}>صور الفاتورة / الوصل (اختياري - متعدد)</label>
               <input 
                 type="file" 
+                multiple
                 accept="image/*" 
                 onChange={async e => {
-                  const file = e.target.files?.[0];
-                  if (file) {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) {
                     setIsUploading(true);
                     try {
-                      const base64 = await compressImageToBase64(file);
-                      setImagePreview(base64);
-                      setImageUrl(base64);
+                      const compressedList = await Promise.all(
+                        files.map(file => compressImageToBase64(file))
+                      );
+                      setImagePreviews(prev => [...prev, ...compressedList]);
+                      setImageUrls(prev => [...prev, ...compressedList]);
                     } catch (err) {
-                      showToastMsg("فشل معالجة وضغط الصورة", "error");
+                      showToastMsg("فشل معالجة وضغط الصور", "error");
                     } finally {
                       setIsUploading(false);
                     }
@@ -432,27 +436,31 @@ export default function ExpensesPage() {
                 }} 
                 className={styles.fileInput}
               />
-              {imagePreview && (
-                <div className={styles.previewContainer}>
-                  <img src={imagePreview} alt="Preview" className={styles.previewImage} />
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      setImageFile(null);
-                      setImagePreview(null);
-                      setImageUrl('');
-                    }} 
-                    className={styles.removeImageBtn}
-                  >
-                    ❌ حذف الصورة
-                  </button>
+              {imagePreviews.length > 0 && (
+                <div className={styles.previewsGrid}>
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className={styles.previewItem}>
+                      <img src={preview} alt={`Preview ${index + 1}`} className={styles.previewImage} />
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setImagePreviews(prev => prev.filter((_, i) => i !== index));
+                          setImageUrls(prev => prev.filter((_, i) => i !== index));
+                        }} 
+                        className={styles.removeImageBtnSmall}
+                        title="حذف الصورة"
+                      >
+                        ❌
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </div>
           <div className={styles.formActions}>
             <button type="submit" className={styles.submitBtn} disabled={isUploading}>
-              {isUploading ? '⏳ جاري ضغط الصورة...' : editingId ? '🔄 تحديث العملية' : '💾 حفظ العملية'}
+              {isUploading ? '⏳ جاري ضغط الصور...' : editingId ? '🔄 تحديث العملية' : '💾 حفظ العملية'}
             </button>
             {editingId && <button type="button" className={styles.cancelBtn} onClick={resetForm} disabled={isUploading}>إلغاء التعديل</button>}
           </div>
@@ -514,13 +522,21 @@ export default function ExpensesPage() {
                             {exp.isArchived && <span className={styles.archivedBadge}>مؤرشف</span>}
                           </td>
                           <td>
-                            {exp.imageUrl ? (
+                            {exp.imageUrls && exp.imageUrls.length > 0 ? (
                               <button 
                                 type="button"
-                                onClick={() => setActiveImageUrl(exp.imageUrl || null)} 
+                                onClick={() => setActiveImagesList(exp.imageUrls || [])} 
                                 className={styles.attachmentBtnLink}
                               >
-                                🖼️ عرض الوصل
+                                🖼️ عرض الوصل ({exp.imageUrls.length})
+                              </button>
+                            ) : exp.imageUrl ? (
+                              <button 
+                                type="button"
+                                onClick={() => setActiveImagesList([exp.imageUrl || ''])} 
+                                className={styles.attachmentBtnLink}
+                              >
+                                🖼️ عرض الوصل (1)
                               </button>
                             ) : (
                               <span className={styles.noAttachment}>-</span>
@@ -557,13 +573,21 @@ export default function ExpensesPage() {
                       {exp.isArchived && <span className={styles.archivedBadge}>مؤرشف</span>}
                     </td>
                     <td>
-                      {exp.imageUrl ? (
+                      {exp.imageUrls && exp.imageUrls.length > 0 ? (
                         <button 
                           type="button"
-                          onClick={() => setActiveImageUrl(exp.imageUrl || null)} 
+                          onClick={() => setActiveImagesList(exp.imageUrls || [])} 
                           className={styles.attachmentBtnLink}
                         >
-                          🖼️ عرض الوصل
+                          🖼️ عرض الوصل ({exp.imageUrls.length})
+                        </button>
+                      ) : exp.imageUrl ? (
+                        <button 
+                          type="button"
+                          onClick={() => setActiveImagesList([exp.imageUrl || ''])} 
+                          className={styles.attachmentBtnLink}
+                        >
+                          🖼️ عرض الوصل (1)
                         </button>
                       ) : (
                         <span className={styles.noAttachment}>-</span>
@@ -607,12 +631,19 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {/* Image Attachment Viewer Modal */}
-      {activeImageUrl && (
-        <div className={styles.modalOverlay} onClick={() => setActiveImageUrl(null)}>
+      {/* Image Attachment Viewer Modal (Gallery) */}
+      {activeImagesList && activeImagesList.length > 0 && (
+        <div className={styles.modalOverlay} onClick={() => setActiveImagesList(null)}>
           <div className={styles.imageModalContent} onClick={e => e.stopPropagation()}>
-            <img src={activeImageUrl} alt="Attachment" className={styles.fullImage} />
-            <button className={styles.closeImageModalBtn} onClick={() => setActiveImageUrl(null)}>❌ إغلاق المعاينة</button>
+            <div className={styles.galleryContainer}>
+              {activeImagesList.map((url, idx) => (
+                <div key={idx} className={styles.galleryItem}>
+                  <img src={url} alt={`Attachment ${idx + 1}`} className={styles.fullImage} />
+                  <span className={styles.galleryCounter}>صورة {idx + 1} من {activeImagesList.length}</span>
+                </div>
+              ))}
+            </div>
+            <button className={styles.closeImageModalBtn} onClick={() => setActiveImagesList(null)}>❌ إغلاق المعاينة</button>
           </div>
         </div>
       )}
