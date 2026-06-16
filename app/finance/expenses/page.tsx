@@ -103,6 +103,7 @@ export default function ExpensesPage() {
   const [endDate, setEndDate] = useState('');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -412,10 +413,11 @@ export default function ExpensesPage() {
             <div className={styles.formGroup}><label className={styles.label}>الفرع (اختياري)</label><select className={styles.select} value={selectedBranchId} onChange={e => { setSelectedBranchId(e.target.value); setSelectedItemId(''); }} disabled={!selectedPageId}><option value="">اختر الفرع...</option>{allCategories.filter(b => b.pageId === selectedPageId).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الصنف (اختياري)</label><select className={styles.select} value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} disabled={!selectedBranchId}><option value="">اختر الصنف...</option>{allProducts.filter(i => i.categoryId === selectedBranchId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>
             <div className={styles.formGroup}>
-              <label className={styles.label}>صور الفاتورة / الوصل (اختياري - متعدد)</label>
+              <label className={styles.label}>صور الفاتورة / الوصل (اختياري)</label>
               <input 
                 type="file" 
                 multiple
+                ref={fileInputRef}
                 accept="image/*" 
                 onChange={async e => {
                   const files = Array.from(e.target.files || []);
@@ -434,26 +436,56 @@ export default function ExpensesPage() {
                     }
                   }
                 }} 
-                className={styles.fileInput}
+                style={{ display: 'none' }}
               />
-              {imagePreviews.length > 0 && (
-                <div className={styles.previewsGrid}>
-                  {imagePreviews.map((preview, index) => (
-                    <div key={index} className={styles.previewItem}>
-                      <img src={preview} alt={`Preview ${index + 1}`} className={styles.previewImage} />
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          setImagePreviews(prev => prev.filter((_, i) => i !== index));
-                          setImageUrls(prev => prev.filter((_, i) => i !== index));
-                        }} 
-                        className={styles.removeImageBtnSmall}
-                        title="حذف الصورة"
-                      >
-                        ❌
-                      </button>
-                    </div>
-                  ))}
+
+              {imagePreviews.length === 0 ? (
+                <button 
+                  type="button" 
+                  onClick={() => fileInputRef.current?.click()}
+                  className={styles.uploadAreaBtn}
+                >
+                  📁 اختيار صور الفاتورة
+                </button>
+              ) : (
+                <div className={styles.imageManagerContainer}>
+                  <div className={styles.previewsGrid}>
+                    {imagePreviews.map((preview, index) => (
+                      <div key={index} className={styles.previewItem}>
+                        <img src={preview} alt={`Preview ${index + 1}`} className={styles.previewImage} />
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            setImagePreviews(prev => prev.filter((_, i) => i !== index));
+                            setImageUrls(prev => prev.filter((_, i) => i !== index));
+                          }} 
+                          className={styles.removeImageBtnSmall}
+                          title="حذف الصورة"
+                        >
+                          ❌
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles.imageActionButtonsRow}>
+                    <button 
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className={styles.addImageBtnInline}
+                    >
+                      ➕ إضافة صورة
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setImagePreviews([]);
+                        setImageUrls([]);
+                      }}
+                      className={styles.deleteAllImagesBtnInline}
+                    >
+                      🗑️ حذف الكل
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -876,3 +876,69 @@
   color: var(--text-muted);
   font-weight: 600;
 }
+
+.uploadAreaBtn {
+  background-color: var(--background);
+  border: 2px dashed var(--border);
+  color: var(--text-main);
+  padding: 1rem;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.uploadAreaBtn:hover {
+  border-color: var(--primary);
+  background-color: var(--surface-hover);
+}
+
+.imageManagerContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.imageActionButtonsRow {
+  display: flex;
+  gap: 0.8rem;
+}
+
+.addImageBtnInline {
+  background-color: rgba(139, 92, 246, 0.1);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.addImageBtnInline:hover {
+  background-color: var(--primary);
+  color: white;
+}
+
+.deleteAllImagesBtnInline {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.deleteAllImagesBtnInline:hover {
+  background-color: #ef4444;
+  color: white;
+}
