@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Barcode from 'react-barcode';
 import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
 import { db, auth } from "../../../lib/firebase";
@@ -1708,7 +1709,11 @@ export default function OrdersListPage() {
                       />
                     </div>
                   </td>
-                  <td>{order.id.slice(-6).toUpperCase()}</td>
+                  <td>
+                    <div style={{ display: 'inline-block', background: '#fff', padding: '2px', borderRadius: '4px', overflow: 'hidden' }}>
+                      <Barcode value={order.id.slice(-6).toUpperCase()} width={1.2} height={25} displayValue={true} fontSize={11} margin={0} background="#ffffff" lineColor="#000000" />
+                    </div>
+                  </td>
                   <td>{order.customerName}</td>
                   <td>{order.governorate}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>
