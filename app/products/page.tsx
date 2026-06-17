@@ -255,7 +255,7 @@ export default function ProductsPage() {
 
       const updatedProductStock = { ...productStock };
       for (const storeId in updatedProductStock) {
-        if (!storesDb.find(s => s.id === storeId)) {
+        if (!storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
           delete updatedProductStock[storeId];
         } else if (updatedProductStock[storeId].reserved === undefined) {
           updatedProductStock[storeId].reserved = 0;
@@ -605,7 +605,7 @@ export default function ProductsPage() {
                             }));
                           } else if (prod.stock && prod.units && prod.units.length > 0) {
                             Object.keys(prod.stock).forEach((storeId: string) => {
-                              if (storesDb.find(s => s.id === storeId)) {
+                              if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
                                 const s = prod.stock[storeId];
                                 const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
                                 totalQty += (Number(s.quantity) || 0) * uMul;
@@ -646,7 +646,7 @@ export default function ProductsPage() {
                           
                           if (prod.stock && prod.units && prod.units.length > 0) {
                             Object.keys(prod.stock).forEach((storeId: string) => {
-                              if (storesDb.find(s => s.id === storeId)) {
+                              if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
                                 const s = prod.stock[storeId];
                                 const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
                                 totalReserved += (Number(s.reserved) || 0) * uMul;
@@ -688,7 +688,7 @@ export default function ProductsPage() {
                           if (prod.stock && prod.units && prod.units.length > 0) {
                             if (prod.totalBaseQuantity === undefined) {
                                Object.keys(prod.stock).forEach((storeId: string) => {
-                                 if (storesDb.find(s => s.id === storeId)) {
+                                 if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
                                    const s = prod.stock[storeId];
                                    const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
                                    totalQty += (Number(s.quantity) || 0) * uMul;
@@ -696,7 +696,7 @@ export default function ProductsPage() {
                                });
                             }
                             Object.keys(prod.stock).forEach((storeId: string) => {
-                              if (storesDb.find(s => s.id === storeId)) {
+                              if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
                                 const s = prod.stock[storeId];
                                 const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
                                 totalReserved += (Number(s.reserved) || 0) * uMul;
@@ -735,7 +735,7 @@ export default function ProductsPage() {
                           let totalValue = 0;
                           if (prod.stock) {
                             Object.keys(prod.stock).forEach((storeId: string) => {
-                              if (storesDb.find(st => st.id === storeId)) {
+                              if (storesDb.find(st => st.id === storeId) || storeId === 'default_store') {
                                 const s = prod.stock[storeId];
                                 const unitPrice = prod.units?.find((u: any) => u.type === s.unit)?.purchase || 0;
                                 totalValue += (s.quantity || 0) * unitPrice;
