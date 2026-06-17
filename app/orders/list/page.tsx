@@ -80,6 +80,7 @@ export default function OrdersListPage() {
     governorate: '',
     phone: '',
     totalAmount: '',
+    notes: '',
     status: '',
     addDate: '',
     addTime: '',
@@ -378,6 +379,7 @@ export default function OrdersListPage() {
       gov.includes(columnFilters.governorate.toLowerCase()) &&
       phone.includes(columnFilters.phone.toLowerCase()) &&
       (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase())) &&
+      notes.includes(columnFilters.notes.toLowerCase()) &&
       (statusKey.includes(columnFilters.status.toLowerCase()) || statusLabel.includes(columnFilters.status.toLowerCase())) &&
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
       aTime.includes(columnFilters.addTime.toLowerCase()) &&
@@ -1655,6 +1657,12 @@ export default function OrdersListPage() {
               </th>
               <th>
                 <div className={styles.thContent}>
+                  <span>الملاحظات</span>
+                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.notes} onChange={(e) => handleFilterChange('notes', e.target.value)} />
+                </div>
+              </th>
+              <th>
+                <div className={styles.thContent}>
                   <span>الحالة</span>
                   <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.status} onChange={(e) => handleFilterChange('status', e.target.value)} />
                 </div>
@@ -1718,6 +1726,7 @@ export default function OrdersListPage() {
                   <td>{order.governorate}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>
                   <td style={{ color: '#10B981', fontWeight: 'bold' }}>{order.formattedTotal} د.ع</td>
+                  <td>{order.notes || '-'}</td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <select 
