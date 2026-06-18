@@ -46,6 +46,8 @@ export default function OrderEntryPage() {
     paymentMethod: 'كاش عند التوصيل',
     fbLoginId: ''
   });
+  
+  const [manualTotal, setManualTotal] = useState<string>('');
 
   const [customerHistory, setCustomerHistory] = useState<{
     count: number;
@@ -375,7 +377,8 @@ export default function OrderEntryPage() {
   );
 
   // Cart Functions
-  const totalAmount = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const calculatedTotal = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const totalAmount = manualTotal !== '' ? Number(manualTotal) : calculatedTotal;
 
   const addToCart = (product: Product) => {
     setCart(prev => {
@@ -850,15 +853,20 @@ export default function OrderEntryPage() {
             />
           </div>
 
-          {/* New auto-calculated Total Amount */}
+          {/* Editable Total Amount */}
           <div className={styles.formGroup}>
             <label className={styles.label}>المبلغ الكلي (دينار)</label>
-            <input 
-              type="text" 
-              className={styles.readOnlyInput} 
-              value={`${new Intl.NumberFormat('en-US').format(totalAmount)} د.ع`}
-              readOnly
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface-hover)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+              <input 
+                type="number" 
+                className={styles.input} 
+                style={{ border: 'none', background: 'transparent', flex: 1, color: '#10b981', fontWeight: 'bold', fontSize: '1.1rem' }}
+                value={manualTotal !== '' ? manualTotal : calculatedTotal}
+                onChange={(e) => setManualTotal(e.target.value)}
+                placeholder="تلقائي..."
+              />
+              <span style={{ color: '#10b981', fontWeight: 'bold', padding: '0 1rem' }}>د.ع</span>
+            </div>
           </div>
 
           <div className={styles.formGroup}>

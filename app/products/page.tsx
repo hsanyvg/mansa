@@ -5,7 +5,7 @@ import styles from './page.module.css';
 import Link from 'next/link';
 
 import { db, auth } from "../../lib/firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs, writeBatch } from 'firebase/firestore';
 import CurrencyInput from '../../components/CurrencyInput';
 import Barcode from 'react-barcode';
 import { calculateTotalBaseQuantity, formatDisplayQuantity, getInventoryBalances } from '../../lib/inventoryUtils';
@@ -255,9 +255,7 @@ export default function ProductsPage() {
 
       const updatedProductStock = { ...productStock };
       for (const storeId in updatedProductStock) {
-        if (!storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
-          delete updatedProductStock[storeId];
-        } else if (updatedProductStock[storeId].reserved === undefined) {
+        if (updatedProductStock[storeId].reserved === undefined) {
           updatedProductStock[storeId].reserved = 0;
         }
       }
@@ -274,7 +272,46 @@ export default function ProductsPage() {
 
       if (editingProductId) {
         await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', editingProductId), productPayload);
-        showToast("تم تعديل الصنف بنجاح!", "success");
+        
+        try {
+          const ordersRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
+          const ordersSnap = await getDocs(ordersRef);
+          
+          // Split into chunks of 500 for Firestore batch limits
+          const chunks: any[][] = [[]];
+          ordersSnap.forEach(orderDoc => {
+            const orderData = orderDoc.data();
+            let changed = false;
+            const newItems = (orderData.items || []).map((item: any) => {
+              if (item.productId === editingProductId && item.productName !== formData.name) {
+                changed = true;
+                return { ...item, productName: formData.name };
+              }
+              return item;
+            });
+
+            if (changed) {
+              if (chunks[chunks.length - 1].length >= 490) {
+                chunks.push([]);
+              }
+              chunks[chunks.length - 1].push({ ref: orderDoc.ref, items: newItems });
+            }
+          });
+
+          for (const chunk of chunks) {
+            if (chunk.length > 0) {
+              const batch = writeBatch(db);
+              chunk.forEach(op => {
+                batch.update(op.ref, { items: op.items });
+              });
+              await batch.commit();
+            }
+          }
+        } catch (updateErr) {
+          console.error("Failed to update orders with new product name", updateErr);
+        }
+
+        showToast("تم تعديل الصنف وتحديث الطلبات المرتبطة بنجاح!", "success");
       } else {
         await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), {
           ...productPayload,

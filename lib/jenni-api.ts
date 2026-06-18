@@ -50,7 +50,13 @@ export async function getDeliveryIntegration(userId: string) {
   return snap.data();
 }
 
+let cachedToken: { token: string, systemCode: string, expiresAt: number, userId: string } | null = null;
+
 export async function getJenniToken(userId: string) {
+  if (cachedToken && cachedToken.userId === userId && cachedToken.expiresAt > Date.now()) {
+    return { token: cachedToken.token, systemCode: cachedToken.systemCode };
+  }
+
   const integration = await getDeliveryIntegration(userId);
 
   if (!integration || !integration.username || !integration.password) {
@@ -85,7 +91,15 @@ export async function getJenniToken(userId: string) {
     throw new Error(data.message || 'فشل تسجيل الدخول لشركة التوصيل. يرجى مراجعة الإعدادات (اسم المستخدم وكلمة المرور).');
   }
 
-  return { token: data.token.replace('Bearer ', '').trim(), systemCode: integration.systemCode };
+  const finalToken = data.token.replace('Bearer ', '').trim();
+  cachedToken = { 
+    token: finalToken, 
+    systemCode: integration.systemCode, 
+    userId: userId,
+    expiresAt: Date.now() + 1000 * 60 * 55 // 55 minutes cache
+  };
+
+  return { token: finalToken, systemCode: integration.systemCode };
 }
 
 export async function createJenniShipment(order: any, userId: string) {

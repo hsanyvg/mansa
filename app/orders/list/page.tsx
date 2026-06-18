@@ -8,6 +8,7 @@ import DateRangePicker from '../../../components/DateRangePicker';
 import { db, auth } from "../../../lib/firebase";
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction } from 'firebase/firestore';
 import { createJenniShipment } from '../../../lib/jenni-api';
+import * as XLSX from 'xlsx';
 
 export default function OrdersListPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -41,6 +42,10 @@ export default function OrdersListPage() {
   const [isBarcodeMode, setIsBarcodeMode] = useState(false);
   const [showReturnReceiptModal, setShowReturnReceiptModal] = useState(false);
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+
   // Settlement states and wallets removed (Moved to Treasury Page)
   const [receiverEmployee, setReceiverEmployee] = useState('');
   const [deliveryAgent, setDeliveryAgent] = useState('');
@@ -54,6 +59,8 @@ export default function OrdersListPage() {
 
   const [showBulkDropdown, setShowBulkDropdown] = useState(false);
   const bulkActionsRef = React.useRef<HTMLDivElement>(null);
+  const [showBulkSelectModal, setShowBulkSelectModal] = useState(false);
+  const [bulkSelectText, setBulkSelectText] = useState('');
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -87,6 +94,10 @@ export default function OrdersListPage() {
     employeeName: ''
   });
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [globalSearch, columnFilters, activeTab]);
+
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
     'pending': { label: 'قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
@@ -97,7 +108,8 @@ export default function OrdersListPage() {
     'delivered': { label: 'مكتمل', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
     'cancelled': { label: 'ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
     'returned': { label: 'راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
-    'new': { label: 'جديد', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' }
+    'new': { label: 'جديد', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' },
+    'postponed': { label: 'مؤجل', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' }
   };
 
   // Fetch Orders from Firestore
@@ -243,9 +255,34 @@ export default function OrdersListPage() {
     return () => unsub();
   }, []);
 
+  // Barcode Scanner Logic for scanners without Enter key
+  useEffect(() => {
+    if (!isBarcodeMode || !globalSearch) return;
+    
+    const terms = globalSearch.split(',').map(t => t.trim().toLowerCase());
+    const lastTerm = terms[terms.length - 1];
+    
+    if (lastTerm && lastTerm.length >= 4) {
+      const found = orders.find(o => 
+        o.id.toLowerCase() === lastTerm || 
+        o.id.slice(-6).toLowerCase() === lastTerm
+      );
+      
+      if (found) {
+        setSelectedOrderIds(prev => {
+          if (!prev.includes(found.id)) return [...prev, found.id];
+          return prev;
+        });
+        
+        // Auto-append comma for the next scan!
+        if (!globalSearch.endsWith(', ')) {
+          setGlobalSearch(prev => prev + ', ');
+        }
+      }
+    }
+  }, [globalSearch, isBarcodeMode, orders]);
 
-
-  // Barcode Scanner Logic
+  // Original Barcode Scanner Logic (for Enter key)
   useEffect(() => {
     if (!isBarcodeMode) return;
 
@@ -277,10 +314,17 @@ export default function OrdersListPage() {
     );
 
     if (found) {
-      setGlobalSearch(scanned); // Filter the table
-      if (!selectedOrderIds.includes(found.id)) {
-        setSelectedOrderIds(prev => [...prev, found.id]);
-      }
+      setGlobalSearch(prev => {
+        if (!prev) return scanned;
+        const terms = prev.split(',').map(t => t.trim().toLowerCase());
+        if (terms.includes(scanned.toLowerCase())) return prev;
+        return `${prev}, ${scanned}`;
+      });
+      
+      setSelectedOrderIds(prev => {
+        if (!prev.includes(found.id)) return [...prev, found.id];
+        return prev;
+      });
       
       // If we are in the returns tab, maybe give visual feedback or show the quick confirm
       if (activeTab === 'returned') {
@@ -298,6 +342,43 @@ export default function OrdersListPage() {
         ? prev.filter(orderId => orderId !== id)
         : [...prev, id]
     );
+  };
+
+  const handleBulkSelectSubmit = () => {
+    if (!bulkSelectText.trim()) return;
+    
+    const searchIds = bulkSelectText
+      .split(/[\n,\s]+/)
+      .map(id => id.trim().toLowerCase())
+      .filter(id => id.length > 0);
+
+    if (searchIds.length === 0) return;
+
+    const matchedOrders = orders.filter(order => {
+      const orderIdStr = String(order.id).toLowerCase();
+      const orderNumberStr = String(order.orderNumber || '').toLowerCase();
+      const orderIdShortStr = String(order.id.slice(-6)).toLowerCase();
+      return searchIds.some(searchId => 
+        orderIdStr.includes(searchId) || 
+        orderIdShortStr === searchId ||
+        (orderNumberStr && orderNumberStr.includes(searchId))
+      );
+    });
+
+    const matchedIds = matchedOrders.map(o => o.id);
+    
+    if (matchedIds.length > 0) {
+      setSelectedOrderIds(prev => {
+        const newSet = new Set([...prev, ...matchedIds]);
+        return Array.from(newSet);
+      });
+      setNotificationModal({ show: true, message: `✅ تم العثور على وتحديد ${matchedIds.length} طلب بنجاح.` });
+    } else {
+      setNotificationModal({ show: true, message: `❌ لم يتم العثور على أي طلب يطابق الأرقام المدخلة.` });
+    }
+    
+    setShowBulkSelectModal(false);
+    setBulkSelectText('');
   };
 
   // Group Return Batches by Month
@@ -387,27 +468,51 @@ export default function OrdersListPage() {
     );
 
     // Global Filter
-    const searchLower = globalSearch.toLowerCase();
-    // Gather all item names if any, to search within cart products as well
-    const productNames = (order.items || []).map((item: any) => (item.productName || '').toLowerCase());
+    const searchLower = globalSearch.toLowerCase().trim();
+    const normalizeStr = (str: string) => (str || '').toLowerCase().replace(/\s+/g, ' ').trim();
     
-    const matchesGlobal = searchLower === '' || [
+    // Gather all item names if any, to search within cart products as well
+    const productNames = (order.items || []).map((item: any) => normalizeStr(item.productName));
+    
+    const allFields = [
       idStr, displayId, custName, gov, region, phone, total, rawTotal, 
       statusKey, statusLabel, aDate, aTime, empName, notes, ...productNames
-    ].some(field => field.includes(searchLower));
+    ].map(normalizeStr);
+
+    let matchesGlobal = true;
+    if (searchLower) {
+      if (searchLower.includes(',')) {
+        const terms = searchLower.split(',').map(t => t.trim()).filter(Boolean);
+        matchesGlobal = terms.length === 0 || terms.some(term => 
+          allFields.some(field => field.includes(term))
+        );
+      } else {
+        const normalizedSearch = searchLower.replace(/\s+/g, ' ');
+        matchesGlobal = allFields.some(field => field.includes(normalizedSearch));
+      }
+    }
 
     return matchesColumn && matchesGlobal;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / itemsPerPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  
+  const paginatedOrders = filteredOrders.slice(
+    (safeCurrentPage - 1) * itemsPerPage,
+    safeCurrentPage * itemsPerPage
+  );
+
+  const isAllSelected = paginatedOrders.length > 0 && paginatedOrders.every(order => selectedOrderIds.includes(order.id));
+
   const toggleAllSelection = () => {
-    if (selectedOrderIds.length === filteredOrders.length) {
-      setSelectedOrderIds([]); 
+    const paginatedIds = paginatedOrders.map(order => order.id);
+    if (isAllSelected) {
+      setSelectedOrderIds(prev => prev.filter(id => !paginatedIds.includes(id)));
     } else {
-      setSelectedOrderIds(filteredOrders.map(order => order.id)); 
+      setSelectedOrderIds(prev => Array.from(new Set([...prev, ...paginatedIds])));
     }
   };
-
-  const isAllSelected = filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length;
 
   const handleCompanySelection = async (companyName: string) => {
     if (selectedOrderIds.length === 0) return;
@@ -447,6 +552,12 @@ export default function OrdersListPage() {
           console.error("Failed to send order", orderData.id, err);
           failCount++;
           lastError = err.message;
+          if (err.message && err.message.includes('Too many requests')) {
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        } finally {
+          // تأخير إجباري بعد كل طلب لتجنب الحظر
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
       }
 
@@ -810,6 +921,7 @@ export default function OrdersListPage() {
           }
         }
       } else {
+        if (!item.productId) continue;
         const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.productId);
         const prodSnap = await getDoc(prodRef);
         if (prodSnap.exists()) {
@@ -938,7 +1050,7 @@ export default function OrdersListPage() {
       const orderToUpdate = orders.find(o => o.id === orderId);
       if (!orderToUpdate) return;
       
-      const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToUpdate.status) || orderToUpdate.isArchived || orderToUpdate.is_settled === true;
+      const isFullyLocked = false; // TEMPORARILY UNLOCKED ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToUpdate.status) || orderToUpdate.isArchived || orderToUpdate.is_settled === true;
       if (isFullyLocked) {
         alert("🔒 إجراء مرفوض: الطلب مقفل بالكامل (مشحون، واصل، راجع، ملغى، أو متمت تسويته).");
         setIsUpdating(false);
@@ -1050,31 +1162,106 @@ export default function OrdersListPage() {
     try {
       const batch = writeBatch(db);
       let updatedCount = 0;
+      
+      const newStatus = bulkStatusValue;
+      const newState = getStockState(newStatus);
+      
+      const productCache: Record<string, { ref: any; data: any; stock: any; isDirty: boolean }> = {};
+      const productIdsToFetch = new Set<string>();
+
+      // 1. Identify which orders are valid and which products we need
+      const validOrders = [];
       for (const orderId of selectedOrderIds) {
         const orderToUpdate = orders.find(o => o.id === orderId);
         if (!orderToUpdate) continue;
         
-        const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToUpdate.status) || orderToUpdate.isArchived || orderToUpdate.is_settled === true;
+        const isFullyLocked = false; 
         if (isFullyLocked || orderToUpdate.status === 'shipped') continue; // Skip locked or shipped orders
         
         const oldStatus = orderToUpdate.status || 'pending';
-        const newStatus = bulkStatusValue;
-        
         if (oldStatus !== newStatus) {
-          updatedCount++;
-          const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
-          batch.update(orderRef, { status: newStatus });
-
-          await syncStockForStatusChange(orderToUpdate.items || [], oldStatus, newStatus, batch);
+          validOrders.push({ order: orderToUpdate, oldStatus, newStatus });
+          for (const item of (orderToUpdate.items || [])) {
+            if (item.isComposite && item.composition) {
+              for (const comp of item.composition) {
+                if (comp.itemId) productIdsToFetch.add(comp.itemId);
+              }
+            } else if (item.productId) {
+              productIdsToFetch.add(item.productId);
+            }
+          }
         }
       }
-      
-      if (updatedCount > 0) {
-        await batch.commit();
-        setNotificationModal({ show: true, message: `تم تحديث حالة ${updatedCount} طلبات بنجاح. تم تجاهل الطلبات المقفلة.` });
-      } else {
-        setNotificationModal({ show: true, message: 'لم يتم تحديث أي طلب (جميع الطلبات المحددة مقفلة).' });
+
+      if (validOrders.length === 0) {
+        setNotificationModal({ show: true, message: 'لم يتم تحديث أي طلب (جميع الطلبات المحددة مقفلة أو بنفس الحالة).' });
+        setShowBulkStatusModal(false);
+        setIsUpdating(false);
+        return;
       }
+
+      // 2. Fetch all products in parallel
+      const fetchPromises = Array.from(productIdsToFetch).map(async (productId) => {
+        const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', productId);
+        const prodSnap = await getDoc(prodRef);
+        if (prodSnap.exists()) {
+          const prodData = prodSnap.data();
+          productCache[productId] = {
+            ref: prodRef,
+            data: prodData,
+            stock: JSON.parse(JSON.stringify(prodData.stock || {})),
+            isDirty: false
+          };
+        }
+      });
+      await Promise.all(fetchPromises);
+
+      // 3. Process each order and apply stock transitions in memory
+      for (const { order, oldStatus, newStatus } of validOrders) {
+        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
+        batch.update(orderRef, { status: newStatus });
+        updatedCount++;
+
+        const oldState = getStockState(oldStatus);
+        if (oldState === newState) continue;
+
+        for (const item of (order.items || [])) {
+          if (item.isComposite && item.composition) {
+            for (const comp of item.composition) {
+              const cached = productCache[comp.itemId];
+              if (cached) {
+                let qty = comp.quantityNeeded * item.quantity;
+                applyStockTransition(cached.stock, oldState, newState, qty, cached.data.units?.[0]?.type || 'قطعة');
+                cached.isDirty = true;
+              }
+            }
+          } else if (item.productId) {
+            const cached = productCache[item.productId];
+            if (cached) {
+              let qty = item.quantity;
+              applyStockTransition(cached.stock, oldState, newState, qty, cached.data.units?.[0]?.type || 'قطعة');
+              cached.isDirty = true;
+            }
+          }
+        }
+      }
+
+      // 4. Update dirty products in batch
+      for (const productId in productCache) {
+        const cached = productCache[productId];
+        if (cached.isDirty) {
+          let newTotalBaseQuantity = 0;
+          Object.values(cached.stock).forEach((s: any) => {
+            const uMul = cached.data.units?.find((u: any) => u.type === s.unit)?.count || 1;
+            newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+          });
+          batch.update(cached.ref, { stock: cached.stock, totalBaseQuantity: newTotalBaseQuantity });
+        }
+      }
+
+      await batch.commit();
+      
+      setNotificationModal({ show: true, message: `تم تحديث حالة ${updatedCount} طلبات بنجاح.` });
       setShowBulkStatusModal(false);
       setSelectedOrderIds([]);
     } catch (error) {
@@ -1193,7 +1380,7 @@ export default function OrdersListPage() {
       const oldOrder = orders.find(o => o.id === editingOrder.id);
       if (!oldOrder) return;
       
-      const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(oldOrder.status) || oldOrder.isArchived || oldOrder.is_settled === true;
+      const isFullyLocked = false; // TEMPORARILY UNLOCKED ['shipped', 'delivered', 'returned', 'cancelled'].includes(oldOrder.status) || oldOrder.isArchived || oldOrder.is_settled === true;
       if (isFullyLocked) {
         alert("🔒 إجراء مرفوض: الطلب مقفل بالكامل (مشحون، واصل، راجع، ملغى، أو متمت تسويته).");
         setIsUpdating(false);
@@ -1340,6 +1527,413 @@ export default function OrdersListPage() {
   const hasAnyBulkAction = activeTab !== 'archived' 
     ? (canTransfer || canArchive || canDelete || (activeTab === 'returned' && canConfirmReturn))
     : (canRestore || canDeletePermanent);
+
+  const handleExportExcel = () => {
+    try {
+      const ordersToExport = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
+      if (ordersToExport.length === 0) {
+        setNotificationModal({ show: true, message: 'لا توجد طلبات للتصدير' });
+        return;
+      }
+      const exportData = ordersToExport.map(order => {
+        const itemsList = (order.items || []).map((item: any) => `${item.productName} (الكمية: ${item.quantity})`).join(' | ');
+        const statusLabel = statusMap[order.status || 'pending']?.label || order.status;
+        
+        return {
+          'رقم الطلب': order.id.slice(-6).toUpperCase(),
+          'تاريخ الإضافة': order.addDate,
+          'وقت الإضافة': order.addTime,
+          'اسم العميل': order.customerName,
+          'المحافظة': order.governorate,
+          'المنطقة': order.region,
+          'رقم الهاتف': order.customerPhone || order.phone,
+          'المبلغ الكلي': order.formattedTotal,
+          'المنتجات': itemsList,
+          'الحالة': statusLabel,
+          'اسم الموظف': order.employeeName,
+          'ملاحظات': order.notes
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      worksheet['!dir'] = 'rtl';
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'الطلبات');
+      XLSX.writeFile(workbook, 'Orders_Export.xlsx');
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء التصدير' });
+    }
+  };
+
+  const handleExportZitaExcel = () => {
+    try {
+      const ordersToExport = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
+      if (ordersToExport.length === 0) {
+        setNotificationModal({ show: true, message: 'لا توجد طلبات للتصدير' });
+        return;
+      }
+      const exportData = ordersToExport.map(order => {
+        const productNames = (order.items || []).map((item: any) => item.productName).join(' + ');
+        const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
+        
+        let phone1 = order.customerPhone || order.phone || '';
+        let phone2 = '';
+        if (phone1.includes('-')) {
+          const parts = phone1.split('-');
+          phone1 = parts[0].trim();
+          phone2 = parts[1].trim();
+        } else if (phone1.includes('/')) {
+          const parts = phone1.split('/');
+          phone1 = parts[0].trim();
+          phone2 = parts[1].trim();
+        } else if (phone1.includes(',')) {
+          const parts = phone1.split(',');
+          phone1 = parts[0].trim();
+          phone2 = parts[1].trim();
+        }
+
+        let zitaGov = order.governorate || '';
+        if (zitaGov.includes('ميسان') || zitaGov.includes('العمارة')) zitaGov = 'ميسان';
+        else if (zitaGov.includes('بابل') || zitaGov.includes('الحلة')) zitaGov = 'بابل';
+        else if (zitaGov.includes('ذي قار') || zitaGov.includes('الناصرية')) zitaGov = 'الناصرية';
+        else if (zitaGov.includes('واسط') || zitaGov.includes('الكوت')) zitaGov = 'واسط';
+        else if (zitaGov.includes('المثنى') || zitaGov.includes('السماوة')) zitaGov = 'السماوة';
+
+        return {
+          'رقم الوصل': order.id.slice(-6).toUpperCase(),
+          'اسم الزبون': order.customerName || '',
+          'هاتف الزبون': phone1,
+          'هاتف الزبون2': phone2,
+          'المحافظة': zitaGov,
+          'المنطقة': order.region || '',
+          'المبلغ الكلي': order.totalAmount || order.price || 0,
+          'نوع البضاعة': productNames,
+          'العدد': totalQuantity,
+          'الملاحظات': order.notes || ''
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      worksheet['!dir'] = 'rtl';
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'زيطة');
+      XLSX.writeFile(workbook, 'Zita_Orders_Export.xlsx');
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء التصدير' });
+    }
+  };
+
+  const handlePrintLabels = () => {
+    const ordersToPrint = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
+    
+    if (ordersToPrint.length === 0) {
+      setNotificationModal({ show: true, message: 'لا يوجد طلبات للطباعة' });
+      return;
+    }
+
+    const printContent = `
+      <html dir="rtl">
+      <head>
+        <title>طباعة وصولات</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap');
+          @page { size: 100mm 150mm portrait; margin: 0; }
+          body { 
+            font-family: 'Cairo', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background: #fff;
+            color: #000;
+          }
+          .receipt { 
+            width: 100mm; 
+            height: 150mm;
+            page-break-after: always; 
+            padding: 8mm 5mm; 
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+          }
+          .header { text-align: center; margin-bottom: 5mm; }
+          .header h3 { margin: 0; font-size: 14pt; font-weight: 800; color: #1a1a1a; display: flex; align-items: center; justify-content: center; gap: 5px;}
+          .header-title { font-size: 20pt; font-weight: 800; margin-top: 5px; letter-spacing: 1px;}
+          
+          .content { display: flex; flex-grow: 1; align-items: flex-start; justify-content: space-between;}
+          
+          .right-side { width: 68%; font-size: 11pt; font-weight: 700; }
+          .right-side table { width: 100%; border-collapse: collapse; }
+          .right-side td { padding: 4px 0; vertical-align: top; border: none; }
+          .right-side td:nth-child(1) { width: 30%; text-align: right; font-weight: 800; }
+          .right-side td:nth-child(2) { width: 5%; text-align: center; font-weight: 800;}
+          .right-side td:nth-child(3) { width: 65%; text-align: right; }
+          
+          .left-side { width: 30%; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 10px; }
+          .big-gov { font-size: 18pt; font-weight: 800; margin: 0; line-height: 1.2; }
+          .region { font-size: 11pt; font-weight: 800; margin: 5px 0 2px 0; }
+          .price { font-size: 12pt; font-weight: 800; margin: 0 0 15px 0; direction: ltr; }
+          .qr-code { width: 90px; height: 90px; margin-bottom: 5px; }
+          .order-id { font-size: 10pt; font-weight: 800; margin-top: 5px; }
+          
+          .footer { text-align: center; margin-top: auto; font-size: 10pt; font-weight: 800; }
+          .footer p { margin: 3px 0; }
+          .footer-en { font-size: 9pt; font-weight: 600; font-family: sans-serif; }
+          
+          .receipt:last-child { page-break-after: auto; }
+        </style>
+      </head>
+      <body>
+        ${ordersToPrint.map((order, index) => {
+          const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
+          const productNames = (order.items || []).map((item: any) => item.productName).join(' + ');
+          let dateObj = new Date();
+          if (order.date) {
+            dateObj = order.date.toDate ? order.date.toDate() : (order.date.seconds ? new Date(order.date.seconds * 1000) : new Date(order.date));
+          }
+          const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}-${(dateObj.getMonth() + 1).toString().padStart(2, '0')}-${dateObj.getFullYear()}`;
+          const orderId = order.orderNumber || order.id.slice(-10).toUpperCase();
+
+          return `
+            <div class="receipt">
+              <div class="header">
+                <h3>سستم تاجر برو 🛍️</h3>
+                <div class="header-title">وصل الكتروني</div>
+              </div>
+              
+              <div class="content">
+                <div class="right-side">
+                  <table>
+                    <tr><td>المرسل</td><td>:</td><td>مارشميلو</td></tr>
+                    <tr><td>رقم الطلب</td><td>:</td><td>${orderId}</td></tr>
+                    <tr><td>الاسم</td><td>:</td><td>${order.customerName || ''}</td></tr>
+                    <tr><td>المحافظة</td><td>:</td><td>${order.governorate || ''}</td></tr>
+                    <tr><td>العنوان</td><td>:</td><td>${order.region || ''}</td></tr>
+                    <tr><td>الهاتف</td><td>:</td><td dir="ltr" style="text-align: right;">${order.customerPhone || order.phone || ''}</td></tr>
+                    <tr><td>العدد</td><td>:</td><td>${totalQuantity}</td></tr>
+                    <tr><td>المبلغ الكلي</td><td>:</td><td dir="ltr" style="text-align: right;">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع</td></tr>
+                    <tr><td>تاريخ الطلب</td><td>:</td><td>${formattedDate}</td></tr>
+                    <tr><td>الملاحظات</td><td>:</td><td>${order.notes || productNames}</td></tr>
+                  </table>
+                </div>
+                
+                <div class="left-side">
+                  <p class="big-gov">${order.governorate || ''}</p>
+                  <p class="region">${order.region || ''}</p>
+                  <p class="price">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع</p>
+                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${orderId}" class="qr-code" />
+                  <p class="order-id">${orderId}</p>
+                </div>
+              </div>
+              
+              <div class="footer">
+                <p>يرجى عدم اعطاء أي مبلغ للمندوب عدى المبلغ المذكور في الوصل</p>
+                <p>page ${index + 1}</p>
+                <p class="footer-en">This system is developed by Tajer Pro, www.tajerpro.com</p>
+              </div>
+            </div>
+          `;
+        }).join('')}
+        <script>
+          setTimeout(() => {
+            window.print();
+            window.close();
+          }, 1000);
+        </script>
+      </body>
+      </html>
+    `;
+
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(printContent);
+      printWin.document.close();
+      printWin.focus();
+    }
+  };
+
+  const handlePrintManifest = () => {
+    const ordersToPrint = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
+    
+    if (ordersToPrint.length === 0) {
+      setNotificationModal({ show: true, message: 'لا يوجد طلبات لطباعتها في الكشف' });
+      return;
+    }
+
+    const todayDate = new Date().toLocaleDateString('en-GB');
+    const randomListId = Math.floor(10000 + Math.random() * 90000);
+
+    const printContent = `
+      <html dir="rtl">
+      <head>
+        <title>كشف الطلبات (A4)</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap');
+          @page { size: A4 portrait; margin: 10mm; }
+          body { 
+            font-family: 'Cairo', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background: #fff;
+            color: #000;
+            font-size: 10pt;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .header-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            margin-bottom: 20px;
+          }
+          .header-info-box {
+            border: 2px solid #000;
+            display: flex;
+            flex-direction: column;
+            width: 220px;
+            text-align: center;
+            font-weight: bold;
+          }
+          .header-info-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-bottom: 2px solid #000;
+          }
+          .header-info-row:last-child {
+            border-bottom: none;
+          }
+          .header-info-cell {
+            padding: 8px 5px;
+            border-left: 2px solid #000;
+            font-size: 11pt;
+          }
+          .header-info-cell:last-child {
+            border-left: none;
+          }
+          .logo-container {
+            text-align: center;
+          }
+          .logo-circle {
+            width: 110px;
+            height: 110px;
+            background: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 800;
+            font-size: 16pt;
+            margin: 0 auto;
+            text-align: center;
+            line-height: 1.2;
+          }
+          .company-name {
+            font-size: 16pt;
+            font-weight: 800;
+            margin-top: 10px;
+          }
+          table.manifest-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: center;
+            font-weight: bold;
+            font-size: 11pt;
+          }
+          table.manifest-table th, table.manifest-table td {
+            border: 2px solid #000;
+            padding: 8px 4px;
+            vertical-align: middle;
+          }
+          table.manifest-table th {
+            background-color: #f2f2f2;
+            font-size: 12pt;
+          }
+          .barcode-img {
+            width: 120px;
+            height: 40px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header-grid">
+          <div class="header-info-box" style="margin-right: auto;">
+            <div class="header-info-row">
+              <div class="header-info-cell">رقم القائمة</div>
+              <div class="header-info-cell">${randomListId}</div>
+            </div>
+          </div>
+          
+          <div class="logo-container">
+            <div class="logo-circle">سستم<br>تاجر برو</div>
+            <div class="company-name">كشف تسليم الطلبات</div>
+          </div>
+
+          <div class="header-info-box" style="margin-left: auto;">
+            <div class="header-info-row">
+              <div class="header-info-cell">التاريخ</div>
+              <div class="header-info-cell" style="direction: ltr;">${todayDate}</div>
+            </div>
+            <div class="header-info-row">
+              <div class="header-info-cell">عدد الوصولات</div>
+              <div class="header-info-cell">${ordersToPrint.length}</div>
+            </div>
+          </div>
+        </div>
+
+        <table class="manifest-table">
+          <thead>
+            <tr>
+              <th style="width: 5%;">#</th>
+              <th style="width: 15%;">الوصل</th>
+              <th style="width: 13%;">هاتف الزبون</th>
+              <th style="width: 25%;">الملاحظات</th>
+              <th style="width: 10%;">المنطقة</th>
+              <th style="width: 10%;">اسم البيج</th>
+              <th style="width: 12%;">المبلغ الكلي</th>
+              <th style="width: 10%;">الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ordersToPrint.map((order, idx) => {
+              const orderId = order.orderNumber || order.id.slice(-10).toUpperCase();
+              return `
+              <tr>
+                <td>${idx + 1}</td>
+                <td>
+                  <img src="https://barcode.tec-it.com/barcode.ashx?data=${orderId}&code=Code128&dpi=96" class="barcode-img" alt="${orderId}" />
+                  <br>${orderId}
+                </td>
+                <td style="direction: ltr; font-size: 12pt;">${order.customerPhone || order.phone || ''}</td>
+                <td>${order.governorate || ''} - ${order.region || ''} ${order.notes ? ' | ' + order.notes : ''}</td>
+                <td>${order.region || ''}</td>
+                <td>مارشميلو</td>
+                <td style="direction: ltr; font-size: 12pt;">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)}</td>
+                <td></td>
+              </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+
+        <script>
+          setTimeout(() => {
+            window.print();
+            window.close();
+          }, 1500);
+        </script>
+      </body>
+      </html>
+    `;
+
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(printContent);
+      printWin.document.close();
+      printWin.focus();
+    }
+  };
 
   return (
     <div className={styles.container}>
@@ -1543,6 +2137,22 @@ export default function OrdersListPage() {
       {/* Table Top Controls */}
       <div className={styles.tableControls}>
         <div className={styles.controlsLeft}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', marginLeft: '1rem' }}>
+            <span>أظهر</span>
+            <select 
+              value={itemsPerPage} 
+              onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+              className={styles.colFilterInput}
+              style={{ width: '70px', textAlign: 'center', padding: '0.3rem', backgroundColor: 'var(--surface)' }}
+            >
+              <option value={25}>25</option>
+              <option value={100}>100</option>
+              <option value={300}>300</option>
+              <option value={500}>500</option>
+              <option value={1000}>1000</option>
+            </select>
+            <span>مدخلات</span>
+          </div>
           <div className={styles.neonSearchContainer} style={{ position: 'relative', flex: 1 }}>
             <svg className={styles.neonSearchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8"></circle>
@@ -1583,6 +2193,27 @@ export default function OrdersListPage() {
             >
               🏷️
             </button>
+            <button 
+              onClick={() => setShowBulkSelectModal(true)}
+              style={{
+                position: 'absolute',
+                left: '3rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '1.2rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#64748b',
+                transition: 'all 0.3s ease'
+              }}
+              title="تحديد متعدد بالمعرفات (نسخ ولصق)"
+            >
+              📋
+            </button>
           </div>
         </div>
         <div className={styles.controlsRight}>
@@ -1604,8 +2235,10 @@ export default function OrdersListPage() {
           >
             مزامنة الحالات 🔄
           </button>
-          <button className={styles.controlButton}>طباعة</button>
-          <button className={styles.controlButton}>تصدير Excel</button>
+          <button className={styles.controlButton} onClick={handlePrintManifest}>طباعة كشف (قائمة)</button>
+          <button className={styles.controlButton} onClick={handlePrintLabels}>طباعة ملصق 100x150</button>
+          <button className={styles.controlButton} onClick={handleExportZitaExcel}>تصدير Excel (زيطة)</button>
+          <button className={styles.controlButton} onClick={handleExportExcel}>تصدير Excel</button>
         </div>
       </div>
 
@@ -1695,9 +2328,9 @@ export default function OrdersListPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredOrders.length > 0 ? filteredOrders.map((order) => {
+            {paginatedOrders.length > 0 ? paginatedOrders.map((order) => {
               const isSelected = selectedOrderIds.includes(order.id);
-              const isFullyLocked = ['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.isArchived || order.is_settled === true;
+              const isFullyLocked = false; // TEMPORARILY UNLOCKED ['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.isArchived || order.is_settled === true;
               const isDeleteLocked = !order.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.is_settled === true);
               
               return (
@@ -1889,6 +2522,34 @@ export default function OrdersListPage() {
             )}
           </tbody>
         </table>
+        {filteredOrders.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', backgroundColor: 'var(--surface)', borderTop: '1px solid var(--border)', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              إظهار {(safeCurrentPage - 1) * itemsPerPage + 1} إلى {Math.min(safeCurrentPage * itemsPerPage, filteredOrders.length)} من أصل {filteredOrders.length} مدخل
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={safeCurrentPage === 1}
+                style={{ padding: '0.4rem 0.8rem', backgroundColor: safeCurrentPage === 1 ? 'transparent' : 'var(--surface-hover)', border: '1px solid var(--border)', color: safeCurrentPage === 1 ? 'var(--text-muted)' : 'var(--text-main)', borderRadius: 'var(--radius-sm)', cursor: safeCurrentPage === 1 ? 'not-allowed' : 'pointer' }}
+              >
+                السابق
+              </button>
+              
+              <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.5rem', fontWeight: 'bold' }}>
+                {safeCurrentPage} / {totalPages}
+              </div>
+
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={safeCurrentPage === totalPages}
+                style={{ padding: '0.4rem 0.8rem', backgroundColor: safeCurrentPage === totalPages ? 'transparent' : 'var(--surface-hover)', border: '1px solid var(--border)', color: safeCurrentPage === totalPages ? 'var(--text-muted)' : 'var(--text-main)', borderRadius: 'var(--radius-sm)', cursor: safeCurrentPage === totalPages ? 'not-allowed' : 'pointer' }}
+              >
+                التالي
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       )}
 
@@ -2219,8 +2880,15 @@ export default function OrdersListPage() {
                   <div style={{ flex: 1.2, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <h3 style={{ color: '#10b981', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>🛒 سلة المشتريات</span>
-                      <span style={{ fontSize: '1rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold' }}>
-                        المجموع: {new Intl.NumberFormat('en-US').format(editingOrder.totalAmount || 0)} د.ع
+                      <span style={{ fontSize: '1rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        المجموع: 
+                        <input 
+                          type="number" 
+                          value={editingOrder.totalAmount || 0} 
+                          onChange={(e) => setEditingOrder({...editingOrder, totalAmount: Number(e.target.value)})} 
+                          style={{width: '90px', background: 'transparent', border: 'none', borderBottom: '1px dashed rgba(16,185,129,0.5)', color: '#10b981', outline: 'none', padding: '0.1rem', textAlign: 'center', fontWeight: 'bold', fontSize: '1.1rem'}}
+                        /> 
+                        د.ع
                       </span>
                     </h3>
 
@@ -2840,7 +3508,43 @@ export default function OrdersListPage() {
         </div>
       )}
 
-
+      {showBulkSelectModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowBulkSelectModal(false)}>
+          <div className={styles.modalContent} onClick={e => e.stopPropagation()} style={{maxWidth: '500px'}}>
+            <div className={styles.modalHeader}>
+              <h3>📋 تحديد متعدد (لصق المعرفات)</h3>
+              <button className={styles.closeButton} onClick={() => setShowBulkSelectModal(false)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                قم بلصق أرقام الطلبات أو المعرفات هنا (يمكنك نسخ عمود كامل من الإكسل ولصقه مباشرة).
+              </p>
+              <textarea
+                value={bulkSelectText}
+                onChange={(e) => setBulkSelectText(e.target.value)}
+                placeholder="مثال:&#10;206061600027&#10;100209&#10;100208"
+                style={{
+                  width: '100%',
+                  height: '200px',
+                  backgroundColor: 'var(--surface)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  fontSize: '1rem',
+                  resize: 'vertical',
+                  direction: 'ltr',
+                  textAlign: 'left'
+                }}
+              />
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.cancelButton} onClick={() => setShowBulkSelectModal(false)}>إلغاء</button>
+              <button className={styles.saveButton} onClick={handleBulkSelectSubmit}>تحديد الطلبات</button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
