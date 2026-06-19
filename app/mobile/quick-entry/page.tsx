@@ -58,6 +58,11 @@ function QuickEntryContent() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [selectedResponseEmployeeId, setSelectedResponseEmployeeId] = useState('');
+  const [currentUserInfo, setCurrentUserInfo] = useState<{ name: string; id: string; role: 'employee' | 'owner' | 'public' }>({
+    name: 'طلب مباشر (الزبون)',
+    id: 'public_client',
+    role: 'public'
+  });
   const [baseProducts, setBaseProducts] = useState<Product[]>([]);
   const [compositeProductsData, setCompositeProductsData] = useState<any[]>([]);
   const [customersDb, setCustomersDb] = useState<any[]>([]);
@@ -82,7 +87,7 @@ function QuickEntryContent() {
     "دهوك", "السليمانية", "بابل (الحلة)", "كربلاء"
   ];
 
-  // Initialize and check URL parameters for public access
+  // Initialize and check URL parameters for public access & listen to auth
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -91,25 +96,64 @@ function QuickEntryContent() {
       if (paramUid) {
         setTargetUid(paramUid);
         setIsPublicClient(true);
-        // Ensure user is authenticated to read/write under this merchant path
-        if (!auth.currentUser) {
-          signInAnonymously(auth).catch(err => console.error("Anonymous authentication failed:", err));
-        }
-      } else {
-        // No param provided, listen to authentication state
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-          if (user) {
-            setTargetUid(user.uid);
-            setIsPublicClient(false);
+      }
+      
+      const unsubscribe = auth.onAuthStateChanged(async (user) => {
+        if (user && !user.isAnonymous) {
+          try {
+            // Check if user is a mapped employee
+            const mappingSnap = await getDoc(doc(db, 'employee_mappings', user.uid));
+            if (mappingSnap.exists()) {
+              const mapData = mappingSnap.data();
+              const adminUid = mapData.adminUid;
+              const empId = mapData.employeeId;
+              
+              if (!paramUid) {
+                setTargetUid(adminUid);
+                setIsPublicClient(false);
+              }
+              
+              // Fetch employee details to get their actual name
+              const empSnap = await getDoc(doc(db, 'users', adminUid, 'employees', empId));
+              if (empSnap.exists()) {
+                const empData = empSnap.data();
+                setCurrentUserInfo({
+                  name: empData.name || 'موظف',
+                  id: empId,
+                  role: 'employee'
+                });
+                setSelectedEmployeeId(empId);
+                return;
+              }
+            }
+            
+            // If they are logged in but not mapped, they are the owner
+            if (!paramUid) {
+              setTargetUid(user.uid);
+              setIsPublicClient(false);
+            }
+            setCurrentUserInfo({
+              name: 'المالك 👑',
+              id: 'owner',
+              role: 'owner'
+            });
+          } catch (err) {
+            console.error("Error loading auth info:", err);
+          }
+        } else {
+          // If not logged in at all, sign in anonymously if a paramUid was supplied
+          if (paramUid) {
+            signInAnonymously(auth).catch(err => console.error("Anonymous authentication failed:", err));
           } else {
             // Fallback for public visitor without credentials
             setTargetUid('anonymous');
             setIsPublicClient(true);
             signInAnonymously(auth).catch(err => console.error("Anonymous auth fallback failed:", err));
           }
-        });
-        return () => unsubscribe();
-      }
+          setCurrentUserInfo({ name: 'طلب مباشر (الزبون)', id: 'public_client', role: 'public' });
+        }
+      });
+      return unsubscribe;
     }
   }, []);
 
@@ -351,7 +395,7 @@ function QuickEntryContent() {
     e.preventDefault();
     setHasAttemptedSubmit(true);
 
-    if (!selectedEmployeeId && !isPublicClient) {
+    if (currentUserInfo.role === 'owner' && !selectedEmployeeId) {
       alert("يرجى اختيار الموظف مُدخل الطلب أولاً.");
       return;
     }
@@ -433,9 +477,22 @@ function QuickEntryContent() {
       }
 
       const responseEmp = employees.find(empItem => empItem.id === selectedResponseEmployeeId);
+      
+      let orderEmployeeId = 'public_client';
+      let orderEmployeeName = 'طلب مباشر (الزبون)';
+      
+      if (currentUserInfo.role === 'employee') {
+        orderEmployeeId = currentUserInfo.id;
+        orderEmployeeName = currentUserInfo.name;
+      } else if (currentUserInfo.role === 'owner') {
+        const emp = employees.find(empItem => empItem.id === selectedEmployeeId);
+        orderEmployeeId = selectedEmployeeId;
+        orderEmployeeName = emp?.name || 'مجهول';
+      }
+
       const orderData = {
-        employeeId: isPublicClient ? 'public_client' : selectedEmployeeId,
-        employeeName: isPublicClient ? 'طلب مباشر (الزبون)' : (emp?.name || 'مجهول'),
+        employeeId: orderEmployeeId,
+        employeeName: orderEmployeeName,
         responseEmployeeId: selectedResponseEmployeeId,
         responseEmployeeName: responseEmp?.name || 'غير محدد',
         customerName: formData.customerName,
@@ -551,9 +608,11 @@ function QuickEntryContent() {
     }
   };
 
-  const selectedEmployeeName = isPublicClient 
-    ? 'طلب مباشر (الزبون)' 
-    : (employees.find(e => e.id === selectedEmployeeId)?.name || 'الرجاء اختيار الموظف');
+  const selectedEmployeeName = currentUserInfo.role === 'employee'
+    ? currentUserInfo.name
+    : (currentUserInfo.role === 'owner'
+       ? (employees.find(e => e.id === selectedEmployeeId)?.name || 'المالك 👑')
+       : 'طلب مباشر (الزبون)');
 
   if (loading) {
     return (
@@ -599,8 +658,8 @@ function QuickEntryContent() {
       {/* Main Content */}
       <main className={styles.mainContent}>
         
-        {/* Employee Selection (Only shown for internal team members, hidden for public clients) */}
-        {!selectedEmployeeId && !isPublicClient && (
+        {/* Employee Selection (Only shown for Owner if not selected yet) */}
+        {currentUserInfo.role === 'owner' && !selectedEmployeeId && (
           <div className={styles.sectionCard} style={{ borderColor: 'rgba(139, 92, 246, 0.5)' }}>
             <h2 className={styles.sectionTitle}>مُدخل الطلب</h2>
             <div className={styles.formGroup}>
