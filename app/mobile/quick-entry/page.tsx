@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import styles from './page.module.css';
 import { db, auth } from "../../../lib/firebase";
+import { signInAnonymously } from 'firebase/auth';
 import { 
   collection, 
   onSnapshot, 
@@ -25,6 +26,8 @@ interface Product {
   stock: Record<string, { quantity: number; reserved?: number; unit: string }>;
   isComposite?: boolean;
   composition?: any[];
+  categoryId?: string;
+  subcategoryId?: string;
 }
 
 interface CartItem {
@@ -34,8 +37,11 @@ interface CartItem {
   unitPrice: number;
 }
 
-export default function MobileQuickEntry() {
+function QuickEntryContent() {
   const [loading, setLoading] = useState(true);
+  const [targetUid, setTargetUid] = useState<string>('');
+  const [isPublicClient, setIsPublicClient] = useState<boolean>(false);
+  const [showShareNotification, setShowShareNotification] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -55,12 +61,13 @@ export default function MobileQuickEntry() {
   const [compositeProductsData, setCompositeProductsData] = useState<any[]>([]);
   const [customersDb, setCustomersDb] = useState<any[]>([]);
   const [ordersMatches, setOrdersMatches] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   
   // UI states
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
   const [showGovDropdown, setShowGovDropdown] = useState(false);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
@@ -74,55 +81,100 @@ export default function MobileQuickEntry() {
     "دهوك", "السليمانية", "بابل (الحلة)", "كربلاء"
   ];
 
+  // Initialize and check URL parameters for public access
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const paramUid = params.get('uid') || params.get('store');
+      
+      if (paramUid) {
+        setTargetUid(paramUid);
+        setIsPublicClient(true);
+        // Ensure user is authenticated to read/write under this merchant path
+        if (!auth.currentUser) {
+          signInAnonymously(auth).catch(err => console.error("Anonymous authentication failed:", err));
+        }
+      } else {
+        // No param provided, listen to authentication state
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+          if (user) {
+            setTargetUid(user.uid);
+            setIsPublicClient(false);
+          } else {
+            // Fallback for public visitor without credentials
+            setTargetUid('anonymous');
+            setIsPublicClient(true);
+            signInAnonymously(auth).catch(err => console.error("Anonymous auth fallback failed:", err));
+          }
+        });
+        return () => unsubscribe();
+      }
+    }
+  }, []);
+
+  // Fetch categories
+  useEffect(() => {
+    if (!targetUid) return;
+    const unsub = onSnapshot(collection(db, 'users', targetUid, 'categories'), (snapshot) => {
+      const cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCategories(cats);
+    });
+    return () => unsub();
+  }, [targetUid]);
+
   // Fetch employees
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'), (snapshot) => {
+    if (!targetUid) return;
+    const unsub = onSnapshot(collection(db, 'users', targetUid, 'employees'), (snapshot) => {
       const empData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEmployees(empData.filter((e: any) => e.isActive));
     });
     const savedEmpId = localStorage.getItem('selectedEmployeeId');
     if (savedEmpId) setSelectedEmployeeId(savedEmpId);
     return () => unsub();
-  }, []);
+  }, [targetUid]);
 
   // Fetch base products
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
+    if (!targetUid) return;
+    const unsub = onSnapshot(collection(db, 'users', targetUid, 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
       setBaseProducts(pData);
     });
     return () => unsub();
-  }, []);
+  }, [targetUid]);
 
   // Fetch composite products
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'), (snapshot) => {
+    if (!targetUid) return;
+    const unsub = onSnapshot(collection(db, 'users', targetUid, 'composite_products'), (snapshot) => {
       const cData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCompositeProductsData(cData);
     });
     return () => unsub();
-  }, []);
+  }, [targetUid]);
 
   // Fetch customers
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'customers'), (snapshot) => {
+    if (!targetUid) return;
+    const unsub = onSnapshot(collection(db, 'users', targetUid, 'customers'), (snapshot) => {
       setCustomersDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     });
     return () => unsub();
-  }, []);
+  }, [targetUid]);
 
   // Phone search for auto-fill matching
   useEffect(() => {
     const phoneQuery = formData.customerPhone.trim();
-    if (phoneQuery.length < 10) {
+    if (phoneQuery.length < 10 || !targetUid) {
       setOrdersMatches([]);
       return;
     }
     const searchOrders = async () => {
       try {
         const qPhone = fsQuery(
-          collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), 
+          collection(db, 'users', targetUid, 'orders'), 
           where('customerPhone', '>=', phoneQuery), 
           where('customerPhone', '<=', phoneQuery + '\uf8ff'),
           limit(3)
@@ -147,7 +199,7 @@ export default function MobileQuickEntry() {
     };
     const timer = setTimeout(searchOrders, 300);
     return () => clearTimeout(timer);
-  }, [formData.customerPhone]);
+  }, [formData.customerPhone, targetUid]);
 
   // Combined product lists
   const productsList = React.useMemo(() => {
@@ -179,11 +231,33 @@ export default function MobileQuickEntry() {
         units: [{ selling: cp.sellingPrice || 0, type: 'بكج' }],
         stock: { 'virtual_store': { quantity: minBundles, unit: 'بكج' } },
         isComposite: true,
-        composition: cp.composition || []
+        composition: cp.composition || [],
+        categoryId: cp.categoryId || ''
       } as any);
     });
     return merged;
   }, [baseProducts, compositeProductsData]);
+
+  // Filtered products list shown in the catalog
+  const filteredProducts = React.useMemo(() => {
+    let list = productsList;
+    
+    // 1. Filter by category
+    if (selectedCategoryId !== 'all') {
+      list = list.filter(p => p.categoryId === selectedCategoryId);
+    }
+    
+    // 2. Filter by search query
+    if (searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(p => 
+        p.name?.toLowerCase().includes(query) || 
+        p.barcode?.toLowerCase() === query
+      );
+    }
+    
+    return list;
+  }, [productsList, selectedCategoryId, searchQuery]);
 
   // Handlers
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -244,12 +318,13 @@ export default function MobileQuickEntry() {
         return [...prev, { id: product.id, product, quantity: 1, unitPrice: price }];
       }
     });
-    setSearchQuery('');
-    setShowProductDropdown(false);
   };
 
   const updateCartQuantity = (id: string, qty: number) => {
-    if (qty < 1) return;
+    if (qty < 1) {
+      removeFromCart(id);
+      return;
+    }
     setCart(prev => prev.map(item => item.id === id ? { ...item, quantity: qty } : item));
   };
 
@@ -259,17 +334,23 @@ export default function MobileQuickEntry() {
 
   const totalAmount = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
 
-  const filteredProductsSearch = productsList.filter(p => {
-    if (!searchQuery) return false;
-    const query = searchQuery.toLowerCase();
-    return p.name?.toLowerCase().includes(query) || p.barcode?.toLowerCase() === query;
-  });
+  const handleCopyLink = () => {
+    if (typeof window !== 'undefined') {
+      const shareUrl = `${window.location.origin}/mobile/quick-entry?uid=${targetUid}`;
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setShowShareNotification(true);
+        setTimeout(() => setShowShareNotification(false), 3000);
+      }).catch(err => {
+        console.error("Failed to copy link:", err);
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setHasAttemptedSubmit(true);
 
-    if (!selectedEmployeeId) {
+    if (!selectedEmployeeId && !isPublicClient) {
       alert("يرجى اختيار الموظف مُدخل الطلب أولاً.");
       return;
     }
@@ -280,7 +361,6 @@ export default function MobileQuickEntry() {
       formData.governorate.trim() === '' ||
       formData.region.trim() === ''
     ) {
-      // Small alert for invalid form
       return;
     }
 
@@ -292,7 +372,7 @@ export default function MobileQuickEntry() {
     setIsSubmitting(true);
 
     try {
-      const counterRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'metadata', 'orderCounter');
+      const counterRef = doc(db, 'users', targetUid, 'metadata', 'orderCounter');
       const nextId = await runTransaction(db, async (transaction) => {
         const counterSnap = await transaction.get(counterRef);
         let currentId = 100000;
@@ -305,7 +385,7 @@ export default function MobileQuickEntry() {
       });
 
       const batch = writeBatch(db);
-      const newOrderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', nextId.toString());
+      const newOrderRef = doc(db, 'users', targetUid, 'orders', nextId.toString());
       const emp = employees.find(empItem => empItem.id === selectedEmployeeId);
 
       let isOrderBackordered = false;
@@ -315,7 +395,7 @@ export default function MobileQuickEntry() {
         const productData = item.product as any;
         if (productData.isComposite && productData.composition) {
           for (const component of productData.composition) {
-            const rawProdRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', component.itemId);
+            const rawProdRef = doc(db, 'users', targetUid, 'products', component.itemId);
             const rawSnap = await getDoc(rawProdRef);
             if (rawSnap.exists()) {
               const rawData = rawSnap.data();
@@ -330,7 +410,7 @@ export default function MobileQuickEntry() {
             }
           }
         } else {
-          const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.product.id);
+          const prodRef = doc(db, 'users', targetUid, 'products', item.product.id);
           const prodSnap = await getDoc(prodRef);
           if (prodSnap.exists()) {
             const prodData = prodSnap.data();
@@ -347,8 +427,8 @@ export default function MobileQuickEntry() {
       }
 
       const orderData = {
-        employeeId: selectedEmployeeId,
-        employeeName: emp?.name || 'مجهول',
+        employeeId: isPublicClient ? 'public_client' : selectedEmployeeId,
+        employeeName: isPublicClient ? 'طلب مباشر (الزبون)' : (emp?.name || 'مجهول'),
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,
@@ -379,7 +459,7 @@ export default function MobileQuickEntry() {
         const productData = item.product as any;
         if (productData.isComposite && productData.composition) {
           for (const component of productData.composition) {
-            const rawProdRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', component.itemId);
+            const rawProdRef = doc(db, 'users', targetUid, 'products', component.itemId);
             const rawSnap = await getDoc(rawProdRef);
             if (rawSnap.exists()) {
               const rawData = rawSnap.data();
@@ -395,7 +475,7 @@ export default function MobileQuickEntry() {
             }
           }
         } else {
-          const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', item.product.id);
+          const prodRef = doc(db, 'users', targetUid, 'products', item.product.id);
           const prodSnap = await getDoc(prodRef);
           if (prodSnap.exists()) {
             const prodData = prodSnap.data();
@@ -436,7 +516,7 @@ export default function MobileQuickEntry() {
         console.error("Failed to trigger webhook:", webhookErr);
       }
 
-      setNotificationModal({ show: true, message: '✨ تم حفظ الطلب بنجاح!' });
+      setNotificationModal({ show: true, message: '✨ تم حفظ طلبك بنجاح! شكراً لك.' });
       
       // Reset
       setHasAttemptedSubmit(false);
@@ -461,7 +541,9 @@ export default function MobileQuickEntry() {
     }
   };
 
-  const selectedEmployeeName = employees.find(e => e.id === selectedEmployeeId)?.name || 'الرجاء اختيار الموظف';
+  const selectedEmployeeName = isPublicClient 
+    ? 'طلب مباشر (الزبون)' 
+    : (employees.find(e => e.id === selectedEmployeeId)?.name || 'الرجاء اختيار الموظف');
 
   if (loading) {
     return (
@@ -476,17 +558,39 @@ export default function MobileQuickEntry() {
     <div className={styles.container}>
       {/* Header */}
       <header className={styles.header}>
-        <h1 className={styles.title}>إدخال سريع ⚡</h1>
-        <div className={styles.employeeBadge} title={selectedEmployeeName}>
-          <span>👤 {selectedEmployeeName}</span>
+        <h1 className={styles.title}>إدخال الطلبات السريع ⚡</h1>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Share Button (Hidden for public clients) */}
+          {!isPublicClient && targetUid && (
+            <button 
+              type="button" 
+              className={styles.shareBtn} 
+              onClick={handleCopyLink}
+              title="نسخ رابط الطلب المباشر للزبائن"
+            >
+              🔗 مشاركة الرابط
+            </button>
+          )}
+
+          <div className={styles.employeeBadge} title={selectedEmployeeName}>
+            <span>👤 {selectedEmployeeName}</span>
+          </div>
         </div>
       </header>
+
+      {/* Copy Alert Banner */}
+      {showShareNotification && (
+        <div className={styles.shareNotification}>
+          📋 تم نسخ رابط المشاركة بنجاح! أرسله الآن للمستخدمين أو الزبائن.
+        </div>
+      )}
 
       {/* Main Content */}
       <main className={styles.mainContent}>
         
-        {/* Employee Selection */}
-        {!selectedEmployeeId && (
+        {/* Employee Selection (Only shown for internal team members, hidden for public clients) */}
+        {!selectedEmployeeId && !isPublicClient && (
           <div className={styles.sectionCard} style={{ borderColor: 'rgba(139, 92, 246, 0.5)' }}>
             <h2 className={styles.sectionTitle}>مُدخل الطلب</h2>
             <div className={styles.formGroup}>
@@ -507,8 +611,9 @@ export default function MobileQuickEntry() {
           </div>
         )}
 
+        {/* Customer Information Form */}
         <div className={styles.sectionCard}>
-          <h2 className={styles.sectionTitle}>👤 بيانات الزبون</h2>
+          <h2 className={styles.sectionTitle}>👤 بيانات الزبون والعنوان</h2>
           
           <div className={styles.formGroup}>
             <div className={styles.dropdownContainer}>
@@ -523,7 +628,8 @@ export default function MobileQuickEntry() {
                 placeholder="رقم هاتف الزبون *"
                 autoComplete="off"
               />
-              {showPhoneDropdown && formData.customerPhone.trim().length >= 10 && filteredCustomersByPhone.length > 0 && (
+              {/* Only show past customer matching if it is an internal employee, not a public customer */}
+              {!isPublicClient && showPhoneDropdown && formData.customerPhone.trim().length >= 10 && filteredCustomersByPhone.length > 0 && (
                 <ul className={styles.dropdownList}>
                   {filteredCustomersByPhone.map((customer: any, idx: number) => (
                     <li 
@@ -555,7 +661,7 @@ export default function MobileQuickEntry() {
               className={`${styles.input} ${isFieldInvalid('customerName') ? styles.inputError : ''}`}
               value={formData.customerName}
               onChange={handleFormChange}
-              placeholder="الاسم الكامل *"
+              placeholder="الاسم الكامل للزبون *"
               autoComplete="off"
             />
           </div>
@@ -608,7 +714,6 @@ export default function MobileQuickEntry() {
             />
           </div>
 
-          {/* Optional Info Dropdown toggle could go here, for now keep it simple */}
           <div className={styles.formGroup}>
              <input 
               type="tel" 
@@ -627,81 +732,137 @@ export default function MobileQuickEntry() {
               className={styles.input}
               value={formData.notes}
               onChange={handleFormChange}
-              placeholder="ملاحظات الطلب (اختياري)..."
+              placeholder="ملاحظات أو تفاصيل أخرى حول التوصيل..."
             />
           </div>
         </div>
 
-        {/* Cart Section */}
+        {/* Product Selection Catalog Section */}
         <div className={styles.sectionCard}>
-          <h2 className={styles.sectionTitle}>🛒 المنتجات المطلوبة</h2>
-          
-          <div className={styles.dropdownContainer}>
-            <div className={styles.searchContainer}>
-              <input 
-                type="text" 
-                placeholder="ابحث عن منتج بالاسم أو الباركود..."
-                className={`${styles.input} ${styles.searchInput}`}
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowProductDropdown(true);
-                }}
-                onFocus={() => setShowProductDropdown(true)}
-                onBlur={() => setTimeout(() => setShowProductDropdown(false), 250)}
-              />
-              <span className={styles.searchIcon}>🔍</span>
-            </div>
-            
-            {showProductDropdown && searchQuery.trim().length > 0 && (
-              <ul className={styles.dropdownList}>
-                {filteredProductsSearch.map(product => {
-                  const price = product.units?.[0]?.selling || 0;
-                  return (
-                    <li 
-                      key={product.id} 
-                      className={styles.dropdownItem}
-                      onClick={() => addToCart(product)}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{product.name}</span>
-                        <span style={{ color: '#10b981', fontWeight: 'bold' }}>{price.toLocaleString()}</span>
-                      </div>
-                    </li>
-                  );
-                })}
-                {filteredProductsSearch.length === 0 && (
-                  <li className={styles.dropdownItem} style={{ color: '#94a3b8', textAlign: 'center' }}>لا توجد نتائج مطابقة</li>
-                )}
-              </ul>
-            )}
+          <h2 className={styles.sectionTitle}>🛍️ كتالوج المنتجات</h2>
+
+          {/* Search bar inside Catalog */}
+          <div className={styles.searchContainer}>
+            <input 
+              type="text" 
+              placeholder="ابحث بالاسم أو الباركود..."
+              className={`${styles.input} ${styles.searchInput}`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <span className={styles.searchIcon}>🔍</span>
           </div>
 
-          <div className={styles.cartList}>
-            {cart.map(item => (
-              <div key={item.id} className={styles.cartItem}>
-                <div className={styles.cartItemInfo}>
-                  <span className={styles.cartItemName}>{item.product.name}</span>
-                  <span className={styles.cartItemPrice}>
-                    {(item.unitPrice * item.quantity).toLocaleString()} د.ع
-                  </span>
+          {/* Category tabs */}
+          {categories.length > 0 && (
+            <div className={styles.categoriesContainer}>
+              <button 
+                type="button" 
+                className={`${styles.categoryTab} ${selectedCategoryId === 'all' ? styles.categoryTabActive : ''}`}
+                onClick={() => setSelectedCategoryId('all')}
+              >
+                الكل 📦
+              </button>
+              {categories.map((cat) => (
+                <button 
+                  key={cat.id} 
+                  type="button" 
+                  className={`${styles.categoryTab} ${selectedCategoryId === cat.id ? styles.categoryTabActive : ''}`}
+                  onClick={() => setSelectedCategoryId(cat.id)}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Product Catalog Grid Layout */}
+          <div className={styles.productCatalogGrid}>
+            {filteredProducts.map(product => {
+              const price = product.units?.[0]?.selling || 0;
+              const cartItem = cart.find(item => item.id === product.id);
+              
+              // Calculate stock count
+              let stockCount = 0;
+              if (product.stock) {
+                Object.values(product.stock).forEach((s: any) => {
+                  stockCount += (Number(s.quantity) || 0) - (Number(s.reserved) || 0);
+                });
+              }
+
+              return (
+                <div key={product.id} className={styles.productCard}>
+                  <div className={styles.productMeta}>
+                    <span className={styles.productName}>{product.name}</span>
+                    <span className={styles.productPrice}>{price.toLocaleString()} د.ع</span>
+                    <span className={`${styles.productStock} ${stockCount <= 0 ? styles.outOfStock : ''}`}>
+                      {stockCount > 0 ? `متوفر: ${stockCount}` : 'طلب مسبق'}
+                    </span>
+                  </div>
+
+                  {cartItem ? (
+                    <div className={styles.cardControls}>
+                      <button 
+                        type="button" 
+                        className={styles.qtyBtnSmall} 
+                        onClick={() => updateCartQuantity(product.id, cartItem.quantity - 1)}
+                      >
+                        -
+                      </button>
+                      <span className={styles.qtyValSmall}>{cartItem.quantity}</span>
+                      <button 
+                        type="button" 
+                        className={styles.qtyBtnSmall} 
+                        onClick={() => updateCartQuantity(product.id, cartItem.quantity + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      type="button" 
+                      className={styles.addToCartBtn}
+                      onClick={() => addToCart(product)}
+                    >
+                      إضافة للسلة 🛒
+                    </button>
+                  )}
                 </div>
-                <div className={styles.cartControls}>
-                  <button type="button" className={styles.qtyBtn} onClick={() => updateCartQuantity(item.id, item.quantity - 1)}>-</button>
-                  <span className={styles.qtyVal}>{item.quantity}</span>
-                  <button type="button" className={styles.qtyBtn} onClick={() => updateCartQuantity(item.id, item.quantity + 1)}>+</button>
-                </div>
-                <button type="button" className={styles.removeBtn} onClick={() => removeFromCart(item.id)}>✖</button>
-              </div>
-            ))}
-            
-            {cart.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
-                السلة فارغة حالياً
+              );
+            })}
+
+            {filteredProducts.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', width: '100%' }}>
+                لا توجد منتجات مطابقة في هذه الفئة
               </div>
             )}
           </div>
         </div>
+
+        {/* Cart Review List */}
+        {cart.length > 0 && (
+          <div className={styles.sectionCard}>
+            <h2 className={styles.sectionTitle}>🛒 السلة المحددة ({cart.length})</h2>
+            <div className={styles.cartList}>
+              {cart.map(item => (
+                <div key={item.id} className={styles.cartItem}>
+                  <div className={styles.cartItemInfo}>
+                    <span className={styles.cartItemName}>{item.product.name}</span>
+                    <span className={styles.cartItemPrice}>
+                      {(item.unitPrice * item.quantity).toLocaleString()} د.ع
+                    </span>
+                  </div>
+                  <div className={styles.cartControls}>
+                    <button type="button" className={styles.qtyBtn} onClick={() => updateCartQuantity(item.id, item.quantity - 1)}>-</button>
+                    <span className={styles.qtyVal}>{item.quantity}</span>
+                    <button type="button" className={styles.qtyBtn} onClick={() => updateCartQuantity(item.id, item.quantity + 1)}>+</button>
+                  </div>
+                  <button type="button" className={styles.removeBtn} onClick={() => removeFromCart(item.id)}>✖</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
       </main>
 
@@ -716,7 +877,7 @@ export default function MobileQuickEntry() {
           onClick={handleSubmit}
           disabled={isSubmitting || cart.length === 0}
         >
-          {isSubmitting ? 'جاري الحفظ...' : 'تأكيد الطلب ✓'}
+          {isSubmitting ? 'جاري الحفظ...' : 'تأكيد إرسال الطلب ✓'}
         </button>
       </div>
 
@@ -737,5 +898,18 @@ export default function MobileQuickEntry() {
       )}
 
     </div>
+  );
+}
+
+export default function MobileQuickEntry() {
+  return (
+    <Suspense fallback={
+      <div className={styles.loaderContainer}>
+        <div className={styles.spinner}></div>
+        <span>جاري التحضير...</span>
+      </div>
+    }>
+      <QuickEntryContent />
+    </Suspense>
   );
 }
