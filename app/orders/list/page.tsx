@@ -2261,18 +2261,70 @@ export default function OrdersListPage() {
             className={styles.controlButton} 
             onClick={async () => {
               try {
+                // Filter active orders from the local state
+                const activeStatuses = ['shipped', 'ofd', 'postponed'];
+                const activeOrders = orders.filter(o => activeStatuses.includes(o.status));
+                
+                if (activeOrders.length === 0) {
+                  setNotificationModal({ show: true, message: 'ℹ️ لا توجد طلبات نشطة للمزامنة' });
+                  return;
+                }
+
+                // Prepare shipment numbers and map
+                const shipmentsToQuery = activeOrders.map(o => o.shipmentNumber || o.orderNumber || o.id).filter(Boolean);
+                
                 const res = await fetch('/api/orders/sync-jenni', { 
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId: auth.currentUser?.uid })
+                  body: JSON.stringify({ 
+                    userId: auth.currentUser?.uid,
+                    shipmentNumbers: shipmentsToQuery
+                  })
                 });
                 const data = await res.json();
-                if (data.success) {
-                  setNotificationModal({ show: true, message: `✅ ${data.message}` });
-                } else {
+                if (!data.success) {
                   setNotificationModal({ show: true, message: `❌ فشل المزامنة: ${data.message}` });
+                  return;
+                }
+
+                // Apply updates returned by the API on the client side
+                if (data.updates && data.updates.length > 0) {
+                  let updatedCount = 0;
+                  const batch = writeBatch(db);
+                  
+                  for (const update of data.updates) {
+                    const localOrder = activeOrders.find(o => (o.shipmentNumber || o.orderNumber || o.id) === update.shipmentNumber);
+                    if (localOrder) {
+                      // Compare to see if fields actually changed to avoid unnecessary Firestore writes
+                      const targetStatus = update.newStatus || localOrder.status;
+                      const statusChanged = localOrder.status !== targetStatus;
+                      const missingIds = !localOrder.jenniShipmentId || !localOrder.shipmentId;
+                      const detailsChanged = localOrder.deliveryStatus !== update.deliveryStatus || localOrder.deliveryNote !== (update.deliveryNote || '');
+
+                      if (statusChanged || missingIds || detailsChanged) {
+                        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', localOrder.id);
+                        batch.update(orderRef, {
+                          status: targetStatus,
+                          deliveryStatus: update.deliveryStatus,
+                          deliveryNote: update.deliveryNote || '',
+                          shipmentId: update.shipmentNumber || localOrder.id,
+                          jenniShipmentId: update.jenniShipmentId,
+                          updatedAt: new Date()
+                        });
+                        updatedCount++;
+                      }
+                    }
+                  }
+                  
+                  if (updatedCount > 0) {
+                    await batch.commit();
+                  }
+                  setNotificationModal({ show: true, message: `✅ تمت المزامنة وتحديث ${updatedCount} طلبات` });
+                } else {
+                  setNotificationModal({ show: true, message: '✅ جميع الحالات مطابقة ومحدثة بالفعل' });
                 }
               } catch (err) {
+                console.error("Sync error:", err);
                 setNotificationModal({ show: true, message: '❌ حدث خطأ في الاتصال' });
               }
             }}

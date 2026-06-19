@@ -11,9 +11,10 @@ export async function POST(req: Request) {
       await signInAnonymously(auth).catch(err => console.error("Server-side anonymous authentication failed:", err));
     }
 
-    // Read optional userId from body to sync only that user's orders
+    // Read optional userId and client-provided shipmentNumbers from body
     const body = await req.json().catch(() => ({}));
     const reqUserId = body.userId;
+    const clientShipmentNumbers = body.shipmentNumbers;
 
     // 1. Fetch Integration Settings to get the token
     let integrationData: any = null;
@@ -71,71 +72,85 @@ export async function POST(req: Request) {
 
     const token = loginData.token.replace('Bearer ', '').trim();
 
-    // 2. Query Firestore for active orders
+    // 2. Determine shipments to query
     const activeStatuses = ['shipped', 'ofd', 'postponed'];
-    const shipmentsToQuery: string[] = [];
+    let shipmentsToQuery: string[] = [];
     const orderMap: Record<string, { id: string, uid: string, data: any }> = {};
 
-    if (adminDb) {
-      if (reqUserId) {
-        const userOrdersRef = adminDb.collection('users').doc(reqUserId).collection('orders');
-        const snap = await userOrdersRef.where('status', 'in', activeStatuses).get();
-        snap.forEach(d => {
-          const data = d.data();
-          const sNum = data.shipmentNumber || data.orderNumber || d.id;
-          if (sNum) {
-            shipmentsToQuery.push(sNum);
-            orderMap[sNum] = { id: d.id, uid: reqUserId, data };
-          }
-        });
-      } else {
-        // Fallback: cron job syncing all users (requires admin credentials)
-        if (adminAuth) {
-          try {
-            const usersResult = await adminAuth.listUsers();
-            for (const u of usersResult.users) {
-              try {
-                const userOrdersQuery = adminDb.collection('users').doc(u.uid).collection('orders').where('status', 'in', activeStatuses);
-                const snap = await userOrdersQuery.get();
-                snap.forEach(d => {
-                  const data = d.data();
-                  const sNum = data.shipmentNumber || data.orderNumber || d.id;
-                  if (sNum) {
-                    shipmentsToQuery.push(sNum);
-                    orderMap[sNum] = { id: d.id, uid: u.uid, data };
-                  }
-                });
-              } catch (e) {
-                console.error('Error fetching orders for user', u.uid, e);
-              }
+    if (Array.isArray(clientShipmentNumbers) && clientShipmentNumbers.length > 0) {
+      // Use client-provided list directly to avoid DB read overhead on the server completely
+      shipmentsToQuery = clientShipmentNumbers;
+    } else {
+      // Fallback: Query Firestore for active orders
+      if (adminDb) {
+        if (reqUserId) {
+          const userOrdersRef = adminDb.collection('users').doc(reqUserId).collection('orders');
+          const snap = await userOrdersRef.where('status', 'in', activeStatuses).get();
+          snap.forEach(d => {
+            const data = d.data();
+            const sNum = data.shipmentNumber || data.orderNumber || d.id;
+            if (sNum) {
+              shipmentsToQuery.push(sNum);
+              orderMap[sNum] = { id: d.id, uid: reqUserId, data };
             }
-          } catch (adminErr) {
-            console.error('Firebase Admin listUsers error:', adminErr);
+          });
+        } else {
+          // Fallback: cron job syncing all users (requires admin credentials)
+          if (adminAuth) {
+            try {
+              const usersResult = await adminAuth.listUsers();
+              for (const u of usersResult.users) {
+                try {
+                  const userOrdersQuery = adminDb.collection('users').doc(u.uid).collection('orders').where('status', 'in', activeStatuses);
+                  const snap = await userOrdersQuery.get();
+                  snap.forEach(d => {
+                    const data = d.data();
+                    const sNum = data.shipmentNumber || data.orderNumber || d.id;
+                    if (sNum) {
+                      shipmentsToQuery.push(sNum);
+                      orderMap[sNum] = { id: d.id, uid: u.uid, data };
+                    }
+                  });
+                } catch (e) {
+                  console.error('Error fetching orders for user', u.uid, e);
+                }
+              }
+            } catch (adminErr) {
+              console.error('Firebase Admin listUsers error:', adminErr);
+            }
           }
         }
-      }
-    } else {
-      // Fallback: client Firestore SDK
-      if (reqUserId) {
-        const userOrdersRef = collection(db, 'users', reqUserId, 'orders');
-        const q = fsQuery(userOrdersRef, where('status', 'in', activeStatuses));
-        const snap = await getDocs(q);
-        snap.forEach(d => {
-          const data = d.data();
-          const sNum = data.shipmentNumber || data.orderNumber || d.id;
-          if (sNum) {
-            shipmentsToQuery.push(sNum);
-            orderMap[sNum] = { id: d.id, uid: reqUserId, data };
-          }
-        });
+      } else {
+        // Fallback: client Firestore SDK
+        if (reqUserId) {
+          const userOrdersRef = collection(db, 'users', reqUserId, 'orders');
+          const q = fsQuery(userOrdersRef, where('status', 'in', activeStatuses));
+          const snap = await getDocs(q);
+          snap.forEach(d => {
+            const data = d.data();
+            const sNum = data.shipmentNumber || data.orderNumber || d.id;
+            if (sNum) {
+              shipmentsToQuery.push(sNum);
+              orderMap[sNum] = { id: d.id, uid: reqUserId, data };
+            }
+          });
+        }
       }
     }
 
     if (shipmentsToQuery.length === 0) {
-      return NextResponse.json({ success: true, message: 'لا توجد طلبات نشطة للمزامنة', updatedCount: 0 });
+      return NextResponse.json({ success: true, message: 'لا توجد طلبات نشطة للمزامنة', updatedCount: 0, updates: [] });
     }
 
     // 3. Query Jenni API in chunks of 100
+    const updatesList: Array<{
+      shipmentNumber: string;
+      newStatus: string;
+      deliveryStatus: string;
+      deliveryNote: string;
+      jenniShipmentId: string;
+    }> = [];
+
     let updatedCount = 0;
     const chunkSize = 100;
     
@@ -157,12 +172,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, message: 'فشل الاستعلام من شركة التوصيل (الحد الأقصى أو خطأ داخلي)', details: queryData }, { status: 500 });
       }
 
-      // 4. Update orders in Firebase
+      // 4. Collect updates and save to DB if adminDb is available
       if (queryData.shipments && queryData.shipments.length > 0) {
         for (const shipment of queryData.shipments) {
-          const orderInfo = orderMap[shipment.shipment_number];
-          if (!orderInfo) continue;
-
           let newStatus = '';
           const step = (shipment.current_step || shipment.action_code || '').toUpperCase();
           
@@ -176,38 +188,64 @@ export async function POST(req: Request) {
             newStatus = 'postponed';
           }
 
-          const currentData = orderInfo.data;
-          if (currentData) {
-            const targetStatus = newStatus || currentData.status;
-            const statusChanged = currentData.status !== targetStatus;
-            const missingIds = !currentData.jenniShipmentId || !currentData.shipmentId;
-            const detailsChanged = currentData.deliveryStatus !== shipment.current_step || currentData.deliveryNote !== (shipment.note || '');
+          const resolvedShipmentId = String(shipment.shipment_id || shipment.id || '');
+          const shipmentNumber = shipment.shipment_number;
 
-            if (statusChanged || missingIds || detailsChanged) {
-              const resolvedShipmentId = shipment.shipment_id || shipment.id || '';
-              const updateData = {
-                status: targetStatus,
-                deliveryStatus: shipment.current_step || '',
-                deliveryNote: shipment.note || '',
-                shipmentId: shipment.shipment_number || orderInfo.id,
-                jenniShipmentId: resolvedShipmentId,
-                updatedAt: new Date()
-              };
+          // Add to returned updates list
+          updatesList.push({
+            shipmentNumber,
+            newStatus,
+            deliveryStatus: shipment.current_step || '',
+            deliveryNote: shipment.note || '',
+            jenniShipmentId: resolvedShipmentId
+          });
 
-              if (adminDb) {
-                await adminDb.collection('users').doc(orderInfo.uid).collection('orders').doc(orderInfo.id).update(updateData);
-              } else {
-                const orderRef = doc(db, 'users', orderInfo.uid, 'orders', orderInfo.id);
-                await updateDoc(orderRef, updateData);
+          // If we mapped the order info internally (server-side query), update database directly
+          const orderInfo = orderMap[shipmentNumber];
+          if (orderInfo) {
+            const currentData = orderInfo.data;
+            if (currentData) {
+              const targetStatus = newStatus || currentData.status;
+              const statusChanged = currentData.status !== targetStatus;
+              const missingIds = !currentData.jenniShipmentId || !currentData.shipmentId;
+              const detailsChanged = currentData.deliveryStatus !== shipment.current_step || currentData.deliveryNote !== (shipment.note || '');
+
+              if (statusChanged || missingIds || detailsChanged) {
+                const updateData = {
+                  status: targetStatus,
+                  deliveryStatus: shipment.current_step || '',
+                  deliveryNote: shipment.note || '',
+                  shipmentId: shipmentNumber || orderInfo.id,
+                  jenniShipmentId: resolvedShipmentId,
+                  updatedAt: new Date()
+                };
+
+                if (adminDb) {
+                  await adminDb.collection('users').doc(orderInfo.uid).collection('orders').doc(orderInfo.id).update(updateData);
+                  updatedCount++;
+                } else {
+                  // Client SDK fallback (may fail due to permissions, but we returned updatesList for frontend to apply)
+                  try {
+                    const orderRef = doc(db, 'users', orderInfo.uid, 'orders', orderInfo.id);
+                    await updateDoc(orderRef, updateData);
+                    updatedCount++;
+                  } catch (e) {
+                    console.warn("Server-side client SDK update failed:", e);
+                  }
+                }
               }
-              updatedCount++;
             }
           }
         }
       }
     }
 
-    return NextResponse.json({ success: true, message: `تمت المزامنة وتحديث ${updatedCount} طلبات`, updatedCount });
+    return NextResponse.json({ 
+      success: true, 
+      message: `تمت المزامنة وتحديث ${updatedCount} طلبات`, 
+      updatedCount,
+      updates: updatesList
+    });
   } catch (err: any) {
     console.error('Sync API Error:', err);
     return NextResponse.json({ success: false, message: 'حدث خطأ داخلي أثناء المزامنة' }, { status: 500 });
