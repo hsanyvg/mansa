@@ -171,6 +171,16 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     }
   };
 
+  const isMobilePath = pathname?.startsWith('/mobile') || pathname === '/mobile-download' || pathname === '/download';
+
+  if (isMobilePath) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#020617', width: '100%', direction: 'rtl' }}>
+        {children}
+      </div>
+    );
+  }
+
   if (authLoading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#121216', color: '#fff' }}>
