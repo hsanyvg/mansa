@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, auth } from "../../../../lib/firebase";
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { adminDb, adminAuth } from "../../../../lib/firebaseAdmin";
 
 export async function POST(req: Request) {
   try {
@@ -47,19 +48,39 @@ export async function POST(req: Request) {
 
       // تحديد الحالة الجديدة في نظامنا بناءً على الـ action_code
       let newStatus = 'shipped'; // الافتراضي (تم الشحن / قيد التوصيل)
+      const step = (update.action_code || update.current_step || '').toUpperCase();
       
-      if (update.action_code === 'SUCCESSFUL_DELIVERY' || update.current_step === 'DELIVERED') {
+      if (step === 'DELIVERED' || step === 'SUCCESSFUL_DELIVERY' || step === 'SUCCESSFUL_DELIVERY_WITH_AMOUNT_CHANGE' || step === 'PARTIAL_DELIVERY') {
         newStatus = 'delivered'; // مكتمل / مستلم
-      } else if (update.action_code === 'RETURNED_WITH_AGENT' || update.action_code === 'RETURN_TO_STORE' || (update.current_step && update.current_step.startsWith('RTO_'))) {
+      } else if (step === 'RETURNED' || step.startsWith('RTO_') || step === 'RETURN_TO_STORE' || step === 'RETURNED_WITH_AGENT') {
         newStatus = 'returned'; // راجع
-      } else if (update.action_code === 'OUT_FOR_DELIVERY' || update.current_step === 'OFD') {
+      } else if (step === 'OFD' || step === 'OUT_FOR_DELIVERY') {
         newStatus = 'ofd'; // قيد التوصيل
-      } else if (update.action_code === 'POSTPONED') {
-        newStatus = 'shipped'; // مؤجل (يبقى تحت الشحن)
+      } else if (step === 'POSTPONED') {
+        newStatus = 'postponed'; // مؤجل
       }
 
       try {
-        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
+        let foundUid = null;
+        // Search for the actual user who owns this order
+        if (adminAuth && adminDb) {
+          try {
+            const usersResult = await adminAuth.listUsers();
+            for (const u of usersResult.users) {
+              const snap = await adminDb.collection('users').doc(u.uid).collection('orders').doc(orderId).get();
+              if (snap.exists) {
+                foundUid = u.uid;
+                break;
+              }
+            }
+          } catch(e) {
+            console.error('Error finding user:', e);
+          }
+        }
+
+        const targetUid = foundUid || auth.currentUser?.uid || 'anonymous';
+        const orderRef = doc(db, 'users', targetUid, 'orders', orderId);
+        
         await updateDoc(orderRef, {
           status: newStatus,
           deliveryStatus: update.action_code || update.current_step,

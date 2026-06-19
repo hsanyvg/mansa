@@ -381,6 +381,46 @@ export default function OrdersListPage() {
     setBulkSelectText('');
   };
 
+  const handleBulkSelectInverse = () => {
+    if (!bulkSelectText.trim()) return;
+    
+    const searchIds = bulkSelectText
+      .split(/[\n,\s]+/)
+      .map(id => id.trim().toLowerCase())
+      .filter(id => id.length > 0);
+
+    if (searchIds.length === 0) return;
+
+    // Use filteredOrders here (which evaluates after render) to prevent selecting thousands of unrelated background orders
+    const matchedIdsSet = new Set(
+      orders.filter(order => {
+        const orderIdStr = String(order.id).toLowerCase();
+        const orderNumberStr = String(order.orderNumber || '').toLowerCase();
+        const orderIdShortStr = String(order.id.slice(-6)).toLowerCase();
+        return searchIds.some(searchId => 
+          orderIdStr.includes(searchId) || 
+          orderIdShortStr === searchId ||
+          (orderNumberStr && orderNumberStr.includes(searchId))
+        );
+      }).map(o => o.id)
+    );
+
+    // Get unmatched orders from the currently filtered list
+    const unmatchedIds = filteredOrders
+      .filter(order => !matchedIdsSet.has(order.id))
+      .map(o => o.id);
+    
+    if (unmatchedIds.length > 0) {
+      setSelectedOrderIds(unmatchedIds);
+      setNotificationModal({ show: true, message: `✅ تم العثور على وتحديد ${unmatchedIds.length} طلب غير مطابق للقائمة (من الطلبات المعروضة).` });
+    } else {
+      setNotificationModal({ show: true, message: `❌ جميع الطلبات المعروضة مطابقة للقائمة.` });
+    }
+    
+    setShowBulkSelectModal(false);
+    setBulkSelectText('');
+  };
+
   // Group Return Batches by Month
   const groupedReturnBatches = React.useMemo(() => {
     return returnsArchive.reduce((acc, record) => {
@@ -3540,6 +3580,7 @@ export default function OrdersListPage() {
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.cancelButton} onClick={() => setShowBulkSelectModal(false)}>إلغاء</button>
+              <button className={styles.submitButton} style={{ backgroundColor: '#f59e0b', color: '#fff' }} onClick={handleBulkSelectInverse}>تحديد غير المطابق</button>
               <button className={styles.saveButton} onClick={handleBulkSelectSubmit}>تحديد الطلبات</button>
             </div>
           </div>
