@@ -31,17 +31,20 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
+    const isMobile = pathname?.startsWith('/mobile') || pathname === '/mobile-download' || pathname === '/download';
     const unsubscribe = onAuthStateChanged(auth, async (usr) => {
       if (usr) {
         try {
            const mappingRef = doc(db, 'employee_mappings', usr.uid);
            const mappingSnap = await getDoc(mappingRef);
            if (mappingSnap.exists()) {
-             setErrorMsg('هذا الحساب مخصص لتسجيل الدخول من تطبيق الجوال فقط.');
-             await signOut(auth);
-             setUser(null);
-             setAuthLoading(false);
-             return;
+             if (!isMobile) {
+               setErrorMsg('هذا الحساب مخصص لتسجيل الدخول من تطبيق الجوال فقط.');
+               await signOut(auth);
+               setUser(null);
+               setAuthLoading(false);
+               return;
+             }
            }
         } catch(err) {}
       }
@@ -49,7 +52,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       setAuthLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [pathname]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,14 +176,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   const isMobilePath = pathname?.startsWith('/mobile') || pathname === '/mobile-download' || pathname === '/download';
 
-  if (isMobilePath) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#020617', width: '100%', direction: 'rtl' }}>
-        {children}
-      </div>
-    );
-  }
-
   if (authLoading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#121216', color: '#fff' }}>
@@ -189,15 +184,64 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     );
   }
 
-  if (!user) {
-    // Allow public access to mobile app download pages (so scanned phones don't get hit by the login screen)
-    if (pathname === '/mobile-download' || pathname === '/download') {
+  if (isMobilePath) {
+    const isPublicPath = pathname === '/mobile-download' || pathname === '/download';
+    if (isPublicPath || user) {
       return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#121216', width: '100%' }}>
+        <div style={{ minHeight: '100vh', backgroundColor: '#020617', width: '100%', direction: 'rtl' }}>
           {children}
         </div>
       );
     }
+
+    // Show mobile login card
+    return (
+      <div className={styles.authContainer} style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className={styles.authCard} style={{ width: '90%', maxWidth: '400px' }}>
+          <h2 className={styles.authTitle}>تسجيل دخول الموظفين</h2>
+          <p className={styles.authSubtitle}>نظام المخازن والمبيعات (الهاتف)</p>
+          
+          {errorMsg && (
+            <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', padding: '0.75rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.85rem', textAlign: 'center' }}>
+              {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleAuthSubmit}>
+            <div className={styles.inputGroup}>
+              <label className={styles.inputLabel}>البريد الإلكتروني للموظف</label>
+              <input
+                className={styles.authInput}
+                type="email"
+                placeholder="employee@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label className={styles.inputLabel}>كلمة المرور</label>
+              <input
+                className={styles.authInput}
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <button type="submit" className={styles.authBtn} disabled={isSubmitting}>
+              {isSubmitting ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول 💾'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
 
     return (
       <div className={styles.authContainer}>
