@@ -2261,7 +2261,11 @@ export default function OrdersListPage() {
             className={styles.controlButton} 
             onClick={async () => {
               try {
-                const res = await fetch('/api/orders/sync-jenni', { method: 'POST' });
+                const res = await fetch('/api/orders/sync-jenni', { 
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId: auth.currentUser?.uid })
+                });
                 const data = await res.json();
                 if (data.success) {
                   setNotificationModal({ show: true, message: `✅ ${data.message}` });

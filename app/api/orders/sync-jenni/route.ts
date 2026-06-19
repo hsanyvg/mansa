@@ -1,14 +1,26 @@
 import { NextResponse } from 'next/server';
 import { db } from '../../../../lib/firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, collection, query as fsQuery, where, getDocs } from 'firebase/firestore';
 import { adminDb, adminAuth } from "../../../../lib/firebaseAdmin";
 
 export async function POST(req: Request) {
   try {
-    // 1. Fetch Integration Settings to get the token
-    const integrationRef = doc(db, 'users', 'default_tenant', 'integrations', 'delivery');
-    const integrationSnap = await getDoc(integrationRef);
+    // Read optional userId from body to sync only that user's orders
+    const body = await req.json().catch(() => ({}));
+    const reqUserId = body.userId;
 
+    // 1. Fetch Integration Settings to get the token
+    // If a specific userId is passed, try fetching their config. Fallback to default_tenant.
+    let integrationRef = doc(db, 'users', 'default_tenant', 'integrations', 'delivery');
+    if (reqUserId) {
+      const userIntegrationRef = doc(db, 'users', reqUserId, 'integrations', 'delivery');
+      const userIntegrationSnap = await getDoc(userIntegrationRef);
+      if (userIntegrationSnap.exists()) {
+        integrationRef = userIntegrationRef;
+      }
+    }
+
+    const integrationSnap = await getDoc(integrationRef);
     if (!integrationSnap.exists()) {
       return NextResponse.json({ success: false, message: 'لم يتم إعداد ربط شركة التوصيل' }, { status: 400 });
     }
@@ -40,23 +52,43 @@ export async function POST(req: Request) {
     const shipmentsToQuery: string[] = [];
     const orderMap: Record<string, { id: string, uid: string }> = {};
 
-    if (adminAuth && adminDb) {
-      const usersResult = await adminAuth.listUsers();
-      for (const u of usersResult.users) {
-         try {
-           const userOrdersQuery = adminDb.collection('users').doc(u.uid).collection('orders').where('status', 'in', activeStatuses);
-           const snap = await userOrdersQuery.get();
-           snap.forEach(d => {
-             const data = d.data();
-             const sNum = data.shipmentNumber || data.orderNumber || d.id;
-             if (sNum) {
-               shipmentsToQuery.push(sNum);
-               orderMap[sNum] = { id: d.id, uid: u.uid };
-             }
-           });
-         } catch(e) {
-           console.error('Error fetching orders for user', u.uid, e);
-         }
+    if (reqUserId) {
+      // Direct optimization: query only this user's active orders using client-side Firestore
+      const userOrdersRef = collection(db, 'users', reqUserId, 'orders');
+      const q = fsQuery(userOrdersRef, where('status', 'in', activeStatuses));
+      const snap = await getDocs(q);
+      snap.forEach(d => {
+        const data = d.data();
+        const sNum = data.shipmentNumber || data.orderNumber || d.id;
+        if (sNum) {
+          shipmentsToQuery.push(sNum);
+          orderMap[sNum] = { id: d.id, uid: reqUserId };
+        }
+      });
+    } else {
+      // Fallback: cron job syncing all users (requires admin credentials)
+      if (adminAuth && adminDb) {
+        try {
+          const usersResult = await adminAuth.listUsers();
+          for (const u of usersResult.users) {
+            try {
+              const userOrdersQuery = adminDb.collection('users').doc(u.uid).collection('orders').where('status', 'in', activeStatuses);
+              const snap = await userOrdersQuery.get();
+              snap.forEach(d => {
+                const data = d.data();
+                const sNum = data.shipmentNumber || data.orderNumber || d.id;
+                if (sNum) {
+                  shipmentsToQuery.push(sNum);
+                  orderMap[sNum] = { id: d.id, uid: u.uid };
+                }
+              });
+            } catch (e) {
+              console.error('Error fetching orders for user', u.uid, e);
+            }
+          }
+        } catch (adminErr) {
+          console.error('Firebase Admin listUsers error:', adminErr);
+        }
       }
     }
 
