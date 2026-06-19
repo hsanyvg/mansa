@@ -2404,7 +2404,7 @@ export default function OrdersListPage() {
               </th>
               <th>
                 <div className={styles.thContent}>
-                  <span>الموظف</span>
+                  <span>مستخدم النظام</span>
                   <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.employeeName} onChange={(e) => handleFilterChange('employeeName', e.target.value)} />
                 </div>
               </th>
