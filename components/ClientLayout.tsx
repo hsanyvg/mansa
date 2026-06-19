@@ -31,7 +31,9 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    const isMobile = pathname?.startsWith('/mobile') || pathname === '/mobile-download' || pathname === '/download';
+    const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+    const isMobile = currentPath.startsWith('/mobile') || currentPath === '/mobile-download' || currentPath === '/download';
+    
     const unsubscribe = onAuthStateChanged(auth, async (usr) => {
       if (usr) {
         try {
@@ -174,7 +176,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     }
   };
 
-  const isMobilePath = pathname?.startsWith('/mobile') || pathname === '/mobile-download' || pathname === '/download';
+  const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+  const isMobilePath = currentPath.startsWith('/mobile') || currentPath === '/mobile-download' || currentPath === '/download';
 
   if (authLoading) {
     return (
