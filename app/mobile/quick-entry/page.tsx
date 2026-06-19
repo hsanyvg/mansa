@@ -500,10 +500,12 @@ function QuickEntryContent() {
       }
 
       const orderData = {
-        employeeId: orderEmployeeId,
-        employeeName: orderEmployeeName,
+        employeeId: selectedResponseEmployeeId,
+        employeeName: responseEmp?.name || 'غير محدد',
         responseEmployeeId: selectedResponseEmployeeId,
         responseEmployeeName: responseEmp?.name || 'غير محدد',
+        creatorEmployeeId: orderEmployeeId,
+        creatorEmployeeName: orderEmployeeName,
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,
