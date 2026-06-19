@@ -72,6 +72,12 @@ function QuickEntryContent() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [customTotalAmount, setCustomTotalAmount] = useState<string>('');
+
+  useEffect(() => {
+    setCustomTotalAmount('');
+  }, [cart]);
+
   
   // UI states
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
@@ -377,7 +383,8 @@ function QuickEntryContent() {
     setCart(prev => prev.filter(item => item.id !== id));
   };
 
-  const totalAmount = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const calculatedTotal = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const totalAmount = customTotalAmount !== '' ? (Number(customTotalAmount) || 0) : calculatedTotal;
 
   const handleCopyLink = () => {
     if (typeof window !== 'undefined') {
@@ -598,6 +605,7 @@ function QuickEntryContent() {
         fbLoginId: ''
       });
       setCart([]);
+      setCustomTotalAmount('');
       setSearchQuery('');
 
     } catch (err) {
@@ -954,7 +962,16 @@ function QuickEntryContent() {
       <div className={styles.bottomBar}>
         <div className={styles.totalAmountContainer}>
           <span className={styles.totalLabel}>المجموع الإجمالي</span>
-          <span className={styles.totalValue}>{totalAmount.toLocaleString()} د.ع</span>
+          <div className={styles.totalInputWrapper}>
+            <input 
+              type="number"
+              className={styles.totalInput}
+              value={customTotalAmount !== '' ? customTotalAmount : calculatedTotal}
+              onChange={(e) => setCustomTotalAmount(e.target.value)}
+              placeholder="0"
+            />
+            <span className={styles.totalCurrency}>د.ع</span>
+          </div>
         </div>
         <button 
           className={styles.submitBtn} 
