@@ -2362,7 +2362,7 @@ export default function OrdersListPage() {
               </th>
               <th>
                 <div className={styles.thContent}>
-                  <span>الزبون</span>
+                  <span>موضف الرد</span>
                   <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.customerName} onChange={(e) => handleFilterChange('customerName', e.target.value)} />
                 </div>
               </th>
@@ -2776,7 +2776,7 @@ export default function OrdersListPage() {
               {/* Customer Information Grid */}
               <div className={styles.detailsGrid}>
                 <div className={styles.detailsItem}>
-                  <span className={styles.detailsLabel}>اسم الزبون</span>
+                  <span className={styles.detailsLabel}>موضف الرد</span>
                   <span className={styles.detailsValue}>{selectedOrder.customerName || '---'}</span>
                 </div>
                 <div className={styles.detailsItem}>
@@ -2885,9 +2885,9 @@ export default function OrdersListPage() {
                   
                   {/* Right Column: Customer Details */}
                   <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1rem', borderInlineEnd: '1px solid rgba(255,255,255,0.08)', paddingInlineEnd: '1.5rem' }}>
-                    <h3 style={{ color: 'var(--primary)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>👤 بيانات الزبون</h3>
+                    <h3 style={{ color: 'var(--primary)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>👤 موضف الرد</h3>
                     <div className={styles.formGroup}>
-                      <label className={styles.label}>اسم الزبون</label>
+                      <label className={styles.label}>موضف الرد</label>
                       <input type="text" className={styles.input} value={editingOrder.customerName || ''} onChange={e => setEditingOrder({...editingOrder, customerName: e.target.value})} required disabled={isPartiallyLocked} style={lockedInputStyle} />
                     </div>
                     <div className={styles.formGroup}>
