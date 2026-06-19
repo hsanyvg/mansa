@@ -356,7 +356,7 @@ function QuickEntryContent() {
 
   const isFieldInvalid = (fieldName: keyof typeof formData) => {
     if (!hasAttemptedSubmit) return false;
-    if (fieldName === 'notes' || fieldName === 'fbLoginId' || fieldName === 'customerPhone2' || fieldName === 'customerName') return false;
+    if (fieldName === 'notes' || fieldName === 'fbLoginId' || fieldName === 'customerPhone2') return false;
     if (fieldName === 'customerPhone') return isPhoneInvalid;
     return formData[fieldName].trim() === '';
   };
@@ -415,6 +415,7 @@ function QuickEntryContent() {
     }
 
     if (
+      formData.customerName.trim() === '' ||
       !isValidPhoneNumber(formData.customerPhone) ||
       formData.governorate.trim() === '' ||
       formData.region.trim() === ''
@@ -499,13 +500,13 @@ function QuickEntryContent() {
       }
 
       const orderData = {
-        employeeId: orderEmployeeId,
-        employeeName: orderEmployeeName,
+        employeeId: selectedResponseEmployeeId,
+        employeeName: responseEmp?.name || 'غير محدد',
         responseEmployeeId: selectedResponseEmployeeId,
         responseEmployeeName: responseEmp?.name || 'غير محدد',
         creatorEmployeeId: orderEmployeeId,
         creatorEmployeeName: orderEmployeeName,
-        customerName: responseEmp?.name || 'غير محدد',
+        customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,
         governorate: formData.governorate,
@@ -748,6 +749,18 @@ function QuickEntryContent() {
               )}
             </div>
             {isPhoneInvalid && <span className={styles.errorMessage}>رقم هاتف غير صالح</span>}
+          </div>
+
+          <div className={styles.formGroup}>
+            <input 
+              type="text" 
+              name="customerName"
+              className={`${styles.input} ${isFieldInvalid('customerName') ? styles.inputError : ''}`}
+              value={formData.customerName}
+              onChange={handleFormChange}
+              placeholder="الاسم الكامل للزبون *"
+              autoComplete="off"
+            />
           </div>
 
           <div className={styles.formGroup}>
