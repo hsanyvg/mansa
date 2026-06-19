@@ -467,6 +467,27 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span className={styles.icon}>✍️</span>
           </div>
         </Link>
+        {user && (
+          <div 
+            className={styles.menuItem} 
+            onClick={() => {
+              const shareUrl = `${window.location.origin}/mobile/quick-entry?uid=${user.uid}`;
+              navigator.clipboard.writeText(shareUrl).then(() => {
+                alert("📋 تم نسخ رابط صفحة الطلبات للزبائن بنجاح! يمكنك إرساله لهم الآن.");
+              }).catch(err => {
+                console.error("Failed to copy link:", err);
+              });
+            }}
+            title="نسخ رابط صفحة إدخال الطلبات للزبائن"
+            style={{ cursor: 'pointer' }}
+          >
+            <span></span>
+            <div className={styles.menuItemIcon}>
+              <span style={{ color: '#10b981', fontWeight: 'bold' }}>نسخ رابط الطلب 🔗</span>
+              <span className={styles.icon}>📋</span>
+            </div>
+          </div>
+        )}
         <Link href="/composite-products" className={`${styles.menuItem} ${pathname === '/composite-products' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }} title="المنتجات التجميعية">
           <span></span>
           <div className={styles.menuItemIcon}>
