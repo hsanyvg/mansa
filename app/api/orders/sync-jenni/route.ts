@@ -2,12 +2,11 @@ import { NextResponse } from 'next/server';
 import { db, auth } from '../../../../lib/firebase';
 import { doc, updateDoc, getDoc, collection, query as fsQuery, where, getDocs } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
-import { adminDb, adminAuth } from "../../../../lib/firebaseAdmin";
 
 export async function POST(req: Request) {
   try {
     // Authenticate anonymously on the server side to bypass Firestore rules that require auth when client SDK is used
-    if (!auth.currentUser && !adminDb) {
+    if (!auth.currentUser) {
       await signInAnonymously(auth).catch(err => console.error("Server-side anonymous authentication failed:", err));
     }
 
@@ -16,42 +15,23 @@ export async function POST(req: Request) {
     const reqUserId = body.userId;
     const clientShipmentNumbers = body.shipmentNumbers;
 
-    // 1. Fetch Integration Settings to get the token
-    let integrationData: any = null;
-
-    if (adminDb) {
-      let integrationRef = adminDb.collection('users').doc('default_tenant').collection('integrations').doc('delivery');
-      if (reqUserId) {
-        const userIntegrationRef = adminDb.collection('users').doc(reqUserId).collection('integrations').doc('delivery');
-        const userIntegrationSnap = await userIntegrationRef.get();
-        if (userIntegrationSnap.exists) {
-          integrationRef = userIntegrationRef;
-        }
-      }
-      const integrationSnap = await integrationRef.get();
-      if (integrationSnap.exists) {
-        integrationData = integrationSnap.data();
-      }
-    } else {
-      let integrationRef = doc(db, 'users', 'default_tenant', 'integrations', 'delivery');
-      if (reqUserId) {
-        const userIntegrationRef = doc(db, 'users', reqUserId, 'integrations', 'delivery');
-        const userIntegrationSnap = await getDoc(userIntegrationRef);
-        if (userIntegrationSnap.exists()) {
-          integrationRef = userIntegrationRef;
-        }
-      }
-      const integrationSnap = await getDoc(integrationRef);
-      if (integrationSnap.exists()) {
-        integrationData = integrationSnap.data();
+    // 1. Fetch Integration Settings to get the token using client SDK
+    let integrationRef = doc(db, 'users', 'default_tenant', 'integrations', 'delivery');
+    if (reqUserId) {
+      const userIntegrationRef = doc(db, 'users', reqUserId, 'integrations', 'delivery');
+      const userIntegrationSnap = await getDoc(userIntegrationRef);
+      if (userIntegrationSnap.exists()) {
+        integrationRef = userIntegrationRef;
       }
     }
 
-    if (!integrationData) {
+    const integrationSnap = await getDoc(integrationRef);
+    if (!integrationSnap.exists()) {
       return NextResponse.json({ success: false, message: 'لم يتم إعداد ربط شركة التوصيل' }, { status: 400 });
     }
 
-    if (!integrationData.username || !integrationData.password) {
+    const integrationData = integrationSnap.data();
+    if (!integrationData || !integrationData.username || !integrationData.password) {
       return NextResponse.json({ success: false, message: 'بيانات الدخول لشركة التوصيل مفقودة' }, { status: 400 });
     }
 
@@ -81,60 +61,19 @@ export async function POST(req: Request) {
       // Use client-provided list directly to avoid DB read overhead on the server completely
       shipmentsToQuery = clientShipmentNumbers;
     } else {
-      // Fallback: Query Firestore for active orders
-      if (adminDb) {
-        if (reqUserId) {
-          const userOrdersRef = adminDb.collection('users').doc(reqUserId).collection('orders');
-          const snap = await userOrdersRef.where('status', 'in', activeStatuses).get();
-          snap.forEach(d => {
-            const data = d.data();
-            const sNum = data.shipmentNumber || data.orderNumber || d.id;
-            if (sNum) {
-              shipmentsToQuery.push(sNum);
-              orderMap[sNum] = { id: d.id, uid: reqUserId, data };
-            }
-          });
-        } else {
-          // Fallback: cron job syncing all users (requires admin credentials)
-          if (adminAuth) {
-            try {
-              const usersResult = await adminAuth.listUsers();
-              for (const u of usersResult.users) {
-                try {
-                  const userOrdersQuery = adminDb.collection('users').doc(u.uid).collection('orders').where('status', 'in', activeStatuses);
-                  const snap = await userOrdersQuery.get();
-                  snap.forEach(d => {
-                    const data = d.data();
-                    const sNum = data.shipmentNumber || data.orderNumber || d.id;
-                    if (sNum) {
-                      shipmentsToQuery.push(sNum);
-                      orderMap[sNum] = { id: d.id, uid: u.uid, data };
-                    }
-                  });
-                } catch (e) {
-                  console.error('Error fetching orders for user', u.uid, e);
-                }
-              }
-            } catch (adminErr) {
-              console.error('Firebase Admin listUsers error:', adminErr);
-            }
+      // Fallback: Query Firestore for active orders using client Firestore SDK
+      if (reqUserId) {
+        const userOrdersRef = collection(db, 'users', reqUserId, 'orders');
+        const q = fsQuery(userOrdersRef, where('status', 'in', activeStatuses));
+        const snap = await getDocs(q);
+        snap.forEach(d => {
+          const data = d.data();
+          const sNum = data.shipmentNumber || data.orderNumber || d.id;
+          if (sNum) {
+            shipmentsToQuery.push(sNum);
+            orderMap[sNum] = { id: d.id, uid: reqUserId, data };
           }
-        }
-      } else {
-        // Fallback: client Firestore SDK
-        if (reqUserId) {
-          const userOrdersRef = collection(db, 'users', reqUserId, 'orders');
-          const q = fsQuery(userOrdersRef, where('status', 'in', activeStatuses));
-          const snap = await getDocs(q);
-          snap.forEach(d => {
-            const data = d.data();
-            const sNum = data.shipmentNumber || data.orderNumber || d.id;
-            if (sNum) {
-              shipmentsToQuery.push(sNum);
-              orderMap[sNum] = { id: d.id, uid: reqUserId, data };
-            }
-          });
-        }
+        });
       }
     }
 
@@ -172,7 +111,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, message: 'فشل الاستعلام من شركة التوصيل (الحد الأقصى أو خطأ داخلي)', details: queryData }, { status: 500 });
       }
 
-      // 4. Collect updates and save to DB if adminDb is available
+      // 4. Collect updates and save to DB
       if (queryData.shipments && queryData.shipments.length > 0) {
         for (const shipment of queryData.shipments) {
           let newStatus = '';
@@ -200,7 +139,7 @@ export async function POST(req: Request) {
             jenniShipmentId: resolvedShipmentId
           });
 
-          // If we mapped the order info internally (server-side query), update database directly
+          // Server-side client SDK update fallback (if orderMap was populated)
           const orderInfo = orderMap[shipmentNumber];
           if (orderInfo) {
             const currentData = orderInfo.data;
@@ -220,18 +159,12 @@ export async function POST(req: Request) {
                   updatedAt: new Date()
                 };
 
-                if (adminDb) {
-                  await adminDb.collection('users').doc(orderInfo.uid).collection('orders').doc(orderInfo.id).update(updateData);
+                try {
+                  const orderRef = doc(db, 'users', orderInfo.uid, 'orders', orderInfo.id);
+                  await updateDoc(orderRef, updateData);
                   updatedCount++;
-                } else {
-                  // Client SDK fallback (may fail due to permissions, but we returned updatesList for frontend to apply)
-                  try {
-                    const orderRef = doc(db, 'users', orderInfo.uid, 'orders', orderInfo.id);
-                    await updateDoc(orderRef, updateData);
-                    updatedCount++;
-                  } catch (e) {
-                    console.warn("Server-side client SDK update failed:", e);
-                  }
+                } catch (e) {
+                  console.warn("Server-side client SDK update failed:", e);
                 }
               }
             }
