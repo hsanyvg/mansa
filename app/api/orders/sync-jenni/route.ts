@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebase';
+import { db, auth } from '../../../../lib/firebase';
 import { doc, updateDoc, getDoc, collection, query as fsQuery, where, getDocs } from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
 import { adminDb, adminAuth } from "../../../../lib/firebaseAdmin";
 
 export async function POST(req: Request) {
   try {
+    // Authenticate anonymously on the server side to bypass Firestore rules that require auth
+    if (!auth.currentUser) {
+      await signInAnonymously(auth).catch(err => console.error("Server-side anonymous authentication failed:", err));
+    }
+
     // Read optional userId from body to sync only that user's orders
     const body = await req.json().catch(() => ({}));
     const reqUserId = body.userId;
