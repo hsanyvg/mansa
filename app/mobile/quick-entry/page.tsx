@@ -73,9 +73,11 @@ function QuickEntryContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [customTotalAmount, setCustomTotalAmount] = useState<string>('');
+  const [isTotalOverridden, setIsTotalOverridden] = useState(false);
 
   useEffect(() => {
     setCustomTotalAmount('');
+    setIsTotalOverridden(false);
   }, [cart]);
 
   
@@ -384,7 +386,7 @@ function QuickEntryContent() {
   };
 
   const calculatedTotal = cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-  const totalAmount = customTotalAmount !== '' ? (Number(customTotalAmount) || 0) : calculatedTotal;
+  const totalAmount = isTotalOverridden ? (Number(customTotalAmount) || 0) : calculatedTotal;
 
   const handleCopyLink = () => {
     if (typeof window !== 'undefined') {
@@ -606,6 +608,7 @@ function QuickEntryContent() {
       });
       setCart([]);
       setCustomTotalAmount('');
+      setIsTotalOverridden(false);
       setSearchQuery('');
 
     } catch (err) {
@@ -966,8 +969,11 @@ function QuickEntryContent() {
             <input 
               type="number"
               className={styles.totalInput}
-              value={customTotalAmount !== '' ? customTotalAmount : calculatedTotal}
-              onChange={(e) => setCustomTotalAmount(e.target.value)}
+              value={isTotalOverridden ? customTotalAmount : calculatedTotal}
+              onChange={(e) => {
+                setIsTotalOverridden(true);
+                setCustomTotalAmount(e.target.value);
+              }}
               placeholder="0"
             />
             <span className={styles.totalCurrency}>د.ع</span>
