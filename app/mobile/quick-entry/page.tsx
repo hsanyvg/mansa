@@ -57,6 +57,7 @@ function QuickEntryContent() {
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [selectedResponseEmployeeId, setSelectedResponseEmployeeId] = useState('');
   const [baseProducts, setBaseProducts] = useState<Product[]>([]);
   const [compositeProductsData, setCompositeProductsData] = useState<any[]>([]);
   const [customersDb, setCustomersDb] = useState<any[]>([]);
@@ -355,6 +356,11 @@ function QuickEntryContent() {
       return;
     }
 
+    if (!selectedResponseEmployeeId) {
+      alert("يرجى اختيار موظفة الرد التي قامت بالحجز.");
+      return;
+    }
+
     if (
       formData.customerName.trim() === '' ||
       !isValidPhoneNumber(formData.customerPhone) ||
@@ -426,9 +432,12 @@ function QuickEntryContent() {
         }
       }
 
+      const responseEmp = employees.find(empItem => empItem.id === selectedResponseEmployeeId);
       const orderData = {
         employeeId: isPublicClient ? 'public_client' : selectedEmployeeId,
         employeeName: isPublicClient ? 'طلب مباشر (الزبون)' : (emp?.name || 'مجهول'),
+        responseEmployeeId: selectedResponseEmployeeId,
+        responseEmployeeName: responseEmp?.name || 'غير محدد',
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,
@@ -520,6 +529,7 @@ function QuickEntryContent() {
       
       // Reset
       setHasAttemptedSubmit(false);
+      setSelectedResponseEmployeeId('');
       setFormData({
         customerName: '', 
         customerPhone: '', 
@@ -615,6 +625,21 @@ function QuickEntryContent() {
         <div className={styles.sectionCard}>
           <h2 className={styles.sectionTitle}>👤 بيانات الزبون والعنوان</h2>
           
+          {/* Response Employee Dropdown */}
+          <div className={styles.formGroup} style={{ marginBottom: '0.25rem' }}>
+            <label className={styles.label} style={{ color: '#c4b5fd', fontWeight: 'bold' }}>موظفة الرد (التي حجزت الطلب) *</label>
+            <select 
+              className={`${styles.input} ${styles.select} ${hasAttemptedSubmit && !selectedResponseEmployeeId ? styles.inputError : ''}`}
+              value={selectedResponseEmployeeId}
+              onChange={(e) => setSelectedResponseEmployeeId(e.target.value)}
+            >
+              <option value="">-- اختر موظفة الرد --</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className={styles.formGroup}>
             <div className={styles.dropdownContainer}>
               <input 
