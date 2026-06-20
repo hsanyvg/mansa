@@ -39,6 +39,7 @@ export default function OrdersListPage() {
   const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState('all'); 
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBarcodeMode, setIsBarcodeMode] = useState(false);
   const [showReturnReceiptModal, setShowReturnReceiptModal] = useState(false);
@@ -97,11 +98,12 @@ export default function OrdersListPage() {
 
   useEffect(() => {
     setSelectedStatus('all');
+    setShowOnlySelected(false);
   }, [activeTab]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [globalSearch, columnFilters, activeTab, selectedStatus]);
+  }, [globalSearch, columnFilters, activeTab, selectedStatus, showOnlySelected]);
 
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
@@ -426,6 +428,41 @@ export default function OrdersListPage() {
     setBulkSelectText('');
   };
 
+  const handleBulkSelectAndShow = () => {
+    if (!bulkSelectText.trim()) return;
+    
+    const searchIds = bulkSelectText
+      .split(/[\n,\s]+/)
+      .map(id => id.trim().toLowerCase())
+      .filter(id => id.length > 0);
+
+    if (searchIds.length === 0) return;
+
+    const matchedOrders = orders.filter(order => {
+      const orderIdStr = String(order.id).toLowerCase();
+      const orderNumberStr = String(order.orderNumber || '').toLowerCase();
+      const orderIdShortStr = String(order.id.slice(-6)).toLowerCase();
+      return searchIds.some(searchId => 
+        orderIdStr.includes(searchId) || 
+        orderIdShortStr === searchId ||
+        (orderNumberStr && orderNumberStr.includes(searchId))
+      );
+    });
+
+    const matchedIds = matchedOrders.map(o => o.id);
+    
+    if (matchedIds.length > 0) {
+      setSelectedOrderIds(matchedIds);
+      setShowOnlySelected(true);
+      setNotificationModal({ show: true, message: `✅ تم تحديد وتصفية الشاشة لعرض ${matchedIds.length} طلب فقط.` });
+    } else {
+      setNotificationModal({ show: true, message: `❌ لم يتم العثور على أي طلب يطابق الأرقام المدخلة.` });
+    }
+    
+    setShowBulkSelectModal(false);
+    setBulkSelectText('');
+  };
+
   // Group Return Batches by Month
   const groupedReturnBatches = React.useMemo(() => {
     return returnsArchive.reduce((acc, record) => {
@@ -491,9 +528,13 @@ export default function OrdersListPage() {
   }, [baseList]);
 
   const baseListAfterStatus = React.useMemo(() => {
-    if (selectedStatus === 'all') return baseList;
-    return baseList.filter(o => (o.status || 'pending') === selectedStatus);
-  }, [baseList, selectedStatus]);
+    let list = baseList;
+    if (showOnlySelected) {
+      list = list.filter(o => selectedOrderIds.includes(o.id));
+    }
+    if (selectedStatus === 'all') return list;
+    return list.filter(o => (o.status || 'pending') === selectedStatus);
+  }, [baseList, selectedStatus, showOnlySelected, selectedOrderIds]);
 
   const filteredOrders = baseListAfterStatus.filter(order => {
     // We slice the ID exactly how it's displayed to match the user's visual search
@@ -2283,6 +2324,39 @@ export default function OrdersListPage() {
         </div>
       )}
 
+      {showOnlySelected && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: 'rgba(245, 158, 11, 0.15)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          color: '#fbbf24',
+          padding: '0.6rem 1rem',
+          borderRadius: '8px',
+          margin: '0.5rem 0 1rem 0',
+          fontWeight: 'bold',
+          fontSize: '0.95rem'
+        }}>
+          <span>📌 يتم الآن عرض الطلبات المحددة بالقائمة فقط ({filteredOrders.length} طلب)</span>
+          <button 
+            onClick={() => setShowOnlySelected(false)}
+            style={{
+              backgroundColor: '#f59e0b',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '0.25rem 0.75rem',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontFamily: 'inherit'
+            }}
+          >
+            إظهار كافة الطلبات ✖
+          </button>
+        </div>
+      )}
+
       {/* Table Top Controls */}
       <div className={styles.tableControls}>
         <div className={styles.controlsLeft}>
@@ -3743,9 +3817,10 @@ export default function OrdersListPage() {
                 }}
               />
             </div>
-            <div className={styles.modalFooter}>
+            <div className={styles.modalFooter} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button className={styles.cancelButton} onClick={() => setShowBulkSelectModal(false)}>إلغاء</button>
-              <button className={styles.submitButton} style={{ backgroundColor: '#f59e0b', color: '#fff' }} onClick={handleBulkSelectInverse}>تحديد غير المطابق</button>
+              <button className={styles.submitButton} style={{ backgroundColor: '#ef4444', color: '#fff' }} onClick={handleBulkSelectInverse}>تحديد غير المطابق</button>
+              <button className={styles.submitButton} style={{ backgroundColor: '#10b981', color: '#fff' }} onClick={handleBulkSelectAndShow}>إظهار الطلبات المحددة</button>
               <button className={styles.saveButton} onClick={handleBulkSelectSubmit}>تحديد الطلبات</button>
             </div>
           </div>
