@@ -38,6 +38,7 @@ export default function OrdersListPage() {
   const [showProductDropdownEdit, setShowProductDropdownEdit] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState('all'); 
+  const [selectedStatus, setSelectedStatus] = useState('all');
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBarcodeMode, setIsBarcodeMode] = useState(false);
   const [showReturnReceiptModal, setShowReturnReceiptModal] = useState(false);
@@ -95,8 +96,12 @@ export default function OrdersListPage() {
   });
 
   useEffect(() => {
+    setSelectedStatus('all');
+  }, [activeTab]);
+
+  useEffect(() => {
     setCurrentPage(1);
-  }, [globalSearch, columnFilters, activeTab]);
+  }, [globalSearch, columnFilters, activeTab, selectedStatus]);
 
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
@@ -476,7 +481,21 @@ export default function OrdersListPage() {
                  : activeTab === 'returned' ? returnedOrdersList
                  : activeOrders;
 
-  const filteredOrders = baseList.filter(order => {
+  const statusCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    baseList.forEach(order => {
+      const status = order.status || 'pending';
+      counts[status] = (counts[status] || 0) + 1;
+    });
+    return counts;
+  }, [baseList]);
+
+  const baseListAfterStatus = React.useMemo(() => {
+    if (selectedStatus === 'all') return baseList;
+    return baseList.filter(o => (o.status || 'pending') === selectedStatus);
+  }, [baseList, selectedStatus]);
+
+  const filteredOrders = baseListAfterStatus.filter(order => {
     // We slice the ID exactly how it's displayed to match the user's visual search
     const displayId = order.id.slice(-6).toLowerCase();
     const idStr = order.id.toLowerCase();
@@ -2173,6 +2192,96 @@ export default function OrdersListPage() {
           📜 سجل استلام الراجعات
         </button>
       </div>
+
+      {/* Status Filter Buttons Row */}
+      {activeTab !== 'returns_archive' && (
+        <div style={{
+          display: 'flex',
+          gap: '0.6rem',
+          overflowX: 'auto',
+          padding: '0.75rem 1rem',
+          margin: '0.5rem 0 1rem 0',
+          backgroundColor: '#1e1b2e',
+          borderRadius: '10px',
+          border: '1px solid rgba(255,255,255,0.05)',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
+        }}>
+          <button
+            onClick={() => setSelectedStatus('all')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.4rem 0.8rem',
+              borderRadius: '6px',
+              border: selectedStatus === 'all' ? '2px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.08)',
+              backgroundColor: selectedStatus === 'all' ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <span>📁 الكل</span>
+            <span style={{
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              padding: '0.1rem 0.4rem',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              color: '#fff'
+            }}>
+              {baseList.length}
+            </span>
+          </button>
+          
+          {Object.entries(statusMap).map(([statusKey, info]) => {
+            const count = statusCounts[statusKey] || 0;
+            const isActive = selectedStatus === statusKey;
+            const emojiMap: Record<string, string> = {
+              pending: '⏳', backordered: '📥', processing: '⚙️', shipped: '📦',
+              ofd: '🚚', delivered: '✅', cancelled: '❌', returned: '↩️',
+              new: '✨', postponed: '📅'
+            };
+            
+            if (count === 0 && !isActive) return null;
+            
+            return (
+              <button
+                key={statusKey}
+                onClick={() => setSelectedStatus(statusKey)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: '6px',
+                  border: isActive ? `2px solid ${info.color}` : '1px solid rgba(255,255,255,0.04)',
+                  backgroundColor: isActive ? info.bg : 'rgba(255,255,255,0.02)',
+                  color: isActive ? '#fff' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <span>{emojiMap[statusKey] || '•'} {info.label}</span>
+                <span style={{
+                  backgroundColor: info.bg,
+                  color: info.color,
+                  padding: '0.1rem 0.4rem',
+                  borderRadius: '20px',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold'
+                }}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Table Top Controls */}
       <div className={styles.tableControls}>
