@@ -93,7 +93,8 @@ export default function OrdersListPage() {
     status: '',
     addDate: '',
     addTime: '',
-    employeeName: ''
+    employeeName: '',
+    shippingCompany: ''
   });
 
   useEffect(() => {
@@ -404,10 +405,19 @@ export default function OrdersListPage() {
         const orderIdStr = String(order.id).toLowerCase();
         const orderNumberStr = String(order.orderNumber || '').toLowerCase();
         const orderIdShortStr = String(order.id.slice(-6)).toLowerCase();
+        const shipmentIdStr = String(order.shipmentId || '').toLowerCase();
+        const jenniShipmentIdStr = String(order.jenniShipmentId || '').toLowerCase();
+        const shipmentNumberStr = String(order.shipmentNumber || '').toLowerCase();
+        const phoneStr = String(order.customerPhone || order.phone || '').toLowerCase();
+
         return searchIds.some(searchId => 
           orderIdStr.includes(searchId) || 
           orderIdShortStr === searchId ||
-          (orderNumberStr && orderNumberStr.includes(searchId))
+          (orderNumberStr && orderNumberStr.includes(searchId)) ||
+          (shipmentIdStr && shipmentIdStr.includes(searchId)) ||
+          (jenniShipmentIdStr && jenniShipmentIdStr.includes(searchId)) ||
+          (shipmentNumberStr && shipmentNumberStr.includes(searchId)) ||
+          (phoneStr && phoneStr.includes(searchId))
         );
       }).map(o => o.id)
     );
@@ -442,10 +452,19 @@ export default function OrdersListPage() {
       const orderIdStr = String(order.id).toLowerCase();
       const orderNumberStr = String(order.orderNumber || '').toLowerCase();
       const orderIdShortStr = String(order.id.slice(-6)).toLowerCase();
+      const shipmentIdStr = String(order.shipmentId || '').toLowerCase();
+      const jenniShipmentIdStr = String(order.jenniShipmentId || '').toLowerCase();
+      const shipmentNumberStr = String(order.shipmentNumber || '').toLowerCase();
+      const phoneStr = String(order.customerPhone || order.phone || '').toLowerCase();
+
       return searchIds.some(searchId => 
         orderIdStr.includes(searchId) || 
         orderIdShortStr === searchId ||
-        (orderNumberStr && orderNumberStr.includes(searchId))
+        (orderNumberStr && orderNumberStr.includes(searchId)) ||
+        (shipmentIdStr && shipmentIdStr.includes(searchId)) ||
+        (jenniShipmentIdStr && jenniShipmentIdStr.includes(searchId)) ||
+        (shipmentNumberStr && shipmentNumberStr.includes(searchId)) ||
+        (phoneStr && phoneStr.includes(searchId))
       );
     });
 
@@ -529,14 +548,13 @@ export default function OrdersListPage() {
 
   const baseListAfterStatus = React.useMemo(() => {
     let list = baseList;
-    if (showOnlySelected) {
-      list = list.filter(o => selectedOrderIds.includes(o.id));
-    }
     if (selectedStatus === 'all') return list;
     return list.filter(o => (o.status || 'pending') === selectedStatus);
-  }, [baseList, selectedStatus, showOnlySelected, selectedOrderIds]);
+  }, [baseList, selectedStatus]);
 
-  const filteredOrders = baseListAfterStatus.filter(order => {
+  const filteredOrders = (showOnlySelected 
+    ? orders.filter(o => selectedOrderIds.includes(o.id))
+    : baseListAfterStatus).filter(order => {
     // We slice the ID exactly how it's displayed to match the user's visual search
     const displayId = order.id.slice(-6).toLowerCase();
     const idStr = order.id.toLowerCase();
@@ -552,6 +570,7 @@ export default function OrdersListPage() {
     const region = (order.region || '').toLowerCase();
     const notes = (order.notes || '').toLowerCase();
     const empName = (order.employeeName || '').toLowerCase();
+    const shipComp = (order.shippingCompany || '').toLowerCase();
 
     // Column Filters
     const matchesColumn = (
@@ -564,7 +583,8 @@ export default function OrdersListPage() {
       (statusKey.includes(columnFilters.status.toLowerCase()) || statusLabel.includes(columnFilters.status.toLowerCase())) &&
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
       aTime.includes(columnFilters.addTime.toLowerCase()) &&
-      empName.includes(columnFilters.employeeName.toLowerCase())
+      empName.includes(columnFilters.employeeName.toLowerCase()) &&
+      shipComp.includes((columnFilters.shippingCompany || '').toLowerCase())
     );
 
     // Global Filter
@@ -576,7 +596,7 @@ export default function OrdersListPage() {
     
     const allFields = [
       idStr, displayId, custName, gov, region, phone, total, rawTotal, 
-      statusKey, statusLabel, aDate, aTime, empName, notes, ...productNames
+      statusKey, statusLabel, aDate, aTime, empName, notes, shipComp, ...productNames
     ].map(normalizeStr);
 
     let matchesGlobal = true;
@@ -1693,12 +1713,21 @@ export default function OrdersListPage() {
           phone2 = parts[1].trim();
         }
 
-        let zitaGov = order.governorate || '';
+        let zitaGov = (order.governorate || '').trim();
         if (zitaGov.includes('ميسان') || zitaGov.includes('العمارة')) zitaGov = 'ميسان';
         else if (zitaGov.includes('بابل') || zitaGov.includes('الحلة')) zitaGov = 'بابل';
         else if (zitaGov.includes('ذي قار') || zitaGov.includes('الناصرية')) zitaGov = 'الناصرية';
         else if (zitaGov.includes('واسط') || zitaGov.includes('الكوت')) zitaGov = 'واسط';
         else if (zitaGov.includes('المثنى') || zitaGov.includes('السماوة')) zitaGov = 'السماوة';
+        else if (zitaGov.includes('القادسية') || zitaGov.includes('الديوانية')) zitaGov = 'الديوانية';
+        else if (zitaGov.includes('نينوى') || zitaGov.includes('الموصل')) zitaGov = 'نينوى';
+        else if (zitaGov.includes('الأنبار') || zitaGov.includes('الرمادي')) zitaGov = 'الأنبار';
+        else if (zitaGov.includes('ديالى') || zitaGov.includes('بعقوبة')) zitaGov = 'ديالى';
+        else if (zitaGov.includes('صلاح الدين') || zitaGov.includes('تكريت')) zitaGov = 'صلاح الدين';
+        // Fallback: if it still has parentheses, just take the first part
+        if (zitaGov.includes('(')) {
+          zitaGov = zitaGov.split('(')[0].trim();
+        }
 
         return {
           'رقم الوصل': order.id.slice(-6).toUpperCase(),
@@ -1985,32 +2014,42 @@ export default function OrdersListPage() {
         <table class="manifest-table">
           <thead>
             <tr>
-              <th style="width: 5%;">#</th>
-              <th style="width: 15%;">الوصل</th>
-              <th style="width: 13%;">هاتف الزبون</th>
-              <th style="width: 25%;">الملاحظات</th>
+              <th style="width: 3%;">#</th>
+              <th style="width: 13%;">الوصل</th>
+              <th style="width: 10%;">الهاتف</th>
+              <th style="width: 15%;">الملاحظات</th>
               <th style="width: 10%;">المنطقة</th>
-              <th style="width: 10%;">اسم البيج</th>
-              <th style="width: 12%;">المبلغ الكلي</th>
+              <th style="width: 19%;">الأصناف</th>
+              <th style="width: 10%;">الموظفين</th>
+              <th style="width: 10%;">المبلغ</th>
               <th style="width: 10%;">الحالة</th>
             </tr>
           </thead>
           <tbody>
             ${ordersToPrint.map((order, idx) => {
               const orderId = order.orderNumber || order.id.slice(-10).toUpperCase();
+              const itemsList = order.items && order.items.length > 0 
+                ? order.items.map(item => `<div style="text-align: right; margin-bottom: 2px;">- ${item.productName || 'صنف غير معروف'} (${item.quantity || 1})</div>`).join('') 
+                : '---';
+              const statusLabel = statusMap[order.status]?.label || 'قيد الانتظار';
+              
               return `
               <tr>
                 <td>${idx + 1}</td>
                 <td>
-                  <img src="https://barcode.tec-it.com/barcode.ashx?data=${orderId}&code=Code128&dpi=96" class="barcode-img" alt="${orderId}" />
+                  <img src="https://barcode.tec-it.com/barcode.ashx?data=${orderId}&code=Code128&dpi=96" class="barcode-img" alt="${orderId}" style="width:100px;height:35px;"/>
                   <br>${orderId}
                 </td>
-                <td style="direction: ltr; font-size: 12pt;">${order.customerPhone || order.phone || ''}</td>
-                <td>${order.governorate || ''} - ${order.region || ''} ${order.notes ? ' | ' + order.notes : ''}</td>
-                <td>${order.region || ''}</td>
-                <td>مارشميلو</td>
-                <td style="direction: ltr; font-size: 12pt;">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)}</td>
-                <td></td>
+                <td style="direction: ltr; font-size: 11pt;">${order.customerPhone || order.phone || ''}</td>
+                <td style="font-size: 10pt;">${order.notes || '---'}</td>
+                <td style="font-size: 10pt;">${order.governorate || ''}<br>${order.region || ''}</td>
+                <td style="font-size: 10pt; padding-right: 5px;">${itemsList}</td>
+                <td style="font-size: 9pt;">
+                  <div>المدخل: <br/>${order.employeeName || '---'}</div>
+                  <div style="margin-top:4px;">النازل: <br/>${order.deliveryAgent || '---'}</div>
+                </td>
+                <td style="direction: ltr; font-size: 11pt;">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)}</td>
+                <td style="font-size: 11pt; font-weight: bold;">${statusLabel}</td>
               </tr>
               `;
             }).join('')}
@@ -2052,12 +2091,12 @@ export default function OrdersListPage() {
           
           
           {selectedOrderIds.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#2a2d3d', border: '1px solid rgba(255,255,255,0.1)', padding: '0.3rem 0.8rem', borderRadius: '0.5rem' }}>
-              <span style={{color: '#ffffff', fontWeight: 'bold', fontSize: '1rem'}}>حالة الطلبات:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', backgroundColor: '#2a2d3d', border: '1px solid rgba(255,255,255,0.15)', padding: '0.5rem 1rem', borderRadius: '0.6rem' }}>
+              <span style={{color: '#ffffff', fontWeight: 'bold', fontSize: '1.1rem'}}>حالة الطلبات:</span>
               <select 
                 style={{
-                  backgroundColor: 'transparent', color: '#ffffff', border: 'none', 
-                  padding: '0.2rem', outline: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem'
+                  backgroundColor: 'rgba(255,255,255,0.05)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.2)', 
+                  padding: '0.4rem 0.8rem', borderRadius: '6px', outline: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem'
                 }}
                 value={bulkStatusValue}
                 onChange={(e) => {
@@ -2066,9 +2105,9 @@ export default function OrdersListPage() {
                   setShowBulkStatusModal(true);
                 }}
               >
-                <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d'}}>اختر الحالة...</option>
+                <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem'}}>اختر الحالة...</option>
                 {Object.entries(statusMap).map(([key, info]) => (
-                   <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d'}}>{info.label} ({key})</option>
+                   <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem'}}>{info.label} ({key})</option>
                 ))}
               </select>
             </div>
@@ -2576,7 +2615,17 @@ export default function OrdersListPage() {
               <th>
                 <div className={styles.thContent}>
                   <span>الحالة</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.status} onChange={(e) => handleFilterChange('status', e.target.value)} />
+                  <select 
+                    className={styles.colFilterInput} 
+                    value={columnFilters.status} 
+                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                    style={{ padding: '0.3rem', cursor: 'pointer', backgroundColor: 'var(--surface)', color: 'var(--text-main)' }}
+                  >
+                    <option value="">الكل</option>
+                    {Object.entries(statusMap).map(([key, info]) => (
+                      <option key={key} value={key}>{info.label} ({key})</option>
+                    ))}
+                  </select>
                 </div>
               </th>
               <th>
@@ -2589,6 +2638,12 @@ export default function OrdersListPage() {
                 <div className={styles.thContent}>
                   <span>الموظف</span>
                   <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.employeeName} onChange={(e) => handleFilterChange('employeeName', e.target.value)} />
+                </div>
+              </th>
+              <th>
+                <div className={styles.thContent}>
+                  <span>شركة الشحن</span>
+                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.shippingCompany || ''} onChange={(e) => handleFilterChange('shippingCompany', e.target.value)} />
                 </div>
               </th>
               {activeTab === 'returned' && (
@@ -2630,8 +2685,15 @@ export default function OrdersListPage() {
                     </div>
                   </td>
                   <td>
-                    <div style={{ display: 'inline-block', background: '#fff', padding: '2px', borderRadius: '4px', overflow: 'hidden' }}>
-                      <Barcode value={order.id.slice(-6).toUpperCase()} width={1.2} height={25} displayValue={true} fontSize={11} margin={0} background="#ffffff" lineColor="#000000" />
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
+                      <div style={{ display: 'inline-block', background: '#fff', padding: '2px', borderRadius: '4px', overflow: 'hidden' }}>
+                        <Barcode value={order.id.slice(-6).toUpperCase()} width={1.2} height={25} displayValue={true} fontSize={11} margin={0} background="#ffffff" lineColor="#000000" />
+                      </div>
+                      {order.isArchived && (
+                        <span style={{ backgroundColor: '#475569', color: '#f8fafc', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                          📁 مؤرشف
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td>{order.customerName}</td>
@@ -2645,11 +2707,11 @@ export default function OrdersListPage() {
                         style={{ 
                           backgroundColor: statusMap[order.status || 'pending']?.bg || 'rgba(148, 163, 184, 0.15)', 
                           color: statusMap[order.status || 'pending']?.color || '#94a3b8', 
-                          padding: '0.35rem 0.5rem', 
+                          padding: '0.45rem 0.8rem', 
                           borderRadius: '1.5rem', 
-                          fontSize: '0.85rem', 
+                          fontSize: '1rem', 
                           fontWeight: 'bold',
-                          border: 'none',
+                          border: '1px solid rgba(255,255,255,0.05)',
                           outline: 'none',
                           cursor: 'pointer',
                           appearance: 'none',
@@ -2660,7 +2722,7 @@ export default function OrdersListPage() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         {Object.entries(statusMap).map(([key, info]) => (
-                          <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d', textAlign: 'right'}}>
+                          <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem'}}>
                             {info.label} ({key})
                           </option>
                         ))}
@@ -2702,6 +2764,7 @@ export default function OrdersListPage() {
                     </div>
                   </td>
                   <td style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{order.employeeName || '---'}</td>
+                  <td>{order.shippingCompany || '---'}</td>
                   {activeTab === 'returned' && (
                     <td onClick={(e) => e.stopPropagation()}>
                       <button 
@@ -3147,6 +3210,18 @@ export default function OrdersListPage() {
                         onChange={e => setEditingOrder({...editingOrder, employeeName: e.target.value})} 
                         disabled={isPartiallyLocked}
                         style={lockedInputStyle}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>شركة الشحن</label>
+                      <input 
+                        type="text" 
+                        className={styles.input} 
+                        value={editingOrder.shippingCompany || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, shippingCompany: e.target.value})} 
+                        disabled={isPartiallyLocked}
+                        style={lockedInputStyle}
+                        placeholder="مثال: زاجل، جيني..."
                       />
                     </div>
                     <div className={styles.formGroup}>

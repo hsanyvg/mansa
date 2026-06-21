@@ -977,6 +977,41 @@ export default function App() {
     );
   };
 
+  const returnedCount = orders.filter(o => o.status === 'returned').length;
+  const deliveredCount = orders.filter(o => o.status === 'delivered').length;
+  const postponedCount = orders.filter(o => o.status === 'postponed').length;
+  const partialCount = orders.filter(o => o.status === 'partial' || o.status === 'replaced').length;
+  const processedCount = orders.filter(o => o.status === 'processed' || o.status === 'confirmed').length;
+  const newCount = orders.filter(o => o.status === 'pending' || o.status === 'new').length;
+
+  const renderCustomCard = (label, value, bgColor, textColor, svgContent, isWhite) => (
+    <View style={{
+      width: '48%', 
+      backgroundColor: bgColor, 
+      borderRadius: 12, 
+      padding: 12, 
+      minHeight: 100,
+      justifyContent: 'space-between'
+    }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{
+          backgroundColor: isWhite ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.2)', 
+          borderRadius: 8, 
+          width: 32, 
+          height: 32, 
+          justifyContent: 'center', 
+          alignItems: 'center'
+        }}>
+          <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            {svgContent}
+          </Svg>
+        </View>
+        <Text style={{ color: textColor, fontSize: 32, fontWeight: '400' }}>{value}</Text>
+      </View>
+      <Text style={{ color: textColor, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginTop: 10 }}>{label}</Text>
+    </View>
+  );
+
   if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -1132,110 +1167,38 @@ export default function App() {
       {activeTab === 'dashboard' ? (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
           {/* Dashboard Stats */}
-          <Text style={styles.gridTitle}>شبكة الإحصائيات السريعة</Text>
-          
-          <View style={styles.statsGridRow}>
-            {/* Card 1: طلبات جديدة */}
-            <View style={styles.newStatCard}>
-              <Text style={styles.newStatLabel}>طلبات جديدة</Text>
-              <View style={styles.newStatContent}>
-                <Text style={styles.newStatValue}>{newOrdersCount}</Text>
-                <View style={[styles.newStatIconBg, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
-                  <Text style={[styles.newStatIcon, { color: '#c084fc' }]}>🛍️</Text>
-                </View>
-              </View>
+          <View style={{ marginBottom: 20 }}>
+            {/* Row 1 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('شحنات راجعة', returnedCount, '#991b1b', '#ffffff', 
+                <Path d="M3 10h10a5 5 0 0 1 5 5v2a5 5 0 0 1-5 5H3m0-12l4-4m-4 4l4 4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>, false)}
+              {renderCustomCard('شحنات ناجحة', deliveredCount, '#2dd4bf', '#ffffff', 
+                <><Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="#ffffff" strokeWidth="2"/><Path d="M3.27 6.96L12 12.01l8.73-5.05" stroke="#ffffff" strokeWidth="2"/><Path d="M12 22.08V12" stroke="#ffffff" strokeWidth="2"/><Path d="M9 11l2 2 4-4" stroke="#ffffff" strokeWidth="2"/></>, false)}
             </View>
 
-            {/* Card 2: طلبات قيد التوصيل */}
-            <View style={styles.newStatCard}>
-              <Text style={styles.newStatLabel}>طلبات قيد التوصيل</Text>
-              <View style={styles.newStatContent}>
-                <Text style={styles.newStatValue}>{ofdOrdersCount}</Text>
-                <View style={[styles.newStatIconBg, { backgroundColor: 'rgba(6, 182, 212, 0.15)' }]}>
-                  <Text style={[styles.newStatIcon, { color: '#06b6d4' }]}>🚚</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.statsGridRow}>
-            {/* Card 3: إجمالي العائدات اليوم */}
-            <View style={styles.newStatCard}>
-              <Text style={styles.newStatLabel}>إجمالي العائدات اليوم</Text>
-              <View style={styles.newStatContent}>
-                <Text style={styles.newStatValue}>{todaySales.toLocaleString()} د.ع</Text>
-                <View style={[styles.newStatIconBg, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                  <Text style={[styles.newStatIcon, { color: '#10b981' }]}>💵</Text>
-                </View>
-              </View>
+            {/* Row 2 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('مؤجلة', postponedCount, '#f97316', '#ffffff', 
+                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false)}
+              {renderCustomCard('قيد المعالجة', newCount, '#27272a', '#ffffff', 
+                <Path d="M5 22h14M5 2h14M8 2v5l4 5-4 5v5m8-20v5l-4 5 4 5v5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false)}
             </View>
 
-            {/* Card 4: طلبات واصلة */}
-            <View style={styles.newStatCard}>
-              <Text style={styles.newStatLabel}>طلبات واصلة</Text>
-              <View style={styles.newStatContent}>
-                <Text style={styles.newStatValue}>{deliveredTodayCount}</Text>
-                <View style={[styles.newStatIconBg, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
-                  <Text style={[styles.newStatIcon, { color: '#c084fc' }]}>✅</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.gaugeCard}>
-            <Text style={styles.gaugeCardHeader}>طلبات تم تسليمها بنجاح</Text>
-            
-            <View style={styles.gaugeContainer}>
-              <Svg viewBox="0 0 200 130" style={styles.gaugeSvg}>
-                <Defs>
-                  <LinearGradient id="purpleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <Stop offset="0%" stopColor="#f3e8ff" />
-                    <Stop offset="50%" stopColor="#a435e8" />
-                    <Stop offset="100%" stopColor="#49159e" />
-                  </LinearGradient>
-                </Defs>
-
-                {/* Track path */}
-                <Path d="M 25 100 A 75 75 0 0 1 175 100" 
-                      fill="none" stroke="#2a2a35" strokeWidth="16" />
-
-                {/* Active progress path */}
-                <Path 
-                  d="M 25 100 A 75 75 0 0 1 175 100" 
-                  fill="none" 
-                  stroke="url(#purpleGradient)" 
-                  strokeWidth="16" 
-                  strokeDasharray="235.62" 
-                  strokeDashoffset={235.62 - (235.62 * rateThisMonth) / 100} 
-                />
-
-                {/* Concentric rings */}
-                <Circle cx="100" cy="100" r="40" fill="none" stroke="#a855f7" strokeWidth="1" opacity={0.3} />
-                <Circle cx="100" cy="100" r="30" fill="none" stroke="#a855f7" strokeWidth="1" opacity="0.5" />
-                <Circle cx="100" cy="100" r="20" fill="none" stroke="#a855f7" strokeWidth="1.5" opacity="0.8" />
-
-                {/* Needle group */}
-                <G 
-                  x={100}
-                  y={100}
-                  rotation={(rateThisMonth / 100) * 180 - 90}
-                >
-                  <Polygon points="-9,0 9,0 0,-83" 
-                           fill="rgba(192, 132, 252, 0.4)" 
-                           stroke="#f3e8ff" strokeWidth={1.5} />
-                </G>
-
-                {/* Pivot center */}
-                <Circle cx="100" cy="100" r="12" fill="#4b04b5" stroke="#d8b4fe" strokeWidth="3" />
-                <Circle cx="100" cy="100" r="4" fill="#ffffff" />
-              </Svg>
+            {/* Row 3 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('جزئي او استبدال', partialCount, '#34d399', '#ffffff', 
+                <><Path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M3 3v5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M21 21v-5h-5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false)}
+              {renderCustomCard('تمت المعالجة', processedCount, '#34d399', '#ffffff', 
+                <Path d="M20 16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4M12 4v12M8 12l4 4 4-4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false)}
             </View>
 
-            <Text style={styles.gaugeValue}>{rateThisMonth}%</Text>
-
-            <Text style={styles.gaugeDescription}>
-              📦 {activeThisMonthCount} طلب نشط هذا الشهر
-            </Text>
+            {/* Row 4 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('شحنات اليوم', todayOrdersCount, '#ffffff', '#94a3b8', 
+                <><Circle cx="12" cy="12" r="10" stroke="#cbd5e1" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round"/></>, true)}
+              {renderCustomCard('في الطريق للشركة', ofdOrdersCount, '#eab308', '#ffffff', 
+                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false)}
+            </View>
           </View>
 
           {/* Recent Orders */}
@@ -1275,6 +1238,25 @@ export default function App() {
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding} keyboardShouldPersistTaps="handled">
           <View style={styles.formContainer}>
             
+            {/* Section Title */}
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 18 }}>👤</Text>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#e2e8f0', marginRight: 8 }}>بيانات الزبون والعنوان</Text>
+            </View>
+
+            {/* Employee Selector */}
+            <View style={styles.formGroup}>
+              <Text style={{ color: '#e9d5ff', fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>موظفة الرد (التي حجزت الطلب) *</Text>
+              <TouchableOpacity 
+                style={[styles.modalTrigger, isFieldInvalid(selectedEmployeeId) && styles.inputError]}
+                onPress={() => setEmpModalVisible(true)}
+              >
+                <Text style={selectedEmployeeId ? styles.triggerText : styles.triggerPlaceholder}>
+                  {selectedEmployeeId ? employees.find(e => e.id === selectedEmployeeId)?.name : "-- اختر موظفة الرد --"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Input Name */}
             <View style={styles.formGroup}>
               <TextInput 
@@ -1282,6 +1264,29 @@ export default function App() {
                 value={customerName}
                 onChangeText={setCustomerName}
                 placeholder="اسم الزبون *"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+              />
+            </View>
+
+            {/* Governorate Modal Selector */}
+            <View style={styles.formGroup}>
+              <TouchableOpacity 
+                style={[styles.modalTrigger, isFieldInvalid(governorate) && styles.inputError]}
+                onPress={() => setGovModalVisible(true)}
+              >
+                <Text style={governorate ? styles.triggerText : styles.triggerPlaceholder}>
+                  {governorate || "المحافظة *"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Region */}
+            <View style={styles.formGroup}>
+              <TextInput 
+                style={[styles.input, isFieldInvalid(region) && styles.inputError]}
+                value={region}
+                onChangeText={setRegion}
+                placeholder="المنطقة / العنوان بالتفصيل *"
                 placeholderTextColor="rgba(255,255,255,0.3)"
               />
             </View>
@@ -1312,38 +1317,20 @@ export default function App() {
               )}
             </View>
 
-            {/* Input Phone 2 */}
+            {/* Notes */}
             <View style={styles.formGroup}>
+              <View style={styles.labelRow}>
+                <TouchableOpacity style={styles.replaceBtn} onPress={handleAddReplaceNote}>
+                  <Text style={styles.replaceBtnText}>🔄 استبدال</Text>
+                </TouchableOpacity>
+              </View>
               <TextInput 
-                style={styles.input}
-                value={customerPhone2}
-                onChangeText={setCustomerPhone2}
-                placeholder="رقم هاتف ثاني للزبون (اختياري)"
-                keyboardType="phone-pad"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-              />
-            </View>
-
-            {/* Governorate Modal Selector */}
-            <View style={styles.formGroup}>
-              <TouchableOpacity 
-                style={[styles.modalTrigger, isFieldInvalid(governorate) && styles.inputError]}
-                onPress={() => setGovModalVisible(true)}
-              >
-                <Text style={governorate ? styles.triggerText : styles.triggerPlaceholder}>
-                  {governorate || "المحافظة *"}
-                </Text>
-                <Text style={styles.triggerArrow}>▼</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Region */}
-            <View style={styles.formGroup}>
-              <TextInput 
-                style={[styles.input, isFieldInvalid(region) && styles.inputError]}
-                value={region}
-                onChangeText={setRegion}
-                placeholder="المنطقة / العنوان بالتفصيل *"
+                style={[styles.input, styles.textarea]}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                numberOfLines={3}
+                placeholder="ملاحظات أو تفاصيل أخرى حول التوصيل..."
                 placeholderTextColor="rgba(255,255,255,0.3)"
               />
             </View>
@@ -1451,8 +1438,6 @@ export default function App() {
               )}
             </View>
 
-
-
             {/* Payment Method */}
             <View style={styles.formGroup}>
               <Text style={styles.label}>طريقة الدفع</Text>
@@ -1471,23 +1456,6 @@ export default function App() {
               </View>
             </View>
 
-            {/* Notes */}
-            <View style={styles.formGroup}>
-              <View style={styles.labelRow}>
-                <TouchableOpacity style={styles.replaceBtn} onPress={handleAddReplaceNote}>
-                  <Text style={styles.replaceBtnText}>🔄 استبدال</Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput 
-                style={[styles.input, styles.textarea]}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                placeholder="ملاحظات الطلب..."
-                placeholderTextColor="rgba(255,255,255,0.3)"
-              />
-            </View>
 
             {/* Submit Button */}
             <TouchableOpacity 
