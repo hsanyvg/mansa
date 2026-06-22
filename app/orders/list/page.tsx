@@ -1740,6 +1740,7 @@ export default function OrdersListPage() {
           'المحافظة': zitaGov,
           'المنطقة': order.region || '',
           'المبلغ الكلي': order.totalAmount || order.price || 0,
+          'نوع البضاعة': '',
           'العدد': totalQuantity,
           'الملاحظات': formattedNotes
         };
