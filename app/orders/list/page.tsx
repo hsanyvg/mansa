@@ -2027,7 +2027,7 @@ export default function OrdersListPage() {
             ${ordersToPrint.map((order, idx) => {
               const orderId = order.orderNumber || order.id.slice(-10).toUpperCase();
               const itemsList = order.items && order.items.length > 0 
-                ? order.items.map(item => `<div style="text-align: right; margin-bottom: 2px;">- ${item.productName || 'صنف غير معروف'} (${item.quantity || 1})</div>`).join('') 
+                ? order.items.map((item: any) => `<div style="text-align: right; margin-bottom: 2px;">- ${item.productName || 'صنف غير معروف'} (${item.quantity || 1})</div>`).join('') 
                 : '---';
               const statusLabel = statusMap[order.status]?.label || 'قيد الانتظار';
               
