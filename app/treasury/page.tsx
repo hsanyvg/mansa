@@ -30,6 +30,7 @@ interface Order {
   settlementNotes?: string;
   settlementImages?: string[];
   isSettlementArchived?: boolean;
+  paidAmount?: number;
 }
 
 interface GroupedStatement {
@@ -163,6 +164,10 @@ export default function TreasurySettlementPage() {
   }, [archivedSettlements]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [showActionsDropdown, setShowActionsDropdown] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [showBulkSelectModal, setShowBulkSelectModal] = useState(false);
+  const [bulkSelectText, setBulkSelectText] = useState('');
+  const [bulkSettlementAmounts, setBulkSettlementAmounts] = useState<Record<string, number>>({});
 
   // Phase 2 Form States
   const [externalStatementId, setExternalStatementId] = useState('');
@@ -363,7 +368,8 @@ export default function TreasurySettlementPage() {
             settlementAgent: data.settlementAgent || '',
             settlementNotes: data.settlementNotes || '',
             settlementImages: data.settlementImages || [],
-            isSettlementArchived: data.isSettlementArchived || false
+            isSettlementArchived: data.isSettlementArchived || false,
+            paidAmount: Number(data.paidAmount) || 0
           };
 
           if (isSettled) {
@@ -476,25 +482,35 @@ export default function TreasurySettlementPage() {
     setIsSettling(true);
     try {
       const batch = writeBatch(db);
-      let totalAmount = 0;
+      let totalAmountToDeposit = 0;
 
       selectedOrders.forEach(orderId => {
         const order = pendingOrders.find(o => o.id === orderId);
         if (order) {
-          totalAmount += order.totalAmount;
+          const remainingAmount = order.totalAmount - (order.paidAmount || 0);
+          const inputAmount = bulkSettlementAmounts[orderId];
+          const receivedAmount = inputAmount !== undefined ? inputAmount : remainingAmount;
+          
+          const newPaidAmount = (order.paidAmount || 0) + receivedAmount;
+          totalAmountToDeposit += receivedAmount;
+
+          const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
+          
+          const isFullySettled = newPaidAmount >= order.totalAmount;
+          
+          batch.update(orderRef, {
+            is_settled: isFullySettled,
+            paymentStatus: isFullySettled ? 'settled' : 'partially_settled',
+            paidAmount: newPaidAmount,
+            settledWalletId: selectedWallet.id,
+            settledWalletName: selectedWallet.name,
+            settledAt: serverTimestamp(),
+            settlementStatementId: externalStatementId || '',
+            settlementAgent: deliveryAgent || '',
+            settlementNotes: settlementNotes || '',
+            settlementImages: uploadedImages.map(img => img.dataUrl)
+          });
         }
-        const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
-        batch.update(orderRef, {
-          is_settled: true,
-          paymentStatus: 'settled',
-          settledWalletId: selectedWallet.id,
-          settledWalletName: selectedWallet.name,
-          settledAt: serverTimestamp(),
-          settlementStatementId: externalStatementId || '',
-          settlementAgent: deliveryAgent || '',
-          settlementNotes: settlementNotes || '',
-          settlementImages: uploadedImages.map(img => img.dataUrl)
-        });
       });
 
       // Create a deposit transaction record in treasury_transactions
@@ -505,7 +521,7 @@ export default function TreasurySettlementPage() {
       const transactionRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'));
       batch.set(transactionRef, {
         type: 'deposit',
-        amount: totalAmount,
+        amount: totalAmountToDeposit,
         currency: 'IQD',
         date: dateStr,
         time: timeStr,
@@ -522,6 +538,7 @@ export default function TreasurySettlementPage() {
       await batch.commit();
 
       setSelectedOrders(new Set());
+      setBulkSettlementAmounts({});
       setShowWalletModal(false);
       setSelectedWalletId('');
       setExternalStatementId('');
@@ -625,8 +642,70 @@ export default function TreasurySettlementPage() {
 
   const totalSelectedAmount = Array.from(selectedOrders).reduce((sum, orderId) => {
     const order = pendingOrders.find(o => o.id === orderId);
-    return sum + (order ? order.totalAmount : 0);
+    if (!order) return sum;
+    const remainingAmount = order.totalAmount - (order.paidAmount || 0);
+    const inputAmount = bulkSettlementAmounts[orderId];
+    return sum + (inputAmount !== undefined ? inputAmount : remainingAmount);
   }, 0);
+
+  const handleBulkSelect = () => {
+    const lines = bulkSelectText.split('\n').filter(l => l.trim().length > 0);
+    const newSelected = new Set<string>(selectedOrders);
+    const newAmounts: Record<string, number> = { ...bulkSettlementAmounts };
+    let notFound: string[] = [];
+    let addedCount = 0;
+
+    lines.forEach(line => {
+      const parts = line.trim().split(/[\t\s]+/);
+      const identifier = parts[0];
+      const amountStr = parts.length > 1 ? parts[parts.length - 1] : null;
+
+      const order = pendingOrders.find(o => 
+        o.id === identifier || 
+        o.id.endsWith(identifier) || 
+        (o as any).orderNumber === identifier || 
+        (o as any).shipmentNumber === identifier
+      );
+
+      if (order) {
+        newSelected.add(order.id);
+        addedCount++;
+        if (amountStr) {
+          const parsedAmount = parseFloat(amountStr.replace(/,/g, ''));
+          if (!isNaN(parsedAmount)) {
+            newAmounts[order.id] = parsedAmount;
+          }
+        }
+      } else {
+        notFound.push(identifier);
+      }
+    });
+
+    setSelectedOrders(newSelected);
+    setBulkSettlementAmounts(newAmounts);
+    setShowBulkSelectModal(false);
+    setBulkSelectText('');
+    
+    if (notFound.length > 0) {
+      alert(`تم إضافة ${addedCount} طلب بنجاح.\nلم يتم العثور على المعرفات التالية في قائمة الطلبات المعلقة:\n${notFound.join(', ')}`);
+    } else {
+      alert(`تم إضافة ${addedCount} طلب بنجاح.`);
+    }
+  };
+
+  // Filter pendingOrders based on globalSearch
+  const filteredPendingOrders = pendingOrders.filter(order => {
+    if (!globalSearch) return true;
+    const searchLower = globalSearch.toLowerCase();
+    return (
+      order.id.toLowerCase().includes(searchLower) ||
+      (order.customerName && order.customerName.toLowerCase().includes(searchLower)) ||
+      (order.customerPhone && order.customerPhone.toLowerCase().includes(searchLower)) ||
+      (order.shipmentCompany && order.shipmentCompany.toLowerCase().includes(searchLower)) ||
+      ((order as any).orderNumber && (order as any).orderNumber.toLowerCase().includes(searchLower)) ||
+      ((order as any).shipmentNumber && (order as any).shipmentNumber.toLowerCase().includes(searchLower))
+    );
+  });
 
   return (
     <div className={styles.container}>
@@ -662,20 +741,44 @@ export default function TreasurySettlementPage() {
           </div>
 
           {activeTab === 'pending' && (
-            <button 
-              className={styles.settleButton} 
-              onClick={handleSettle}
-              disabled={selectedOrders.size === 0 || isSettling}
-            >
-              {isSettling ? (
-                <span className={styles.loader}></span>
-              ) : (
-                <>
-                  <span className={styles.settleIcon}>✓</span>
-                  تأكيد استلام المبالغ (تسوية)
-                </>
-              )}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: '250px' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px' }}>
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input 
+                  type="text" 
+                  placeholder="البحث برقم الطلب، اسم الزبون..." 
+                  style={{ width: '100%', padding: '0.75rem 3.5rem 0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.1)', backgroundColor: '#0f111a', color: '#fff', outline: 'none' }}
+                  value={globalSearch}
+                  onChange={(e) => setGlobalSearch(e.target.value)}
+                />
+                <button 
+                  onClick={() => setShowBulkSelectModal(true)}
+                  style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#64748b' }}
+                  title="تحديد متعدد بالمعرفات (نسخ ولصق)"
+                >
+                  📋
+                </button>
+              </div>
+
+              <button 
+                className={styles.settleButton} 
+                onClick={handleSettle}
+                disabled={selectedOrders.size === 0 || isSettling}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {isSettling ? (
+                  <span className={styles.loader}></span>
+                ) : (
+                  <>
+                    <span className={styles.settleIcon}>✓</span>
+                    تأكيد استلام المبالغ (تسوية)
+                  </>
+                )}
+              </button>
+            </div>
           )}
 
           {activeTab === 'settled' && (
@@ -917,12 +1020,14 @@ export default function TreasurySettlementPage() {
                     <th>رقم الطلب</th>
                     <th>اسم الزبون</th>
                     <th>شركة التوصيل / المندوب</th>
-                    <th>المبلغ المستحق</th>
+                    <th>المبلغ الكلي</th>
+                    <th>الواصل سابقاً</th>
+                    <th>المتبقي للاستلام</th>
                     <th style={{ width: '60px', textAlign: 'center' }}>التفاصيل</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingOrders.map(order => (
+                  {filteredPendingOrders.map(order => (
                     <tr key={order.id}>
                       <td className={styles.checkboxCell}>
                         <input 
@@ -936,6 +1041,12 @@ export default function TreasurySettlementPage() {
                       <td>{order.customerName}</td>
                       <td>{order.shipmentCompany || '---'}</td>
                       <td className={styles.amountCol}>{order.totalAmount.toLocaleString()} د.ع</td>
+                      <td className={styles.amountCol} style={{ color: order.paidAmount ? '#f59e0b' : '#64748b' }}>
+                        {(order.paidAmount || 0).toLocaleString()} د.ع
+                      </td>
+                      <td className={styles.amountCol} style={{ color: '#10b981' }}>
+                        {(order.totalAmount - (order.paidAmount || 0)).toLocaleString()} د.ع
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <button
                           type="button"
@@ -1705,6 +1816,59 @@ export default function TreasurySettlementPage() {
           <button className={styles.lightboxClose} onClick={() => setLightboxImage(null)}>×</button>
           <div className={styles.lightboxContainer} onClick={e => e.stopPropagation()}>
             <img src={lightboxImage} alt="مرفق مكبر" className={styles.lightboxImg} />
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Select Modal */}
+      {showBulkSelectModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowBulkSelectModal(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <h2 className={styles.modalTitle} style={{ color: '#60a5fa' }}>📋 تحديد متعدد عبر الإكسل</h2>
+            <div style={{ marginBottom: '1.5rem', color: '#94a3b8', fontSize: '0.95rem', lineHeight: '1.6' }}>
+              قم بنسخ ولصق أرقام الطلبات أو بوليصات الشحن من ملف الإكسل هنا. يمكنك لصق عمود واحد للمعرفات فقط (للتسوية الكاملة)، أو عمودين (رقم الطلب ثم المبلغ المستلم مفصولين بمسافة أو Tab) لتسجيل المبالغ الجزئية تلقائياً.
+              <br /><br />
+              <strong>مثال للإدخال:</strong><br />
+              <code style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', display: 'block', borderRadius: '6px', color: '#10b981', marginTop: '0.5rem' }}>
+                ORD-001<br />
+                ORD-002&nbsp;&nbsp;&nbsp;45000<br />
+                ORD-003&nbsp;&nbsp;&nbsp;20,000
+              </code>
+            </div>
+            
+            <textarea
+              value={bulkSelectText}
+              onChange={(e) => setBulkSelectText(e.target.value)}
+              placeholder="الصق المعرفات هنا..."
+              style={{
+                width: '100%',
+                height: '250px',
+                padding: '1rem',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                backgroundColor: 'rgba(0,0,0,0.2)',
+                color: '#fff',
+                fontFamily: 'monospace',
+                fontSize: '1rem',
+                resize: 'vertical',
+                outline: 'none',
+                direction: 'ltr',
+                textAlign: 'left'
+              }}
+            />
+            
+            <div className={styles.modalActions} style={{ marginTop: '1.5rem' }}>
+              <button 
+                className={styles.submitBtn} 
+                onClick={handleBulkSelect}
+                style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' }}
+              >
+                تحديد الطلبات
+              </button>
+              <button className={styles.cancelBtn} onClick={() => setShowBulkSelectModal(false)}>
+                إلغاء
+              </button>
+            </div>
           </div>
         </div>
       )}
