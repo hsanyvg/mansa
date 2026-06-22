@@ -64,10 +64,16 @@ export default function OrdersListPage() {
   const [showBulkSelectModal, setShowBulkSelectModal] = useState(false);
   const [bulkSelectText, setBulkSelectText] = useState('');
 
+  const [showStatusFilterDropdown, setShowStatusFilterDropdown] = useState(false);
+  const statusFilterRef = React.useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
         setShowBulkDropdown(false);
+      }
+      if (statusFilterRef.current && !statusFilterRef.current.contains(event.target as Node)) {
+        setShowStatusFilterDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -109,6 +115,7 @@ export default function OrdersListPage() {
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
     'pending': { label: 'قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
+    'in_progress': { label: 'قيد التنفيذ', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
     'backordered': { label: 'بانتظار المخزون', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
     'processing': { label: 'جاري التجهيز', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
     'shipped': { label: 'تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
@@ -528,6 +535,10 @@ export default function OrdersListPage() {
   const duplicateOrdersList = activeOrders.filter(order => {
     const ph = (order.customerPhone || order.phone || '').trim();
     return ph && phoneCounts[ph] > 1;
+  }).sort((a, b) => {
+    const phA = (a.customerPhone || a.phone || '').trim();
+    const phB = (b.customerPhone || b.phone || '').trim();
+    return phA.localeCompare(phB);
   });
 
   const returnedOrdersList = activeOrders.filter(o => o.status === 'returned');
@@ -539,12 +550,16 @@ export default function OrdersListPage() {
 
   const statusCounts = React.useMemo(() => {
     const counts: Record<string, number> = {};
-    baseList.forEach(order => {
+    const listToCount = showOnlySelected 
+      ? orders.filter(o => selectedOrderIds.includes(o.id))
+      : baseList;
+
+    listToCount.forEach(order => {
       const status = order.status || 'pending';
       counts[status] = (counts[status] || 0) + 1;
     });
     return counts;
-  }, [baseList]);
+  }, [baseList, showOnlySelected, selectedOrderIds, orders]);
 
   const baseListAfterStatus = React.useMemo(() => {
     let list = baseList;
@@ -553,7 +568,7 @@ export default function OrdersListPage() {
   }, [baseList, selectedStatus]);
 
   const filteredOrders = (showOnlySelected 
-    ? orders.filter(o => selectedOrderIds.includes(o.id))
+    ? orders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || (o.status || 'pending') === selectedStatus)
     : baseListAfterStatus).filter(order => {
     // We slice the ID exactly how it's displayed to match the user's visual search
     const displayId = order.id.slice(-6).toLowerCase();
@@ -580,7 +595,7 @@ export default function OrdersListPage() {
       phone.includes(columnFilters.phone.toLowerCase()) &&
       (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase())) &&
       notes.includes(columnFilters.notes.toLowerCase()) &&
-      (statusKey.includes(columnFilters.status.toLowerCase()) || statusLabel.includes(columnFilters.status.toLowerCase())) &&
+      (columnFilters.status === '' || columnFilters.status.split(',').includes(statusKey)) &&
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
       aTime.includes(columnFilters.addTime.toLowerCase()) &&
       empName.includes(columnFilters.employeeName.toLowerCase()) &&
@@ -960,6 +975,8 @@ export default function OrdersListPage() {
 
   const [showBulkStatusModal, setShowBulkStatusModal] = useState(false);
   const [bulkStatusValue, setBulkStatusValue] = useState('pending');
+  const [deliveryCompany, setDeliveryCompany] = useState('');
+  const [customDeliveryCompany, setCustomDeliveryCompany] = useState('');
 
   const getStockState = (status: string) => {
     if (['shipped', 'delivered'].includes(status)) return 'HARD_DEDUCTED';
@@ -1165,38 +1182,10 @@ export default function OrdersListPage() {
   const handleInlineStatusChange = async (orderId: string, oldStatus: string, newStatus: string) => {
     if (oldStatus === newStatus) return;
 
-    setIsUpdating(true);
-    try {
-      const orderToUpdate = orders.find(o => o.id === orderId);
-      if (!orderToUpdate) return;
-      
-      const isFullyLocked = false; // TEMPORARILY UNLOCKED ['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToUpdate.status) || orderToUpdate.isArchived || orderToUpdate.is_settled === true;
-      if (isFullyLocked) {
-        alert("🔒 إجراء مرفوض: الطلب مقفل بالكامل (مشحون، واصل، راجع، ملغى، أو متمت تسويته).");
-        setIsUpdating(false);
-        return;
-      }
-      if (oldStatus === 'shipped') {
-         alert("🔒 إجراء مرفوض: لا يمكن تغيير حالة طلب مشحون مباشرة من هنا (حماية محاسبية).");
-         setIsUpdating(false);
-         return;
-      }
-
-      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
-      const batch = writeBatch(db);
-
-      batch.update(orderRef, { status: newStatus });
-
-      await syncStockForStatusChange(orderToUpdate.items || [], oldStatus, newStatus, batch);
-
-      await batch.commit();
-      setNotificationModal({ show: true, message: 'تم تحديث حالة الطلب بنجاح' });
-    } catch (error) {
-      console.error("Error updating inline order status:", error);
-      setNotificationModal({ show: true, message: 'حدث خطأ أثناء تحديث الحالة' });
-    } finally {
-      setIsUpdating(false);
-    }
+    // Open the status modal so they can select shipping company or see warnings
+    setBulkStatusValue(newStatus);
+    setSelectedOrderIds([orderId]);
+    setShowBulkStatusModal(true);
   };
 
   const handleCancelOrder = async (order: any) => {
@@ -1296,7 +1285,7 @@ export default function OrdersListPage() {
         if (!orderToUpdate) continue;
         
         const isFullyLocked = false; 
-        if (isFullyLocked || orderToUpdate.status === 'shipped') continue; // Skip locked or shipped orders
+        if (isFullyLocked) continue; // Unlocked shipped and delivered statuses
         
         const oldStatus = orderToUpdate.status || 'pending';
         if (oldStatus !== newStatus) {
@@ -1339,7 +1328,14 @@ export default function OrdersListPage() {
       // 3. Process each order and apply stock transitions in memory
       for (const { order, oldStatus, newStatus } of validOrders) {
         const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
-        batch.update(orderRef, { status: newStatus });
+        
+        const finalDeliveryCompany = deliveryCompany === 'أخرى' ? customDeliveryCompany : deliveryCompany;
+        const updateData: any = { status: newStatus };
+        if (newStatus === 'delivered' && finalDeliveryCompany.trim() !== '') {
+          updateData.shippingCompany = finalDeliveryCompany.trim();
+        }
+        
+        batch.update(orderRef, updateData);
         updatedCount++;
 
         const oldState = getStockState(oldStatus);
@@ -1384,6 +1380,8 @@ export default function OrdersListPage() {
       setNotificationModal({ show: true, message: `تم تحديث حالة ${updatedCount} طلبات بنجاح.` });
       setShowBulkStatusModal(false);
       setSelectedOrderIds([]);
+      setDeliveryCompany('');
+      setCustomDeliveryCompany('');
     } catch (error) {
       console.error("Error updating bulk order status:", error);
       setNotificationModal({ show: true, message: 'حدث خطأ أثناء التحديث الجماعي' });
@@ -2615,17 +2613,60 @@ export default function OrdersListPage() {
               <th>
                 <div className={styles.thContent}>
                   <span>الحالة</span>
-                  <select 
-                    className={styles.colFilterInput} 
-                    value={columnFilters.status} 
-                    onChange={(e) => handleFilterChange('status', e.target.value)}
-                    style={{ padding: '0.3rem', cursor: 'pointer', backgroundColor: 'var(--surface)', color: 'var(--text-main)' }}
-                  >
-                    <option value="">الكل</option>
-                    {Object.entries(statusMap).map(([key, info]) => (
-                      <option key={key} value={key}>{info.label} ({key})</option>
-                    ))}
-                  </select>
+                  <div style={{ position: 'relative', width: '100%' }} ref={statusFilterRef}>
+                    <div 
+                      className={styles.colFilterInput} 
+                      style={{ padding: '0.4rem', cursor: 'pointer', backgroundColor: 'var(--surface)', color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '32px', userSelect: 'none' }}
+                      onClick={() => setShowStatusFilterDropdown(!showStatusFilterDropdown)}
+                    >
+                      <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {columnFilters.status === '' ? 'الكل' : `${columnFilters.status.split(',').length} محدد`}
+                      </span>
+                      <span style={{ fontSize: '0.6rem' }}>▼</span>
+                    </div>
+                    {showStatusFilterDropdown && (
+                      <div style={{ 
+                        position: 'absolute', top: '100%', right: 0, zIndex: 50, minWidth: '220px',
+                        backgroundColor: 'var(--surface)', border: '1px solid var(--border)', 
+                        borderRadius: '6px', marginTop: '4px', maxHeight: '300px', overflowY: 'auto',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.6)', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem'
+                      }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: columnFilters.status === '' ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }} onClick={(e) => e.stopPropagation()}>
+                           <input 
+                              type="checkbox" 
+                              checked={columnFilters.status === ''} 
+                              onChange={() => handleFilterChange('status', '')} 
+                              style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold' }}>تحديد الكل</span>
+                        </label>
+                        <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.1)', margin: '0.2rem 0' }}></div>
+                        {Object.entries(statusMap).map(([key, info]) => {
+                          const isChecked = (columnFilters.status ? columnFilters.status.split(',') : []).includes(key);
+                          return (
+                            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.15)' : 'transparent' }} onClick={(e) => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked} 
+                                onChange={(e) => {
+                                  const currentArr = columnFilters.status ? columnFilters.status.split(',') : [];
+                                  let newArr;
+                                  if (e.target.checked) {
+                                    newArr = [...currentArr, key];
+                                  } else {
+                                    newArr = currentArr.filter(k => k !== key);
+                                  }
+                                  handleFilterChange('status', newArr.join(','));
+                                }} 
+                                style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }}
+                              />
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>{info.label} ({key})</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </th>
               <th>
@@ -2665,7 +2706,7 @@ export default function OrdersListPage() {
             {paginatedOrders.length > 0 ? paginatedOrders.map((order) => {
               const isSelected = selectedOrderIds.includes(order.id);
               const isFullyLocked = false; // TEMPORARILY UNLOCKED ['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.isArchived || order.is_settled === true;
-              const isDeleteLocked = !order.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.is_settled === true);
+              const isDeleteLocked = false; // UNLOCKED! !order.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(order.status) || order.is_settled === true);
               
               return (
                 <tr 
@@ -2763,7 +2804,12 @@ export default function OrdersListPage() {
                       <span style={{ color: 'var(--text-muted)' }}>{order.addTime}</span>
                     </div>
                   </td>
-                  <td style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{order.employeeName || '---'}</td>
+                  <td>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
+                      <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }} title="مُدخل الطلب">إ: {order.employeeName || '---'}</span>
+                      <span style={{ color: '#60a5fa' }} title="موظف الحجز (النازل)">ح: {order.bookingEmployeeName || '---'}</span>
+                    </div>
+                  </td>
                   <td>{order.shippingCompany || '---'}</td>
                   {activeTab === 'returned' && (
                     <td onClick={(e) => e.stopPropagation()}>
@@ -3193,6 +3239,7 @@ export default function OrdersListPage() {
                       <label className={styles.label}>الحالة</label>
                       <select className={styles.input} value={editingOrder.status} onChange={e => setEditingOrder({...editingOrder, status: e.target.value})} disabled={isPartiallyLocked} style={lockedInputStyle}>
                         <option value="pending">قيد الانتظار (pending)</option>
+                        <option value="in_progress">قيد التنفيذ (in_progress)</option>
                         <option value="backordered">بانتظار المخزون (backordered)</option>
                         <option value="processing">جاري التجهيز (processing)</option>
                         <option value="shipped">مشحون (shipped)</option>
@@ -3595,6 +3642,36 @@ export default function OrdersListPage() {
                 <p style={{ color: '#fbbf24', fontSize: '0.9rem', marginTop: '1rem' }}>
                   ملاحظة: سيتم إرجاع المواد للمخزن تلقائياً.
                 </p>
+              )}
+              {bulkStatusValue === 'delivered' && (
+                <div style={{ marginTop: '1.5rem', textAlign: 'right', backgroundColor: 'var(--surface-hover)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>أي شركة توصيل سلمت هذا الطلب؟ (اختياري)</label>
+                  <select 
+                    className={styles.input} 
+                    value={deliveryCompany} 
+                    onChange={(e) => {
+                      setDeliveryCompany(e.target.value);
+                      if (e.target.value !== 'أخرى') setCustomDeliveryCompany('');
+                    }}
+                  >
+                    <option value="">-- حدد الشركة لتسهيل الحسابات --</option>
+                    <option value="شركة زاجل">شركة زاجل</option>
+                    <option value="شركة النبع">شركة النبع</option>
+                    <option value="جيني">جيني</option>
+                    <option value="مندوب خاص">مندوب خاص</option>
+                    <option value="أخرى">أخرى...</option>
+                  </select>
+                  {deliveryCompany === 'أخرى' && (
+                    <input 
+                      type="text" 
+                      className={styles.input} 
+                      style={{ marginTop: '0.5rem' }} 
+                      placeholder="اكتب اسم الشركة..." 
+                      value={customDeliveryCompany}
+                      onChange={(e) => setCustomDeliveryCompany(e.target.value)}
+                    />
+                  )}
+                </div>
               )}
             </div>
             <div className={styles.modalFooter} style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>

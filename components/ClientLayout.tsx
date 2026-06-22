@@ -584,6 +584,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>فئات المصروفات</span>
             <span className={styles.submenuIcon}>📂</span>
           </Link>
+          <Link href="/settings/shipping-companies" className={`${styles.submenuItem} ${pathname === '/settings/shipping-companies' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>شركات الشحن</span>
+            <span className={styles.submenuIcon}>🚚</span>
+          </Link>
           <Link href="/settings/wallets" className={`${styles.submenuItem} ${pathname === '/settings/wallets' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>محافظ الخزينة</span>
             <span className={styles.submenuIcon}>🏦</span>

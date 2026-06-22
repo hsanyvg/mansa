@@ -580,7 +580,8 @@ export default function MobileApp() {
                       {ord.status === 'delivered' ? 'واصل' :
                        ord.status === 'returned' ? 'راجع' :
                        ord.status === 'cancelled' ? 'ملغي' :
-                       ord.status === 'backordered' ? 'بانتظار توفر المخزون' : 'قيد الانتظار'}
+                       ord.status === 'backordered' ? 'بانتظار توفر المخزون' :
+                       ord.status === 'in_progress' ? 'قيد التنفيذ' : 'قيد الانتظار'}
                     </span>
                   </div>
                 </div>

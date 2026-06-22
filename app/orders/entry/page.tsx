@@ -71,6 +71,7 @@ export default function OrderEntryPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [selectedBookingEmployeeId, setSelectedBookingEmployeeId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +103,8 @@ export default function OrderEntryPage() {
     });
     const savedEmpId = localStorage.getItem('selectedEmployeeId');
     if (savedEmpId) setSelectedEmployeeId(savedEmpId);
+    const savedBookingEmpId = localStorage.getItem('selectedBookingEmployeeId');
+    if (savedBookingEmpId) setSelectedBookingEmployeeId(savedBookingEmpId);
     return () => unsub();
   }, []);
 
@@ -480,8 +483,8 @@ export default function OrderEntryPage() {
     setHasAttemptedSubmit(true);
     
     // Validation
-    if (!selectedEmployeeId) {
-      alert("يرجى اختيار الموظف مُدخل الطلب أولاً.");
+    if (!selectedEmployeeId || !selectedBookingEmployeeId) {
+      alert("يرجى اختيار الموظف مُدخل الطلب وموظف الحجز أولاً.");
       return;
     }
 
@@ -518,6 +521,7 @@ export default function OrderEntryPage() {
       const newOrderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', nextId.toString());
 
       const emp = employees.find(e => e.id === selectedEmployeeId);
+      const bookingEmp = employees.find(e => e.id === selectedBookingEmployeeId);
 
       let isOrderBackordered = false;
 
@@ -561,6 +565,8 @@ export default function OrderEntryPage() {
       const orderData = {
         employeeId: selectedEmployeeId,
         employeeName: emp?.name || 'مجهول',
+        bookingEmployeeId: selectedBookingEmployeeId,
+        bookingEmployeeName: bookingEmp?.name || 'مجهول',
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,
@@ -694,22 +700,42 @@ export default function OrderEntryPage() {
         <div className={`${styles.formSection} ${hasGlobalError ? styles.formWrapperError : ''}`}>
           <form onSubmit={handleSubmit}>
           
-          <div className={styles.formGroup} style={{ marginBottom: '1.5rem', background: 'rgba(139, 92, 246, 0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-            <label className={styles.label} style={{ color: '#c4b5fd' }}>الموظف مُدخل الطلب *</label>
-            <select 
-              className={styles.input}
-              value={selectedEmployeeId}
-              onChange={(e) => {
-                setSelectedEmployeeId(e.target.value);
-                localStorage.setItem('selectedEmployeeId', e.target.value);
-              }}
-              required
-            >
-              <option value="">-- اختر اسمك --</option>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>{emp.name}</option>
-              ))}
-            </select>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', background: 'rgba(139, 92, 246, 0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+            <div className={styles.formGroup} style={{ flex: 1, marginBottom: 0 }}>
+              <label className={styles.label} style={{ color: '#c4b5fd' }}>مُدخل الطلب (عنده النظام) *</label>
+              <select 
+                className={styles.input}
+                value={selectedEmployeeId}
+                onChange={(e) => {
+                  setSelectedEmployeeId(e.target.value);
+                  localStorage.setItem('selectedEmployeeId', e.target.value);
+                }}
+                required
+              >
+                <option value="">-- اختر موظف الإدخال --</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className={styles.formGroup} style={{ flex: 1, marginBottom: 0 }}>
+              <label className={styles.label} style={{ color: '#60a5fa' }}>موظف الحجز (منزل الطلب) *</label>
+              <select 
+                className={styles.input}
+                value={selectedBookingEmployeeId}
+                onChange={(e) => {
+                  setSelectedBookingEmployeeId(e.target.value);
+                  localStorage.setItem('selectedBookingEmployeeId', e.target.value);
+                }}
+                required
+              >
+                <option value="">-- اختر موظف الحجز --</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className={styles.formGroup}>
