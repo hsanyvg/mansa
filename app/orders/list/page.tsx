@@ -1692,9 +1692,14 @@ export default function OrdersListPage() {
         return;
       }
       const exportData = ordersToExport.map(order => {
-        const productNames = (order.items || []).map((item: any) => item.productName).join(' + ');
+        const itemsList = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join('\n');
         const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
         
+        let formattedNotes = itemsList;
+        if (order.notes) {
+          formattedNotes += `\n\n*${order.notes}`;
+        }
+
         let phone1 = order.customerPhone || order.phone || '';
         let phone2 = '';
         if (phone1.includes('-')) {
@@ -1735,9 +1740,8 @@ export default function OrdersListPage() {
           'المحافظة': zitaGov,
           'المنطقة': order.region || '',
           'المبلغ الكلي': order.totalAmount || order.price || 0,
-          'نوع البضاعة': productNames,
           'العدد': totalQuantity,
-          'الملاحظات': order.notes || ''
+          'الملاحظات': formattedNotes
         };
       });
 
