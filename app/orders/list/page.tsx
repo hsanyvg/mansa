@@ -1692,7 +1692,7 @@ export default function OrdersListPage() {
         return;
       }
       const exportData = ordersToExport.map(order => {
-        const itemsList = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join('\n');
+        const itemsList = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join(' + ');
         const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
         
         let formattedNotes = itemsList;
