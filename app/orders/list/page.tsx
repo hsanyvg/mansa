@@ -1348,11 +1348,14 @@ export default function OrdersListPage() {
           // Apply delivery cost deduction based on governorate
           const company = shippingCompanies.find(c => c.name === finalDeliveryCompany.trim());
           if (company && company.rates && order.governorate) {
-            const cost = company.rates[order.governorate];
-            if (cost > 0 && !order.deliveryCost) {
-              updateData.deliveryCost = cost;
-              const currentTotal = order.totalAmount || order.price || 0;
-              updateData.totalAmount = currentTotal - cost;
+            const matchedKey = Object.keys(company.rates).find(govKey => order.governorate.includes(govKey));
+            if (matchedKey) {
+              const cost = company.rates[matchedKey];
+              if (cost > 0 && !order.deliveryCost) {
+                updateData.deliveryCost = cost;
+                const currentTotal = order.totalAmount || order.price || 0;
+                updateData.totalAmount = currentTotal - cost;
+              }
             }
           }
         }
