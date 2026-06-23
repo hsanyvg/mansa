@@ -1342,7 +1342,7 @@ export default function OrdersListPage() {
         const finalDeliveryCompany = deliveryCompany === 'أخرى' ? customDeliveryCompany : deliveryCompany;
         const updateData: any = { status: newStatus };
         
-        if ((newStatus === 'delivered' || newStatus === 'shipped') && finalDeliveryCompany.trim() !== '') {
+        if (newStatus === 'delivered' && finalDeliveryCompany.trim() !== '') {
           updateData.shippingCompany = finalDeliveryCompany.trim();
           
           // Apply delivery cost deduction based on governorate
@@ -1353,8 +1353,6 @@ export default function OrdersListPage() {
               const cost = company.rates[matchedKey];
               if (cost > 0 && !order.deliveryCost) {
                 updateData.deliveryCost = cost;
-                const currentTotal = order.totalAmount || order.price || 0;
-                updateData.netAmount = currentTotal - cost;
               }
             }
           }
@@ -1692,7 +1690,7 @@ export default function OrdersListPage() {
           'رقم الهاتف': order.customerPhone || order.phone,
           'المبلغ الكلي': order.totalAmount || order.price || 0,
           'اجرة التوصيل': order.deliveryCost || 0,
-          'المبلغ الصافي': order.netAmount || order.totalAmount || order.price || 0,
+          'المبلغ الصافي': (order.totalAmount || order.price || 0) - (order.deliveryCost || 0),
           'المنتجات': itemsList,
           'الحالة': statusLabel,
           'اسم الموظف': order.employeeName,
@@ -1768,6 +1766,8 @@ export default function OrdersListPage() {
           'المحافظة': zitaGov,
           'المنطقة': order.region || '',
           'المبلغ الكلي': order.totalAmount || order.price || 0,
+          'اجرة التوصيل': order.deliveryCost || 0,
+          'المبلغ الصافي': (order.totalAmount || order.price || 0) - (order.deliveryCost || 0),
           'نوع البضاعة': '',
           'العدد': totalQuantity,
           'الملاحظات': formattedNotes
@@ -3676,9 +3676,9 @@ export default function OrdersListPage() {
                   ملاحظة: سيتم إرجاع المواد للمخزن تلقائياً.
                 </p>
               )}
-              {(bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && (
+              {bulkStatusValue === 'delivered' && (
                 <div style={{ marginTop: '1.5rem', textAlign: 'right', backgroundColor: 'var(--surface-hover)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>أي شركة توصيل استلمت هذا الطلب؟ (اختياري)</label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>أي شركة توصيل سلمت هذا الطلب؟ (اختياري)</label>
                   <select 
                     className={styles.input} 
                     value={deliveryCompany} 
