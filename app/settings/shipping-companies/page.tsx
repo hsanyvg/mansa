@@ -25,6 +25,7 @@ export default function ShippingCompaniesPage() {
   
   const [editingRatesId, setEditingRatesId] = useState<string | null>(null);
   const [ratesData, setRatesData] = useState<Record<string, number>>({});
+  const [unifiedRate, setUnifiedRate] = useState<string>('');
 
   useEffect(() => {
     const companiesRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'shipping_companies');
@@ -100,6 +101,17 @@ export default function ShippingCompaniesPage() {
       console.error("Error updating rates:", error);
       showToastMsg("حدث خطأ أثناء الحفظ", "error");
     }
+  };
+
+  const handleUnifyRates = () => {
+    const rate = Number(unifiedRate);
+    if (!rate || rate < 0) return;
+    const newRates: Record<string, number> = { ...ratesData };
+    GOVERNORATES.forEach(gov => {
+      newRates[gov] = rate;
+    });
+    setRatesData(newRates);
+    setUnifiedRate('');
   };
 
   return (
@@ -180,6 +192,29 @@ export default function ShippingCompaniesPage() {
               <button className={styles.closeBtn} onClick={() => setEditingRatesId(null)}>×</button>
             </div>
             <div className={styles.modalBody}>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ flex: 1 }}>
+                  <label className={styles.label} style={{ marginBottom: '0.5rem', display: 'block' }}>توحيد تكلفة التوصيل لجميع المحافظات</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="number" 
+                      className={styles.input}
+                      value={unifiedRate}
+                      onChange={e => setUnifiedRate(e.target.value)}
+                      placeholder="رقم (مثال: 5000)"
+                      style={{ flex: 1 }}
+                    />
+                    <button 
+                      className={styles.addButton} 
+                      onClick={handleUnifyRates}
+                      style={{ height: 'auto', padding: '0 1.5rem' }}
+                    >
+                      تطبيق على الكل
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className={styles.ratesGrid}>
                 {GOVERNORATES.map(gov => (
                   <div key={gov} className={styles.rateGroup}>
