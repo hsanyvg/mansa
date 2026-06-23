@@ -34,6 +34,8 @@ export default function OrdersListPage() {
   const [compositeProductsData, setCompositeProductsData] = useState<any[]>([]);
   const [categoriesDb, setCategoriesDb] = useState<any[]>([]);
   const [pagesDb, setPagesDb] = useState<any[]>([]);
+  const [shippingCompanies, setShippingCompanies] = useState<any[]>([]);
+  
   const [searchQueryEdit, setSearchQueryEdit] = useState('');
   const [showProductDropdownEdit, setShowProductDropdownEdit] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
@@ -266,6 +268,14 @@ export default function OrdersListPage() {
     const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'employees'), (snap) => {
       const names = snap.docs.map(d => d.data().name).filter(Boolean);
       setEmployeesList(names);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'shipping_companies'), (snap) => {
+      const companies = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setShippingCompanies(companies);
     });
     return () => unsub();
   }, []);
@@ -1331,8 +1341,20 @@ export default function OrdersListPage() {
         
         const finalDeliveryCompany = deliveryCompany === 'أخرى' ? customDeliveryCompany : deliveryCompany;
         const updateData: any = { status: newStatus };
+        
         if (newStatus === 'delivered' && finalDeliveryCompany.trim() !== '') {
           updateData.shippingCompany = finalDeliveryCompany.trim();
+          
+          // Apply delivery cost deduction based on governorate
+          const company = shippingCompanies.find(c => c.name === finalDeliveryCompany.trim());
+          if (company && company.rates && order.governorate) {
+            const cost = company.rates[order.governorate];
+            if (cost > 0 && !order.deliveryCost) {
+              updateData.deliveryCost = cost;
+              const currentTotal = order.totalAmount || order.price || 0;
+              updateData.totalAmount = currentTotal - cost;
+            }
+          }
         }
         
         batch.update(orderRef, updateData);
@@ -3661,10 +3683,9 @@ export default function OrdersListPage() {
                     }}
                   >
                     <option value="">-- حدد الشركة لتسهيل الحسابات --</option>
-                    <option value="شركة زاجل">شركة زاجل</option>
-                    <option value="شركة النبع">شركة النبع</option>
-                    <option value="جيني">جيني</option>
-                    <option value="مندوب خاص">مندوب خاص</option>
+                    {shippingCompanies.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
                     <option value="أخرى">أخرى...</option>
                   </select>
                   {deliveryCompany === 'أخرى' && (
