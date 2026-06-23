@@ -1353,6 +1353,8 @@ export default function OrdersListPage() {
               const cost = company.rates[matchedKey];
               if (cost > 0 && !order.deliveryCost) {
                 updateData.deliveryCost = cost;
+                const currentTotal = order.totalAmount || order.price || 0;
+                updateData.totalAmount = currentTotal - cost;
               }
             }
           }
@@ -1690,7 +1692,6 @@ export default function OrdersListPage() {
           'رقم الهاتف': order.customerPhone || order.phone,
           'المبلغ الكلي': order.totalAmount || order.price || 0,
           'اجرة التوصيل': order.deliveryCost || 0,
-          'المبلغ الصافي': (order.totalAmount || order.price || 0) - (order.deliveryCost || 0),
           'المنتجات': itemsList,
           'الحالة': statusLabel,
           'اسم الموظف': order.employeeName,
@@ -1766,8 +1767,6 @@ export default function OrdersListPage() {
           'المحافظة': zitaGov,
           'المنطقة': order.region || '',
           'المبلغ الكلي': order.totalAmount || order.price || 0,
-          'اجرة التوصيل': order.deliveryCost || 0,
-          'المبلغ الصافي': (order.totalAmount || order.price || 0) - (order.deliveryCost || 0),
           'نوع البضاعة': '',
           'العدد': totalQuantity,
           'الملاحظات': formattedNotes

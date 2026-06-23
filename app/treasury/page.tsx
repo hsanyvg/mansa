@@ -347,8 +347,7 @@ export default function TreasurySettlementPage() {
 
       snapshot.docs.forEach((document) => {
         const data = document.data();
-        const grossAmount = Number(data.totalAmount) || Number(data.price) || 0;
-        const amount = grossAmount - (Number(data.deliveryCost) || 0);
+        const amount = Number(data.totalAmount) || Number(data.price) || 0;
         
         const isSettled = data.is_settled === true || data.paymentStatus === 'settled';
         const isDelivered = data.status === 'delivered' || data.fulfillmentStatus === 'Delivered';
