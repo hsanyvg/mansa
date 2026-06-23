@@ -131,6 +131,11 @@ interface Wallet {
   name: string;
 }
 
+interface ShippingCompany {
+  id: string;
+  name: string;
+}
+
 interface UploadedImage {
   id: string;
   name: string;
@@ -147,6 +152,7 @@ export default function TreasurySettlementPage() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [isSettling, setIsSettling] = useState(false);
   const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [shippingCompanies, setShippingCompanies] = useState<ShippingCompany[]>([]);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [selectedWalletId, setSelectedWalletId] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -294,7 +300,7 @@ export default function TreasurySettlementPage() {
     setUploadedImages(prev => prev.filter(img => img.id !== id));
   };
 
-  // Fetch wallets list
+  // Fetch wallets list and shipping companies
   useEffect(() => {
     const unsubWallets = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), (snapshot) => {
       setWallets(snapshot.docs.map(doc => ({
@@ -302,7 +308,18 @@ export default function TreasurySettlementPage() {
         name: doc.data().name || '',
       })));
     });
-    return () => unsubWallets();
+
+    const unsubCompanies = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'shipping_companies'), (snapshot) => {
+      setShippingCompanies(snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name || '',
+      })));
+    });
+
+    return () => {
+      unsubWallets();
+      unsubCompanies();
+    };
   }, []);
 
   // Listen to outside clicks to close the Actions dropdown
@@ -1383,14 +1400,17 @@ export default function TreasurySettlementPage() {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label className={styles.label}>اسم/رقم المندوب المسلِّم</label>
-                  <input
-                    type="text"
-                    className={styles.input}
-                    placeholder="أدخل اسم أو رقم المندوب..."
+                  <label className={styles.label}>اسم شركة التوصيل / المندوب المسلِّم</label>
+                  <select
+                    className={styles.select}
                     value={deliveryAgent}
                     onChange={e => setDeliveryAgent(e.target.value)}
-                  />
+                  >
+                    <option value="">اختر الشركة أو المندوب...</option>
+                    {shippingCompanies.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className={styles.formGroup}>
