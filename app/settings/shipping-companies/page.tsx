@@ -3,19 +3,28 @@
 import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import { db, auth } from "../../../lib/firebase";
-import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, writeBatch, updateDoc } from 'firebase/firestore';
 
 interface ShippingCompany {
   id: string;
   name: string;
   createdAt: any;
+  rates?: Record<string, number>;
 }
+
+const GOVERNORATES = [
+  'بغداد', 'البصرة', 'نينوى', 'أربيل', 'بابل', 'ذي قار', 'الأنبار', 'واسط',
+  'النجف', 'كربلاء', 'السليمانية', 'كركوك', 'ميسان', 'ديالى', 'القادسية', 'المثنى', 'دهوك', 'صلاح الدين'
+];
 
 export default function ShippingCompaniesPage() {
   const [companies, setCompanies] = useState<ShippingCompany[]>([]);
   const [inputName, setInputName] = useState('');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  
+  const [editingRatesId, setEditingRatesId] = useState<string | null>(null);
+  const [ratesData, setRatesData] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const companiesRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'shipping_companies');
@@ -79,6 +88,20 @@ export default function ShippingCompaniesPage() {
     }
   };
 
+  const handleSaveRates = async () => {
+    if (!editingRatesId) return;
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'shipping_companies', editingRatesId), {
+        rates: ratesData
+      });
+      showToastMsg("تم حفظ أسعار التوصيل بنجاح");
+      setEditingRatesId(null);
+    } catch (error) {
+      console.error("Error updating rates:", error);
+      showToastMsg("حدث خطأ أثناء الحفظ", "error");
+    }
+  };
+
   return (
     <div className={styles.container}>
       {toast && (
@@ -120,6 +143,17 @@ export default function ShippingCompaniesPage() {
                 <tr key={cat.id}>
                   <td>{cat.name}</td>
                   <td style={{ textAlign: 'center' }}>
+                    <button 
+                      className={styles.editBtn} 
+                      onClick={() => {
+                        setEditingRatesId(cat.id);
+                        setRatesData(cat.rates || {});
+                      }} 
+                      title="تعديل أسعار التوصيل" 
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', marginRight: '10px' }}
+                    >
+                      💰
+                    </button>
                     <button className={styles.deleteBtn} onClick={() => handleDelete(cat.id)} title="حذف">
                       🗑️
                     </button>
@@ -137,6 +171,37 @@ export default function ShippingCompaniesPage() {
           </table>
         </div>
       </div>
+
+      {editingRatesId && (
+        <div className={styles.modalOverlay} onClick={() => setEditingRatesId(null)}>
+          <div className={styles.ratesModal} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2>أسعار التوصيل للمحافظات</h2>
+              <button className={styles.closeBtn} onClick={() => setEditingRatesId(null)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.ratesGrid}>
+                {GOVERNORATES.map(gov => (
+                  <div key={gov} className={styles.rateGroup}>
+                    <label>{gov}</label>
+                    <input 
+                      type="number" 
+                      className={styles.input}
+                      value={ratesData[gov] || ''} 
+                      onChange={e => setRatesData({...ratesData, [gov]: Number(e.target.value) || 0})}
+                      placeholder="مثال: 5000"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.cancelBtn} onClick={() => setEditingRatesId(null)}>إلغاء</button>
+              <button className={styles.saveBtn} onClick={handleSaveRates}>حفظ الأسعار</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
