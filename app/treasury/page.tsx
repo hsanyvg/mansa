@@ -170,6 +170,7 @@ export default function TreasurySettlementPage() {
   }, [archivedSettlements]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [showActionsDropdown, setShowActionsDropdown] = useState(false);
+  const [showSelectedOrdersList, setShowSelectedOrdersList] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [showBulkSelectModal, setShowBulkSelectModal] = useState(false);
   const [bulkSelectText, setBulkSelectText] = useState('');
@@ -1376,8 +1377,18 @@ export default function TreasurySettlementPage() {
             </div>
             
             <div className={styles.settlementSummary}>
-              <div className={styles.summaryItem}>
-                <span className={styles.summaryLabel}>عدد الطلبات المحددة</span>
+              <div 
+                className={styles.summaryItem}
+                onClick={() => setShowSelectedOrdersList(!showSelectedOrdersList)}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+                title="اضغط لعرض أو إخفاء الطلبات المحددة"
+              >
+                <span className={styles.summaryLabel}>
+                  عدد الطلبات المحددة 
+                  <span style={{ fontSize: '0.8rem', marginRight: '0.5rem', opacity: 0.7 }}>
+                    {showSelectedOrdersList ? '▲' : '▼'}
+                  </span>
+                </span>
                 <span className={styles.summaryValue} style={{ color: '#10b981' }}>{selectedOrders.size} طلب</span>
               </div>
               <div className={styles.summaryItem}>
@@ -1385,6 +1396,44 @@ export default function TreasurySettlementPage() {
                 <span className={styles.summaryValue} style={{ color: '#38bdf8' }}>{totalSelectedAmount.toLocaleString()} د.ع</span>
               </div>
             </div>
+
+            {showSelectedOrdersList && selectedOrders.size > 0 && (
+              <div style={{
+                maxHeight: '200px',
+                overflowY: 'auto',
+                backgroundColor: 'rgba(0,0,0,0.2)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: '8px',
+                margin: '0 1.5rem 1.5rem 1.5rem',
+                padding: '0.5rem'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', color: '#cbd5e1' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'right' }}>
+                      <th style={{ padding: '0.5rem' }}>رقم الطلب</th>
+                      <th style={{ padding: '0.5rem' }}>اسم الزبون</th>
+                      <th style={{ padding: '0.5rem' }}>المبلغ المستلم</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from(selectedOrders).map(orderId => {
+                      const order = pendingOrders.find(o => o.id === orderId);
+                      if (!order) return null;
+                      const inputAmount = bulkSettlementAmounts[orderId];
+                      const remainingAmount = order.totalAmount - (order.paidAmount || 0);
+                      const amountStr = (inputAmount !== undefined ? inputAmount : remainingAmount).toLocaleString();
+                      return (
+                        <tr key={orderId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.5rem' }}>{order.id.slice(-6).toUpperCase()}</td>
+                          <td style={{ padding: '0.5rem' }}>{order.customerName}</td>
+                          <td style={{ padding: '0.5rem', color: '#10b981', direction: 'ltr', textAlign: 'right' }}>{amountStr} د.ع</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             <div className={styles.settlementModalBody}>
               <div className={styles.modalFormGrid}>
