@@ -1354,7 +1354,7 @@ export default function OrdersListPage() {
               if (cost > 0 && !order.deliveryCost) {
                 updateData.deliveryCost = cost;
                 const currentTotal = order.totalAmount || order.price || 0;
-                updateData.totalAmount = currentTotal - cost;
+                updateData.netAmount = currentTotal - cost;
               }
             }
           }
@@ -1690,7 +1690,9 @@ export default function OrdersListPage() {
           'المحافظة': order.governorate,
           'المنطقة': order.region,
           'رقم الهاتف': order.customerPhone || order.phone,
-          'المبلغ الكلي': order.formattedTotal,
+          'المبلغ الكلي': order.totalAmount || order.price || 0,
+          'اجرة التوصيل': order.deliveryCost || 0,
+          'المبلغ الصافي': order.netAmount || order.totalAmount || order.price || 0,
           'المنتجات': itemsList,
           'الحالة': statusLabel,
           'اسم الموظف': order.employeeName,
