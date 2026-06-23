@@ -1718,15 +1718,16 @@ export default function OrdersListPage() {
 
         let zitaGov = (order.governorate || '').trim();
         if (zitaGov.includes('ميسان') || zitaGov.includes('العمارة')) zitaGov = 'العمارة';
-        else if (zitaGov.includes('بابل') || zitaGov.includes('الحلة')) zitaGov = 'الحلة';
+        else if (zitaGov.includes('بابل') || zitaGov.includes('الحلة')) zitaGov = 'بابل';
         else if (zitaGov.includes('ذي قار') || zitaGov.includes('الناصرية')) zitaGov = 'الناصرية';
-        else if (zitaGov.includes('واسط') || zitaGov.includes('الكوت')) zitaGov = 'الكوت';
+        else if (zitaGov.includes('واسط') || zitaGov.includes('الكوت')) zitaGov = 'واسط';
         else if (zitaGov.includes('المثنى') || zitaGov.includes('السماوة')) zitaGov = 'السماوة';
         else if (zitaGov.includes('القادسية') || zitaGov.includes('الديوانية')) zitaGov = 'الديوانية';
-        else if (zitaGov.includes('نينوى') || zitaGov.includes('الموصل')) zitaGov = 'الموصل';
-        else if (zitaGov.includes('الأنبار') || zitaGov.includes('الرمادي')) zitaGov = 'الرمادي';
-        else if (zitaGov.includes('ديالى') || zitaGov.includes('بعقوبة')) zitaGov = 'بعقوبة';
-        else if (zitaGov.includes('صلاح الدين') || zitaGov.includes('تكريت')) zitaGov = 'تكريت';
+        else if (zitaGov.includes('نينوى') || zitaGov.includes('الموصل') || zitaGov.includes('موصل')) zitaGov = 'موصل';
+        else if (zitaGov.includes('الأنبار') || zitaGov.includes('الرمادي') || zitaGov.includes('الانبار')) zitaGov = 'الانبار';
+        else if (zitaGov.includes('ديالى') || zitaGov.includes('بعقوبة')) zitaGov = 'ديالى';
+        else if (zitaGov.includes('صلاح الدين') || zitaGov.includes('تكريت')) zitaGov = 'صلاح الدين';
+        else if (zitaGov.includes('أربيل') || zitaGov.includes('اربيل')) zitaGov = 'اربيل';
         // Fallback: if it still has parentheses, just take the first part
         if (zitaGov.includes('(')) {
           zitaGov = zitaGov.split('(')[0].trim();
