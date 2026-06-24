@@ -1741,7 +1741,7 @@ export default function OrdersListPage() {
         }
 
         let zitaGov = (order.governorate || '').trim();
-        if (zitaGov.includes('ميسان') || zitaGov.includes('العمارة')) zitaGov = 'العمارة';
+        if (zitaGov.includes('ميسان') || zitaGov.includes('العمارة')) zitaGov = 'ميسان';
         else if (zitaGov.includes('بابل') || zitaGov.includes('الحلة')) zitaGov = 'بابل';
         else if (zitaGov.includes('ذي قار') || zitaGov.includes('الناصرية')) zitaGov = 'الناصرية';
         else if (zitaGov.includes('واسط') || zitaGov.includes('الكوت')) zitaGov = 'واسط';
