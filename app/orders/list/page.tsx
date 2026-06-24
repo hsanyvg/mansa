@@ -1190,7 +1190,7 @@ export default function OrdersListPage() {
   };
 
   const handleInlineStatusChange = async (orderId: string, oldStatus: string, newStatus: string) => {
-    if (oldStatus === newStatus) return;
+    if (oldStatus === newStatus && newStatus !== 'delivered' && newStatus !== 'shipped') return;
 
     // Open the status modal so they can select shipping company or see warnings
     setBulkStatusValue(newStatus);
@@ -1298,7 +1298,7 @@ export default function OrdersListPage() {
         if (isFullyLocked) continue; // Unlocked shipped and delivered statuses
         
         const oldStatus = orderToUpdate.status || 'pending';
-        if (oldStatus !== newStatus) {
+        if (oldStatus !== newStatus || newStatus === 'delivered' || newStatus === 'shipped') {
           validOrders.push({ order: orderToUpdate, oldStatus, newStatus });
           for (const item of (orderToUpdate.items || [])) {
             if (item.isComposite && item.composition) {
@@ -1342,7 +1342,7 @@ export default function OrdersListPage() {
         const finalDeliveryCompany = deliveryCompany === 'أخرى' ? customDeliveryCompany : deliveryCompany;
         const updateData: any = { status: newStatus };
         
-        if (newStatus === 'delivered' && finalDeliveryCompany.trim() !== '') {
+        if ((newStatus === 'delivered' || newStatus === 'shipped') && finalDeliveryCompany.trim() !== '') {
           updateData.shippingCompany = finalDeliveryCompany.trim();
           
           // Apply delivery cost deduction based on governorate
@@ -1646,30 +1646,28 @@ export default function OrdersListPage() {
   // Helper calculations for dynamic bulk action eligibility
   const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id));
   
-  const canTransfer = selectedOrders.length > 0 && selectedOrders.every(o => 
+  const canTransfer = selectedOrders.some(o => 
     !['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) && 
     !o.isArchived && 
     o.paymentStatus !== 'settled' && 
     o.is_settled !== true
   );
   
-  const canArchive = selectedOrders.length > 0 && selectedOrders.every(o => !o.isArchived);
+  const canArchive = selectedOrders.some(o => !o.isArchived);
   
-  const canDelete = selectedOrders.length > 0 && selectedOrders.every(o => 
+  const canDelete = selectedOrders.some(o => 
     !['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) && 
     !o.isArchived && 
     o.paymentStatus !== 'settled' && 
     o.is_settled !== true
   );
 
-  const canConfirmReturn = selectedOrders.length > 0 && selectedOrders.every(o => o.status === 'returned');
-  
-  const canRestore = selectedOrders.length > 0 && selectedOrders.every(o => o.isArchived);
-  const canDeletePermanent = selectedOrders.length > 0 && selectedOrders.every(o => o.isArchived);
+  const canConfirmReturn = selectedOrders.some(o => o.status === 'returned' && !o.isArchived);
 
-  const hasAnyBulkAction = activeTab !== 'archived' 
-    ? (canTransfer || canArchive || canDelete || (activeTab === 'returned' && canConfirmReturn))
-    : (canRestore || canDeletePermanent);
+  const canRestore = selectedOrders.some(o => o.isArchived);
+  const canDeletePermanent = selectedOrders.some(o => o.isArchived);
+
+  const hasAnyBulkAction = canTransfer || canArchive || canDelete || canConfirmReturn || canRestore || canDeletePermanent;
 
   const handleExportExcel = () => {
     try {
@@ -2156,96 +2154,86 @@ export default function OrdersListPage() {
               
               {showBulkDropdown && (
                 <div className={styles.bulkDropdownMenu}>
-                  {activeTab !== 'archived' ? (
-                    <>
-                      {canTransfer && (
-                        <button 
-                          className={styles.bulkDropdownItem}
-                          onClick={() => {
-                            setShowBulkDropdown(false);
-                            setShowCompanyModal(true);
-                          }}
-                        >
-                          <span className={styles.itemIcon}>🚚</span>
-                          <span>ترحيل الطلبات</span>
-                        </button>
-                      )}
+                  {canTransfer && (
+                    <button 
+                      className={styles.bulkDropdownItem}
+                      onClick={() => {
+                        setShowBulkDropdown(false);
+                        setShowCompanyModal(true);
+                      }}
+                    >
+                      <span className={styles.itemIcon}>🚚</span>
+                      <span>ترحيل الطلبات</span>
+                    </button>
+                  )}
 
-                      {canArchive && (
-                        <button 
-                          className={styles.bulkDropdownItem}
-                          onClick={() => {
-                            setShowBulkDropdown(false);
-                            handleArchiveSelected();
-                          }}
-                        >
-                          <span className={styles.itemIcon}>📁</span>
-                          <span>أرشفة المحددة</span>
-                        </button>
-                      )}
+                  {canArchive && (
+                    <button 
+                      className={styles.bulkDropdownItem}
+                      onClick={() => {
+                        setShowBulkDropdown(false);
+                        handleArchiveSelected();
+                      }}
+                    >
+                      <span className={styles.itemIcon}>📁</span>
+                      <span>أرشفة المحددة</span>
+                    </button>
+                  )}
 
-                      {activeTab === 'returned' && canConfirmReturn && (
-                        <button 
-                          className={styles.bulkDropdownItem}
-                          onClick={() => {
-                            setShowBulkDropdown(false);
-                            setShowReturnReceiptModal(true);
-                          }}
-                        >
-                          <span className={styles.itemIcon}>📝</span>
-                          <span>تأكيد استلام المحددة</span>
-                        </button>
-                      )}
+                  {canConfirmReturn && (
+                    <button 
+                      className={styles.bulkDropdownItem}
+                      onClick={() => {
+                        setShowBulkDropdown(false);
+                        setShowReturnReceiptModal(true);
+                      }}
+                    >
+                      <span className={styles.itemIcon}>📝</span>
+                      <span>تأكيد استلام المحددة</span>
+                    </button>
+                  )}
 
-                      {(canTransfer || canArchive || (activeTab === 'returned' && canConfirmReturn)) && canDelete && (
-                        <div className={styles.bulkDropdownDivider} />
-                      )}
+                  {canRestore && (
+                    <button 
+                      className={styles.bulkDropdownItem}
+                      onClick={() => {
+                        setShowBulkDropdown(false);
+                        handleRestoreSelected();
+                      }}
+                    >
+                      <span className={styles.itemIcon}>🔄</span>
+                      <span>استعادة الطلبات</span>
+                    </button>
+                  )}
 
-                      {canDelete && (
-                        <button 
-                          className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
-                          onClick={() => {
-                            setShowBulkDropdown(false);
-                            setShowBulkDeleteModal(true);
-                          }}
-                        >
-                          <span className={styles.itemIcon}>❌</span>
-                          <span>حذف المحددة</span>
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {canRestore && (
-                        <button 
-                          className={styles.bulkDropdownItem}
-                          onClick={() => {
-                            setShowBulkDropdown(false);
-                            handleRestoreSelected();
-                          }}
-                        >
-                          <span className={styles.itemIcon}>🔄</span>
-                          <span>استعادة الطلبات</span>
-                        </button>
-                      )}
+                  {(canTransfer || canArchive || canConfirmReturn || canRestore) && (canDelete || canDeletePermanent) && (
+                    <div className={styles.bulkDropdownDivider} />
+                  )}
 
-                      {canRestore && canDeletePermanent && (
-                        <div className={styles.bulkDropdownDivider} />
-                      )}
+                  {canDelete && (
+                    <button 
+                      className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
+                      onClick={() => {
+                        setShowBulkDropdown(false);
+                        setShowBulkDeleteModal(true);
+                      }}
+                    >
+                      <span className={styles.itemIcon}>❌</span>
+                      <span>حذف المحددة</span>
+                    </button>
+                  )}
 
-                      {canDeletePermanent && (
-                        <button 
-                          className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
-                          onClick={() => {
-                            setShowBulkDropdown(false);
-                            setShowBulkDeleteModal(true);
-                          }}
-                        >
-                          <span className={styles.itemIcon}>❌</span>
-                          <span>حذف النهائي</span>
-                        </button>
-                      )}
-                    </>
+                  {canDeletePermanent && (
+                    <button 
+                      className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
+                      onClick={() => {
+                        setShowBulkDropdown(false);
+                        setShowBulkDeleteModal(true);
+                      }}
+                    >
+                      <span className={styles.itemIcon}>❌</span>
+                      <span>حذف النهائي</span>
+                    </button>
                   )}
                 </div>
               )}
@@ -2638,6 +2626,16 @@ export default function OrdersListPage() {
               </th>
               <th>
                 <div className={styles.thContent}>
+                  <span>أجرة التوصيل</span>
+                </div>
+              </th>
+              <th>
+                <div className={styles.thContent}>
+                  <span>المبلغ الصافي</span>
+                </div>
+              </th>
+              <th>
+                <div className={styles.thContent}>
                   <span>الملاحظات</span>
                   <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.notes} onChange={(e) => handleFilterChange('notes', e.target.value)} />
                 </div>
@@ -2772,7 +2770,15 @@ export default function OrdersListPage() {
                   <td>{order.customerName}</td>
                   <td>{order.governorate}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>
-                  <td style={{ color: '#10B981', fontWeight: 'bold' }}>{order.formattedTotal} د.ع</td>
+                  <td style={{ color: '#10B981', fontWeight: 'bold' }}>
+                    {new Intl.NumberFormat('en-US').format((order.totalAmount || order.price || 0) + (order.deliveryCost || 0))} د.ع
+                  </td>
+                  <td style={{ color: '#f59e0b', fontWeight: 'bold' }}>
+                    {order.deliveryCost ? `${new Intl.NumberFormat('en-US').format(order.deliveryCost)} د.ع` : '-'}
+                  </td>
+                  <td style={{ color: '#3b82f6', fontWeight: 'bold' }}>
+                    {new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع
+                  </td>
                   <td>{order.notes || '-'}</td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -3182,8 +3188,22 @@ export default function OrdersListPage() {
                 )}
               </div>
               <div className={styles.totalHighlight}>
-                <span>المبلغ الكلي:</span>
-                <span>{selectedOrder.formattedTotal} د.ع</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px' }}>
+                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>المبلغ الكلي:</span>
+                    <span style={{ fontSize: '0.9rem' }}>{new Intl.NumberFormat('en-US').format((selectedOrder.totalAmount || selectedOrder.price || 0) + (selectedOrder.deliveryCost || 0))} د.ع</span>
+                  </div>
+                  {selectedOrder.deliveryCost > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#f59e0b' }}>أجرة التوصيل:</span>
+                      <span style={{ fontSize: '0.9rem', color: '#f59e0b' }}>{new Intl.NumberFormat('en-US').format(selectedOrder.deliveryCost)} د.ع</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem' }}>
+                    <span style={{ fontWeight: 'bold' }}>المبلغ الصافي:</span>
+                    <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{new Intl.NumberFormat('en-US').format(selectedOrder.totalAmount || selectedOrder.price || 0)} د.ع</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -3675,7 +3695,7 @@ export default function OrdersListPage() {
                   ملاحظة: سيتم إرجاع المواد للمخزن تلقائياً.
                 </p>
               )}
-              {bulkStatusValue === 'delivered' && (
+              {(bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && (
                 <div style={{ marginTop: '1.5rem', textAlign: 'right', backgroundColor: 'var(--surface-hover)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>أي شركة توصيل سلمت هذا الطلب؟ (اختياري)</label>
                   <select 
@@ -3983,7 +4003,11 @@ export default function OrdersListPage() {
               </p>
               <textarea
                 value={bulkSelectText}
-                onChange={(e) => setBulkSelectText(e.target.value)}
+                onChange={(e) => {
+                  // تقسيم الطلبات تلقائياً كما طلب المستخدم (كل معرف في سطر)
+                  const formatted = e.target.value.replace(/[\s,]+/g, '\n').replace(/^\n/, '');
+                  setBulkSelectText(formatted);
+                }}
                 placeholder="مثال:&#10;206061600027&#10;100209&#10;100208"
                 style={{
                   width: '100%',

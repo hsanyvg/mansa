@@ -175,6 +175,14 @@ export default function TreasurySettlementPage() {
   const [showBulkSelectModal, setShowBulkSelectModal] = useState(false);
   const [bulkSelectText, setBulkSelectText] = useState('');
   const [bulkSettlementAmounts, setBulkSettlementAmounts] = useState<Record<string, number>>({});
+  const [reconciliationReport, setReconciliationReport] = useState<{
+    show: boolean;
+    mismatchedAmounts: { id: string, expected: number, inputted: number }[];
+    notFound: string[];
+    unselectedExtra: { id: string, name: string, expected: number }[];
+    matchedCount: number;
+  } | null>(null);
+  const [reportSearchTerm, setReportSearchTerm] = useState('');
 
   // Phase 2 Form States
   const [externalStatementId, setExternalStatementId] = useState('');
@@ -704,11 +712,34 @@ export default function TreasurySettlementPage() {
     setShowBulkSelectModal(false);
     setBulkSelectText('');
     
-    if (notFound.length > 0) {
-      alert(`تم إضافة ${addedCount} طلب بنجاح.\nلم يتم العثور على المعرفات التالية في قائمة الطلبات المعلقة:\n${notFound.join(', ')}`);
-    } else {
-      alert(`تم إضافة ${addedCount} طلب بنجاح.`);
-    }
+    // Generate Reconciliation Report
+    const mismatchedAmounts: { id: string, expected: number, inputted: number }[] = [];
+    let matchedCount = 0;
+    
+    newSelected.forEach(orderId => {
+       const order = pendingOrders.find(o => o.id === orderId);
+       if (order) {
+         const expected = order.totalAmount - (order.paidAmount || 0);
+         const inputted = newAmounts[orderId];
+         if (inputted !== undefined && inputted !== expected) {
+            mismatchedAmounts.push({ id: order.id, expected, inputted });
+         } else {
+            matchedCount++;
+         }
+       }
+    });
+
+    const unselectedExtra = pendingOrders
+       .filter(o => !newSelected.has(o.id))
+       .map(o => ({ id: o.id, name: o.customerName || 'بدون اسم', expected: o.totalAmount - (o.paidAmount || 0) }));
+
+    setReconciliationReport({
+       show: true,
+       mismatchedAmounts,
+       notFound,
+       unselectedExtra,
+       matchedCount
+    });
   };
 
   // Filter pendingOrders based on globalSearch
@@ -780,6 +811,15 @@ export default function TreasurySettlementPage() {
                   📋
                 </button>
               </div>
+
+              {reconciliationReport && (
+                 <button 
+                   onClick={() => setReconciliationReport({ ...reconciliationReport, show: true })}
+                   style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '10px', padding: '0.75rem 1rem', cursor: 'pointer', fontWeight: 'bold' }}
+                 >
+                   📊 عرض التقرير
+                 </button>
+              )}
 
               <button 
                 className={styles.settleButton} 
@@ -1045,8 +1085,16 @@ export default function TreasurySettlementPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPendingOrders.map(order => (
-                    <tr key={order.id}>
+                  {filteredPendingOrders.map(order => {
+                    const expectedAmount = order.totalAmount - (order.paidAmount || 0);
+                    const inputtedAmount = bulkSettlementAmounts[order.id];
+                    const hasAmountMismatch = inputtedAmount !== undefined && inputtedAmount !== expectedAmount;
+                    
+                    return (
+                    <tr 
+                      key={order.id}
+                      style={hasAmountMismatch ? { backgroundColor: 'rgba(234, 179, 8, 0.15)', border: '1px solid #eab308' } : {}}
+                    >
                       <td className={styles.checkboxCell}>
                         <input 
                           type="checkbox" 
@@ -1062,8 +1110,13 @@ export default function TreasurySettlementPage() {
                       <td className={styles.amountCol} style={{ color: order.paidAmount ? '#f59e0b' : '#64748b' }}>
                         {(order.paidAmount || 0).toLocaleString()} د.ع
                       </td>
-                      <td className={styles.amountCol} style={{ color: '#10b981' }}>
-                        {(order.totalAmount - (order.paidAmount || 0)).toLocaleString()} د.ع
+                      <td className={styles.amountCol} style={{ color: hasAmountMismatch ? '#ef4444' : '#10b981', fontWeight: hasAmountMismatch ? 'bold' : 'normal' }}>
+                        {expectedAmount.toLocaleString()} د.ع
+                        {hasAmountMismatch && (
+                          <div style={{ fontSize: '0.8rem', color: '#ef4444', marginTop: '0.2rem' }}>
+                            (مُدخل: {inputtedAmount.toLocaleString()})
+                          </div>
+                        )}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <button
@@ -1082,7 +1135,7 @@ export default function TreasurySettlementPage() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             ) : (
@@ -1941,6 +1994,114 @@ export default function TreasurySettlementPage() {
           </div>
         </div>
       )}
+
+      {/* Reconciliation Report Modal */}
+      {reconciliationReport && reconciliationReport.show && (
+        <div className={styles.modalOverlay} onClick={() => setReconciliationReport({ ...reconciliationReport, show: false })}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 className={styles.modalTitle} style={{ color: '#f59e0b', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+              📊 تقرير المطابقة
+            </h2>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+              <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981' }}>{reconciliationReport.matchedCount}</div>
+                <div style={{ color: '#10b981' }}>طلبات متطابقة كلياً ✅</div>
+              </div>
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>{reconciliationReport.mismatchedAmounts.length}</div>
+                <div style={{ color: '#ef4444' }}>مبالغ غير متطابقة ❌</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '2rem' }}>
+              {reconciliationReport.mismatchedAmounts.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ color: '#ef4444', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    ❌ طلبات بمبالغ غير متطابقة (اختلاف عن النظام):
+                  </h3>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                      {reconciliationReport.mismatchedAmounts.map(item => (
+                        <li key={item.id} style={{ marginBottom: '0.5rem', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>#{item.id}</span>
+                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div>
+                              <span style={{ color: '#ef4444', textDecoration: 'line-through', marginRight: '1rem' }}>الإكسل: {item.inputted.toLocaleString()}</span>
+                              <span style={{ color: '#10b981' }}>النظام: {item.expected.toLocaleString()}</span>
+                            </div>
+                            <div dir="ltr" style={{ background: 'rgba(0,0,0,0.4)', padding: '0.25rem 0.75rem', borderRadius: '6px', fontFamily: 'monospace', fontSize: '1rem', color: '#f8fafc', border: '1px solid rgba(255,255,255,0.1)' }}>
+                              {item.expected.toLocaleString()} - {item.inputted.toLocaleString()} = <strong style={{ color: (item.expected - item.inputted) > 0 ? '#10b981' : '#ef4444' }}>{(item.expected - item.inputted).toLocaleString()}</strong>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {reconciliationReport.unselectedExtra.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h3 style={{ color: '#38bdf8', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      ⚠️ طلبات موجودة في النظام (لم تضعها في الإكسل الخاص بك):
+                    </h3>
+                    <input 
+                      type="text" 
+                      placeholder="بحث برقم الطلب أو اسم الزبون..." 
+                      value={reportSearchTerm}
+                      onChange={(e) => setReportSearchTerm(e.target.value)}
+                      style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.5)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '0.9rem', width: '250px' }}
+                    />
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.3)', maxHeight: '300px', overflowY: 'auto' }}>
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                      {reconciliationReport.unselectedExtra
+                        .filter(item => item.id.includes(reportSearchTerm) || item.name.includes(reportSearchTerm))
+                        .map(item => (
+                        <li key={item.id} style={{ marginBottom: '0.5rem', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontWeight: 'bold' }}>#{item.id}</span>
+                          <span>{item.name}</span>
+                          <span style={{ color: '#38bdf8' }}>{item.expected.toLocaleString()} د.ع</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {reconciliationReport.notFound.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ color: '#f59e0b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    ❓ معرفات غير موجودة في النظام:
+                  </h3>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#fcd34d', wordWrap: 'break-word' }}>
+                    {reconciliationReport.notFound.join(' ، ')}
+                  </div>
+                </div>
+              )}
+              
+              {(reconciliationReport.mismatchedAmounts.length === 0 && reconciliationReport.unselectedExtra.length === 0 && reconciliationReport.notFound.length === 0) && (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#10b981', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                  🎉 مطابقة مثالية 100%! لا يوجد أي اختلافات أو نواقص.
+                </div>
+              )}
+            </div>
+
+            <div className={styles.modalActions} style={{ marginTop: '1.5rem' }}>
+              <button 
+                className={styles.submitBtn} 
+                onClick={() => setReconciliationReport({ ...reconciliationReport, show: false })}
+                style={{ width: '100%', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}
+              >
+                حسناً، فهمت
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
