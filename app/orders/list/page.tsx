@@ -4105,8 +4105,8 @@ export default function OrdersListPage() {
               <button 
                 className={styles.submitButton} 
                 onClick={() => confirmBulkStatusChange()}
-                disabled={isUpdating || !deliveryCompany || (deliveryCompany === 'أخرى' && !customDeliveryCompany)}
-                style={{ flex: 1, opacity: (!deliveryCompany) ? 0.5 : 1 }}
+                disabled={isUpdating || ((bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && (!deliveryCompany || (deliveryCompany === 'أخرى' && !customDeliveryCompany)))}
+                style={{ flex: 1, opacity: ((bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && !deliveryCompany) ? 0.5 : 1 }}
               >
                 {isUpdating ? 'جاري التحديث...' : 'نعم، تحديث الحالة'}
               </button>
