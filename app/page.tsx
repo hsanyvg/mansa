@@ -799,20 +799,21 @@ export default function Dashboard() {
 
           // Proportional share of this item in the entire order
           const proportion = itemTotal / orderItemsTotal;
+          const allocatedRevenue = proportion * orderTotalAmount;
 
           // Page level nodes (proportional share of gross totalAmount and order count)
           const pGrp = tree[hierarchy.page];
           pGrp.deliveredOrdersCount += proportion;
-          pGrp.revenue += proportion * orderTotalAmount;
+          pGrp.revenue += allocatedRevenue;
 
           // Branch/Subcategory/Item level nodes
           const bGrp = pGrp.branches[hierarchy.branch];
           const sGrp = bGrp.subcategories[hierarchy.subcat];
           const iGrp = sGrp.items[pName];
 
-          bGrp.revenue += itemTotal;
-          sGrp.revenue += itemTotal;
-          iGrp.revenue += itemTotal;
+          bGrp.revenue += allocatedRevenue;
+          sGrp.revenue += allocatedRevenue;
+          iGrp.revenue += allocatedRevenue;
         });
       }
     });
