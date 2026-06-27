@@ -6,7 +6,14 @@ import { db, auth } from "../lib/firebase";
 import { collection, onSnapshot } from 'firebase/firestore';
 
 export default function Dashboard() {
-  const [filter, setFilter] = useState('هذا الشهر');
+  const [filter, setFilter] = useState('الشهر');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [isFilterCalOpen, setIsFilterCalOpen] = useState(false);
+  const filterCalRef = useRef<HTMLDivElement>(null);
+  const [tempMainFilter, setTempMainFilter] = useState('الشهر');
+  const [tempMainStart, setTempMainStart] = useState('');
+  const [tempMainEnd, setTempMainEnd] = useState('');
   const [teamFilter, setTeamFilter] = useState('الشهر');
   const [teamStartDate, setTeamStartDate] = useState('');
   const [teamEndDate, setTeamEndDate] = useState('');
@@ -240,6 +247,48 @@ export default function Dashboard() {
     };
   }, []);
 
+  const getMainDateRangeLabel = () => {
+    if (filter === 'اليوم') return 'تاريخ: اليوم';
+    if (filter === 'الأسبوع') return 'تاريخ: الأسبوع';
+    if (filter === 'الشهر') return 'تاريخ: الشهر';
+    if (filter === 'الحد الأقصى') return 'تاريخ: الحد الأقصى';
+    if (filter === 'مخصص') {
+      if (filterStartDate && filterEndDate) return `${filterStartDate} إلى ${filterEndDate}`;
+      return 'تاريخ: مخصص';
+    }
+    return 'تاريخ: الشهر';
+  };
+
+  const toggleMainCal = () => {
+    setTempMainFilter(filter);
+    setTempMainStart(filterStartDate);
+    setTempMainEnd(filterEndDate);
+    setIsFilterCalOpen(!isFilterCalOpen);
+  };
+
+  const selectMainShortcut = (shortcut: string) => {
+    setTempMainFilter(shortcut);
+    setTempMainStart('');
+    setTempMainEnd('');
+  };
+
+  const handleCustomMainDateChange = (type: 'start' | 'end', val: string) => {
+    setTempMainFilter('مخصص');
+    if (type === 'start') setTempMainStart(val);
+    else setTempMainEnd(val);
+  };
+
+  const handleApplyMainFilter = () => {
+    setFilter(tempMainFilter);
+    setFilterStartDate(tempMainStart);
+    setFilterEndDate(tempMainEnd);
+    setIsFilterCalOpen(false);
+  };
+
+  const handleCancelMainFilter = () => {
+    setIsFilterCalOpen(false);
+  };
+
   const filteredOrders = React.useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -253,16 +302,16 @@ export default function Dashboard() {
       
       if (filter === 'اليوم') {
         return orderTime >= today;
-      } else if (filter === 'هذا الأسبوع') {
+      } else if (filter === 'الأسبوع') {
         return orderTime >= thisWeek;
-      } else if (filter === 'هذا الشهر') {
+      } else if (filter === 'الشهر' || filter === 'مخصص') {
         return orderTime >= thisMonth;
-      } else if (filter === 'هذا العام') {
+      } else if (filter === 'الحد الأقصى') {
         return orderTime >= thisYear;
       }
       return true;
     });
-  }, [orders, filter]);
+  }, [orders, filter, filterStartDate, filterEndDate]);
 
   const stats = React.useMemo(() => {
     const activeOrders = filteredOrders.filter(o => o.status !== 'cancelled');
@@ -402,7 +451,7 @@ export default function Dashboard() {
         const blockIndex = Math.min(11, Math.floor(hour / 2));
         points[blockIndex].value += Number(order.totalAmount) || 0;
       });
-    } else if (filter === 'هذا الأسبوع') {
+    } else if (filter === 'الأسبوع') {
       // Last 7 days
       const days = ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
       for (let i = 6; i >= 0; i--) {
@@ -419,7 +468,7 @@ export default function Dashboard() {
           point.value += Number(order.totalAmount) || 0;
         }
       });
-    } else if (filter === 'هذا الشهر') {
+    } else if (filter === 'الشهر' || filter === 'مخصص') {
       // Last 15 days or last 30 days
       for (let i = 14; i >= 0; i--) {
         const d = new Date(today.getTime() - i * 2 * 24 * 60 * 60 * 1000);
@@ -466,7 +515,7 @@ export default function Dashboard() {
     }
 
     return points;
-  }, [filteredOrders, filter]);
+  }, [filteredOrders, filter, filterStartDate, filterEndDate]);
 
   const svgChartPath = React.useMemo(() => {
     const width = 500;
@@ -530,15 +579,15 @@ export default function Dashboard() {
       currentStart = today;
       prevStart = today - oneDay;
       prevEnd = today;
-    } else if (filter === 'هذا الأسبوع') {
+    } else if (filter === 'الأسبوع') {
       currentStart = today - oneWeek;
       prevStart = today - 2 * oneWeek;
       prevEnd = today - oneWeek;
-    } else if (filter === 'هذا الشهر') {
+    } else if (filter === 'الشهر' || filter === 'مخصص') {
       currentStart = today - oneMonth;
       prevStart = today - 2 * oneMonth;
       prevEnd = today - oneMonth;
-    } else if (filter === 'هذا العام') {
+    } else if (filter === 'الحد الأقصى') {
       currentStart = today - oneYear;
       prevStart = today - 2 * oneYear;
       prevEnd = today - oneYear;
@@ -568,7 +617,7 @@ export default function Dashboard() {
       return currentSales > 0 ? 100 : 0;
     }
     return Math.round(((currentSales - prevSales) / prevSales) * 10000) / 100;
-  }, [orders, filter]);
+  }, [orders, filter, filterStartDate, filterEndDate]);
 
   const yAxisLabels = React.useMemo(() => {
     const max = svgChartPath.maxVal || 0;
@@ -660,16 +709,16 @@ export default function Dashboard() {
       
       if (filter === 'اليوم') {
         return exp.date === todayStr;
-      } else if (filter === 'هذا الأسبوع') {
+      } else if (filter === 'الأسبوع') {
         return exp.date >= getDaysAgo(7);
-      } else if (filter === 'هذا الشهر') {
+      } else if (filter === 'الشهر' || filter === 'مخصص') {
         return exp.date >= getDaysAgo(30);
-      } else if (filter === 'هذا العام') {
+      } else if (filter === 'الحد الأقصى') {
         return exp.date >= getDaysAgo(365);
       }
       return true;
     });
-  }, [expenses, filter]);
+  }, [expenses, filter, filterStartDate, filterEndDate]);
 
   const toggleAnalysisPage = (pageName: string) => {
     setExpandedAnalysisPages(prev => ({ ...prev, [pageName]: !prev[pageName] }));
@@ -981,18 +1030,81 @@ export default function Dashboard() {
         <div className={styles.header}>
           <h1 className={styles.headerTitle}>لوحة القيادة</h1>
           <div className={styles.filters}>
-            {['اليوم', 'هذا الأسبوع', 'هذا الشهر', 'هذا العام'].map((f) => (
-              <button
-                key={f}
-                className={`${styles.filterBtn} ${filter === f ? styles.active : ''}`}
-                onClick={() => setFilter(f)}
-              >
-                {f}
-              </button>
-            ))}
-            <div className={styles.datePicker}>
-              <span>{getDateRangeLabel()}</span>
-            </div>
+            <div className={styles.teamDatePickerContainer} ref={filterCalRef}>
+                <button 
+                  className={styles.teamDateRangeBtn} 
+                  onClick={toggleMainCal}
+                >
+                  📅 {getMainDateRangeLabel()}
+                </button>
+                
+                {isFilterCalOpen && (
+                  <div className={styles.teamDateModal}>
+                    <div className={styles.teamShortcutList}>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempMainFilter === 'اليوم' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectMainShortcut('اليوم')}
+                      >
+                        اليوم
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempMainFilter === 'الأسبوع' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectMainShortcut('الأسبوع')}
+                      >
+                        الأسبوع
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempMainFilter === 'الشهر' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectMainShortcut('الشهر')}
+                      >
+                        الشهر
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempMainFilter === 'الحد الأقصى' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectMainShortcut('الحد الأقصى')}
+                      >
+                        الحد الأقصى
+                      </button>
+                    </div>
+                    
+                    <div className={styles.teamDateInputs}>
+                      <div className={styles.teamDateInputGroup}>
+                        <label>من تاريخ:</label>
+                        <input 
+                          type="date" 
+                          className={styles.teamDateInput} 
+                          value={tempMainStart} 
+                          onChange={e => handleCustomMainDateChange('start', e.target.value)} 
+                        />
+                      </div>
+                      <div className={styles.teamDateInputGroup}>
+                        <label>إلى تاريخ:</label>
+                        <input 
+                          type="date" 
+                          className={styles.teamDateInput} 
+                          value={tempMainEnd} 
+                          onChange={e => handleCustomMainDateChange('end', e.target.value)} 
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.teamModalActions}>
+                      <button 
+                        className={styles.teamApplyBtn} 
+                        onClick={handleApplyMainFilter}
+                      >
+                        تم
+                      </button>
+                      <button 
+                        className={styles.teamCancelBtn} 
+                        onClick={handleCancelMainFilter}
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
           </div>
         </div>
 
@@ -1005,18 +1117,7 @@ export default function Dashboard() {
                 <div className={styles.salesSub}>Mansa Sales</div>
               </div>
               <div className={styles.salesFiltersContainer}>
-                {['اليوم', 'هذا الأسبوع', 'هذا الشهر', 'هذا العام'].map((f) => {
-                  const label = f === 'اليوم' ? '1D' : f === 'هذا الأسبوع' ? '1W' : f === 'هذا الشهر' ? '1M' : '1Y';
-                  return (
-                    <button
-                      key={f}
-                      className={`${styles.salesFilterBtn} ${filter === f ? styles.salesFilterBtnActive : ''}`}
-                      onClick={() => setFilter(f)}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+                {/* Replaced by main date picker */}
               </div>
             </div>
 

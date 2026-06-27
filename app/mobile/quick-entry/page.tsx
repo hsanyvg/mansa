@@ -431,18 +431,15 @@ function QuickEntryContent() {
 
     try {
       const counterRef = doc(db, 'users', targetUid, 'metadata', 'orderCounter');
-      const nextId = await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        let currentId = 100000;
-        if (counterSnap.exists()) {
-          currentId = counterSnap.data().lastId;
-        }
-        const newId = currentId + 1;
-        transaction.set(counterRef, { lastId: newId }, { merge: true });
-        return newId;
-      });
+      const counterSnap = await getDoc(counterRef);
+      let currentId = 100000;
+      if (counterSnap.exists()) {
+        currentId = counterSnap.data().lastId;
+      }
+      const nextId = currentId + 1;
 
       const batch = writeBatch(db);
+      batch.set(counterRef, { lastId: nextId }, { merge: true });
       const newOrderRef = doc(db, 'users', targetUid, 'orders', nextId.toString());
       const emp = employees.find(empItem => empItem.id === selectedEmployeeId);
 
