@@ -267,7 +267,7 @@ export default function Dashboard() {
   const stats = React.useMemo(() => {
     const activeOrders = filteredOrders.filter(o => o.status !== 'cancelled');
     const totalSales = filteredOrders
-      .filter(o => o.is_settled === true)
+      .filter(o => o.is_settled === true || o.paymentStatus === 'partially_settled')
       .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
 
     return {
@@ -395,7 +395,8 @@ export default function Dashboard() {
         points.push({ value: 0, label });
       }
       filteredOrders.forEach(order => {
-        if (order.is_settled !== true || !order.date) return;
+        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
+        if (!isSettledOrPartial || !order.date) return;
         const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
         const hour = date.getHours();
         const blockIndex = Math.min(11, Math.floor(hour / 2));
@@ -409,7 +410,8 @@ export default function Dashboard() {
         points.push({ value: 0, time: getStartOfDay(d), label: days[d.getDay()] });
       }
       filteredOrders.forEach(order => {
-        if (order.is_settled !== true || !order.date) return;
+        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
+        if (!isSettledOrPartial || !order.date) return;
         const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
         const orderDayStart = getStartOfDay(new Date(orderTime));
         const point = points.find(p => p.time === orderDayStart);
@@ -424,7 +426,8 @@ export default function Dashboard() {
         points.push({ value: 0, time: getStartOfDay(d), label: `${d.getDate()}` });
       }
       filteredOrders.forEach(order => {
-        if (order.is_settled !== true || !order.date) return;
+        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
+        if (!isSettledOrPartial || !order.date) return;
         const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
         const orderDayStart = getStartOfDay(new Date(orderTime));
         let minDiff = Infinity;
@@ -448,7 +451,8 @@ export default function Dashboard() {
         points.push({ value: 0, time: d.getTime(), label: monthsShort[d.getMonth()] });
       }
       filteredOrders.forEach(order => {
-        if (order.is_settled !== true || !order.date) return;
+        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
+        if (!isSettledOrPartial || !order.date) return;
         const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
         const yr = date.getFullYear();
         const mo = date.getMonth();
@@ -544,7 +548,8 @@ export default function Dashboard() {
 
     const currentSales = orders
       .filter(o => {
-        if (o.is_settled !== true || !o.date) return false;
+        const isSettledOrPartial = o.is_settled === true || o.paymentStatus === 'partially_settled';
+        if (!isSettledOrPartial || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
         return oTime >= currentStart;
       })
@@ -552,7 +557,8 @@ export default function Dashboard() {
 
     const prevSales = orders
       .filter(o => {
-        if (o.is_settled !== true || !o.date) return false;
+        const isSettledOrPartial = o.is_settled === true || o.paymentStatus === 'partially_settled';
+        if (!isSettledOrPartial || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
         return oTime >= prevStart && oTime < prevEnd;
       })
@@ -772,8 +778,9 @@ export default function Dashboard() {
     };
 
     // 3. Accumulate revenues from settled orders
-    filteredOrders.forEach(order => {
-      if (order.is_settled !== true) return;
+    filteredOrders.forEach((order: any) => {
+      const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
+      if (!isSettledOrPartial) return;
 
       // 3.1 Calculate total of all items in this order to scale proportionally
       const orderItemsTotal = (order.items || []).reduce((sum: number, it: any) => {
