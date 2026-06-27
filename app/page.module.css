@@ -900,3 +900,198 @@
   z-index: 20 !important;
 }
 
+/* Product Profit & Loss Analysis Table CSS */
+.analysisTableContainer {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.analysisTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.analysisTable th {
+  text-align: right;
+  padding: 1rem;
+  background-color: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.analysisTable td {
+  padding: 1rem;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+
+.analysisTable tr:hover td {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.profitText {
+  color: #10b981 !important;
+  font-weight: bold;
+}
+
+.lossText {
+  color: #ef4444 !important;
+  font-weight: bold;
+}
+
+.revenueText {
+  color: #60a5fa !important;
+  font-weight: 600;
+}
+
+.cogsText {
+  color: #f59e0b !important;
+  font-weight: 600;
+}
+
+.expensesText {
+  color: #c084fc !important;
+  font-weight: 600;
+}
+
+/* Collapsible Tree Structure Styles */
+.treeSection {
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem;
+}
+
+.treeContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.treeNode {
+  display: flex;
+  flex-direction: column;
+}
+
+.nodeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  user-select: none;
+  gap: 1rem;
+}
+
+.nodeLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.nodeName {
+  font-weight: 600;
+}
+
+.nodeAmount {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.arrowIcon {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  width: 12px;
+}
+
+.pageNode {
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.pageNode:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--primary);
+}
+
+.branchNode {
+  background-color: rgba(255, 255, 255, 0.01);
+  border: 1px dashed var(--border);
+  font-size: 0.95rem;
+  color: #60a5fa;
+}
+
+.branchNode:hover {
+  background-color: var(--surface-hover);
+  border-color: #60a5fa;
+}
+
+.subcatNode {
+  background-color: transparent;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  color: #34d399;
+}
+
+.subcatNode:hover {
+  background-color: var(--surface-hover);
+}
+
+.itemNode {
+  font-size: 0.85rem;
+  color: #fbbf24;
+  padding-left: 2rem !important;
+  background-color: rgba(255, 255, 255, 0.005);
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.nodeChildren {
+  padding-left: 1.5rem;
+  border-left: 1px dashed var(--border);
+  margin-left: 1.5rem;
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.summaryStatsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  background-color: rgba(255, 255, 255, 0.015);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.summaryStatCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.summaryStatLabel {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.summaryStatValue {
+  font-size: 1.25rem;
+  font-weight: 800;
+}

@@ -1,18 +1,36 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
 import Link from 'next/link';
 
 import { db, auth } from "../../lib/firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs, writeBatch, query, where } from 'firebase/firestore';
 import CurrencyInput from '../../components/CurrencyInput';
 import Barcode from 'react-barcode';
 import { calculateTotalBaseQuantity, formatDisplayQuantity, getInventoryBalances } from '../../lib/inventoryUtils';
 
 export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [reservedSearchQuery, setReservedSearchQuery] = useState('');
   const [entriesLength, setEntriesLength] = useState(25);
+  
+  // New States for Reserved Products Tab
+  const [pageView, setPageView] = useState<'products' | 'reserved'>('products');
+  
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [tempDateFilter, setTempDateFilter] = useState<'اليوم' | 'الأسبوع' | 'الشهر' | 'الحد الأقصى' | 'مخصص'>('اليوم');
+  const [tempStartDate, setTempStartDate] = useState('');
+  const [tempEndDate, setTempEndDate] = useState('');
+  
+  const [activeDateFilter, setActiveDateFilter] = useState<'اليوم' | 'الأسبوع' | 'الشهر' | 'الحد الأقصى' | 'مخصص'>('اليوم');
+  const [activeStartDate, setActiveStartDate] = useState('');
+  const [activeEndDate, setActiveEndDate] = useState('');
+  
+  const datePickerRef = useRef<HTMLDivElement>(null);
+  
+  const [reservedOrders, setReservedOrders] = useState<any[]>([]);
+  const [isFetchingReserved, setIsFetchingReserved] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [productToDelete, setProductToDelete] = useState<{id: string, name: string} | null>(null);
@@ -124,6 +142,142 @@ export default function ProductsPage() {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest(`.${styles.teamDatePickerContainer}`)) return;
+      setIsDatePickerOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleDatePicker = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDatePickerOpen(prev => !prev);
+  };
+
+  const selectDateShortcut = (shortcut: 'اليوم' | 'الأسبوع' | 'الشهر' | 'الحد الأقصى') => {
+    setTempDateFilter(shortcut);
+  };
+
+  const handleCustomDateChange = (type: 'start' | 'end', val: string) => {
+    setTempDateFilter('مخصص');
+    if (type === 'start') setTempStartDate(val);
+    else setTempEndDate(val);
+  };
+
+  const handleApplyDateFilter = () => {
+    setActiveDateFilter(tempDateFilter);
+    setActiveStartDate(tempStartDate);
+    setActiveEndDate(tempEndDate);
+    setIsDatePickerOpen(false);
+  };
+
+  const handleCancelDateFilter = () => {
+    setTempDateFilter(activeDateFilter);
+    setTempStartDate(activeStartDate);
+    setTempEndDate(activeEndDate);
+    setIsDatePickerOpen(false);
+  };
+
+  const getDateRangeLabel = () => {
+    if (activeDateFilter === 'اليوم') return 'اليوم';
+    if (activeDateFilter === 'الأسبوع') return 'الأسبوع';
+    if (activeDateFilter === 'الشهر') return 'الشهر';
+    if (activeDateFilter === 'الحد الأقصى') return 'الحد الأقصى';
+    if (activeDateFilter === 'مخصص') {
+      if (activeStartDate && activeEndDate) return `من ${activeStartDate} إلى ${activeEndDate}`;
+      if (activeStartDate) return `من ${activeStartDate}`;
+      if (activeEndDate) return `حتى ${activeEndDate}`;
+      return 'مخصص';
+    }
+    return 'تاريخ الحجز';
+  };
+
+  useEffect(() => {
+    if (pageView !== 'reserved') return;
+    setIsFetchingReserved(true);
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let start: Date | null = null;
+    let end: Date | null = null;
+
+    if (activeDateFilter === 'اليوم') {
+      start = today;
+      end = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+    } else if (activeDateFilter === 'الأسبوع') {
+      start = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      end = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+    } else if (activeDateFilter === 'الشهر') {
+      start = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      end = new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+    } else if (activeDateFilter === 'مخصص') {
+      if (activeStartDate) {
+        start = new Date(activeStartDate);
+        start.setHours(0, 0, 0, 0);
+      }
+      if (activeEndDate) {
+        end = new Date(activeEndDate);
+        end.setHours(23, 59, 59, 999);
+      }
+    }
+
+    let q = query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'));
+    
+    if (activeDateFilter !== 'الحد الأقصى') {
+      if (start && end) {
+        q = query(q, where('date', '>=', start), where('date', '<=', end));
+      } else if (start) {
+        q = query(q, where('date', '>=', start));
+      } else if (end) {
+        q = query(q, where('date', '<=', end));
+      }
+    }
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const ords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const validOrders = ords.filter((o: any) => 
+        !o.isDeleted && 
+        o.status !== 'cancelled' && 
+        o.status !== 'returned' && 
+        o.status !== 'returned_agent' && 
+        o.status !== 'returned_warehouse'
+      );
+      setReservedOrders(validOrders);
+      setIsFetchingReserved(false);
+    }, (err) => {
+      console.error("Error fetching reserved orders:", err);
+      setIsFetchingReserved(false);
+    });
+
+    return () => unsub();
+  }, [pageView, activeDateFilter, activeStartDate, activeEndDate]);
+
+  const getReservedItems = () => {
+    const itemMap = new Map<string, any>();
+    reservedOrders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach((item: any) => {
+          const key = item.productId || item.productName;
+          if (!itemMap.has(key)) {
+            itemMap.set(key, {
+              id: item.productId,
+              name: item.productName,
+              quantity: 0,
+              isComposite: item.isComposite || false
+            });
+          }
+          const existing = itemMap.get(key);
+          existing.quantity += (Number(item.quantity) || 0);
+        });
+      }
+    });
+    return Array.from(itemMap.values()).sort((a, b) => b.quantity - a.quantity);
+  };
 
   // Handle auto-selection for the Add Product modal
   useEffect(() => {
@@ -388,28 +542,58 @@ export default function ProductsPage() {
   return (
     <div className={styles.container}>
       {/* Header Area */}
-      <header className={styles.header}>
-        <h1 className={styles.title}>قائمة الأصناف</h1>
-        <button className={styles.addButton} onClick={() => {
-          setEditingProductId(null);
-          setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
-          setUnits([
-            { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
-            { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
-            { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
-          ]);
-          setSelectedPage('');
-          setSelectedMainCat('');
-          setSelectedSubCat('');
-          setProductStock({});
-          setShowAddModal(true);
-        }}>
-          <span>+ إضافة</span>
-        </button>
+      <header className={styles.header} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'stretch' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1 className={styles.title}>قائمة الأصناف</h1>
+          {pageView === 'products' && (
+            <button className={styles.addButton} onClick={() => {
+              setEditingProductId(null);
+              setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
+              setUnits([
+                { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
+                { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
+                { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
+              ]);
+              setSelectedPage('');
+              setSelectedMainCat('');
+              setSelectedSubCat('');
+              setProductStock({});
+              setShowAddModal(true);
+            }}>
+              <span>+ إضافة</span>
+            </button>
+          )}
+        </div>
+        
+        <div className={styles.pageTabs} style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+          <button 
+            onClick={() => setPageView('products')}
+            style={{ 
+              background: 'none', border: 'none', padding: '0.5rem 1rem', fontSize: '1rem', cursor: 'pointer',
+              fontWeight: pageView === 'products' ? 'bold' : 'normal', 
+              color: pageView === 'products' ? 'var(--primary)' : 'var(--text-muted)', 
+              borderBottom: pageView === 'products' ? '2px solid var(--primary)' : '2px solid transparent' 
+            }}
+          >
+            قائمة الأصناف الأساسية
+          </button>
+          <button 
+            onClick={() => setPageView('reserved')}
+            style={{ 
+              background: 'none', border: 'none', padding: '0.5rem 1rem', fontSize: '1rem', cursor: 'pointer',
+              fontWeight: pageView === 'reserved' ? 'bold' : 'normal', 
+              color: pageView === 'reserved' ? 'var(--primary)' : 'var(--text-muted)', 
+              borderBottom: pageView === 'reserved' ? '2px solid var(--primary)' : '2px solid transparent' 
+            }}
+          >
+            الأصناف المحجوزة
+          </button>
+        </div>
       </header>
 
-      {/* Main Content Area */}
       <main>
+        {pageView === 'products' ? (
+          <>
         {/* Top Filters (3 columns: Page, Main Category, Subcategory) */}
         <div className={styles.filtersSection}>
           <select 
@@ -539,6 +723,7 @@ export default function ProductsPage() {
                 <th>فئة فرعية</th>
                 <th>التكلفة</th>
                 <th>البيع</th>
+                <th>الربح المتوقع</th>
                 <th>الفعلي</th>
                 <th>المحجوز</th>
                 <th>المتاح</th>
@@ -629,6 +814,48 @@ export default function ProductsPage() {
                       <td>{subCat ? subCat.name : '---'}</td>
                       <td>{firstUnit ? `${firstUnit.type} : ${new Intl.NumberFormat('en-US').format(firstUnit.purchase)}` : '---'}</td>
                       <td>{firstUnit ? `${firstUnit.type} : ${new Intl.NumberFormat('en-US').format(firstUnit.selling)}` : '---'}</td>
+                      <td style={{ fontWeight: 'bold', direction: 'rtl', verticalAlign: 'middle' }}>
+                        {(() => {
+                          if (!firstUnit) return '---';
+                          const purchaseVal = Number(firstUnit.purchase) || 0;
+                          const sellingVal = Number(firstUnit.selling) || 0;
+                          const unitProfit = sellingVal - purchaseVal;
+
+                          let totalQty = prod.totalBaseQuantity || 0;
+                          let totalReserved = 0;
+                          if (prod.totalBaseQuantity === undefined && prod.stock && prod.units && prod.units.length > 0) {
+                            Object.keys(prod.stock).forEach((storeId: string) => {
+                              if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
+                                const s = prod.stock[storeId];
+                                const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                                totalQty += (Number(s.quantity) || 0) * uMul;
+                              }
+                            });
+                          }
+                          if (prod.stock && prod.units && prod.units.length > 0) {
+                            Object.keys(prod.stock).forEach((storeId: string) => {
+                              if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
+                                const s = prod.stock[storeId];
+                                const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
+                                totalReserved += (Number(s.reserved) || 0) * uMul;
+                              }
+                            });
+                          }
+                          const available = totalQty - totalReserved;
+                          const totalStockProfit = unitProfit * available;
+
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ fontSize: '0.9rem', color: unitProfit >= 0 ? '#10B981' : '#EF4444', whiteSpace: 'nowrap' }}>
+                                مفرد: {new Intl.NumberFormat('en-US').format(unitProfit)} د.ع
+                              </span>
+                              <span style={{ fontSize: '0.8rem', color: totalStockProfit >= 0 ? '#34D399' : '#F87171', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                                إجمالي: {new Intl.NumberFormat('en-US').format(totalStockProfit)} د.ع
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td style={{ fontWeight: 'bold', direction: 'rtl', verticalAlign: 'middle' }}>
                         {(() => {
                           let totalQty = 0;
@@ -797,6 +1024,157 @@ export default function ProductsPage() {
             </tbody>
           </table>
         </div>
+          </>
+        ) : (
+          <div className={styles.reservedSection}>
+            <div className={styles.filtersSection} style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', position: 'relative', zIndex: 999 }}>
+              <div className={styles.teamDatePickerContainer} ref={datePickerRef} style={{ zIndex: 50 }}>
+                <button 
+                  type="button"
+                  className={styles.teamDateRangeBtn} 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setIsDatePickerOpen(!isDatePickerOpen);
+                  }}
+                >
+                  📅 {getDateRangeLabel()}
+                </button>
+                
+                {isDatePickerOpen && (
+                  <div className={styles.teamDateModal}>
+                    <div className={styles.teamShortcutList}>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'اليوم' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectDateShortcut('اليوم')}
+                      >
+                        اليوم
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'الأسبوع' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectDateShortcut('الأسبوع')}
+                      >
+                        الأسبوع
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'الشهر' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectDateShortcut('الشهر')}
+                      >
+                        الشهر
+                      </button>
+                      <button 
+                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'الحد الأقصى' ? styles.activeShortcut : ''}`} 
+                        onClick={() => selectDateShortcut('الحد الأقصى')}
+                      >
+                        الحد الأقصى
+                      </button>
+                    </div>
+                    
+                    <div className={styles.teamDateInputs}>
+                      <div className={styles.teamDateInputGroup}>
+                        <label>من تاريخ:</label>
+                        <input 
+                          type="date" 
+                          className={styles.teamDateInput} 
+                          value={tempStartDate} 
+                          onChange={e => handleCustomDateChange('start', e.target.value)} 
+                        />
+                      </div>
+                      <div className={styles.teamDateInputGroup}>
+                        <label>إلى تاريخ:</label>
+                        <input 
+                          type="date" 
+                          className={styles.teamDateInput} 
+                          value={tempEndDate} 
+                          onChange={e => handleCustomDateChange('end', e.target.value)} 
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.teamModalActions}>
+                      <button 
+                        className={styles.teamApplyBtn} 
+                        onClick={handleApplyDateFilter}
+                      >
+                        تم
+                      </button>
+                      <button 
+                        className={styles.teamCancelBtn} 
+                        onClick={handleCancelDateFilter}
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.searchControl} style={{ marginRight: 'auto' }}>
+                <span>إبحث:</span>
+                <input 
+                  type="text" 
+                  className={styles.searchInput}
+                  value={reservedSearchQuery}
+                  onChange={(e) => setReservedSearchQuery(e.target.value)}
+                  placeholder="ابحث عن صنف..."
+                />
+              </div>
+              
+              {isFetchingReserved && <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>جاري الجلب...</span>}
+            </div>
+
+            <div className={styles.tableContainer}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 50 }}>#</th>
+                    <th>اسم الصنف</th>
+                    <th>نوع الصنف</th>
+                    <th>الكمية المحجوزة الإجمالية</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const items = getReservedItems();
+                    const filteredItems = items.filter(item => {
+                      const query = reservedSearchQuery.trim().toLowerCase();
+                      if (!query) return true;
+                      return item.name?.toLowerCase().includes(query) || 
+                             (item.id && item.id.toLowerCase().includes(query));
+                    });
+
+                    if (filteredItems.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                            {items.length === 0 ? "لا توجد أصناف محجوزة في هذا التاريخ" : "لا توجد نتائج تطابق البحث"}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return filteredItems.map((item, idx) => (
+                      <tr key={idx}>
+                        <td>{idx + 1}</td>
+                        <td style={{ fontWeight: 'bold' }}>{item.name}</td>
+                        <td>
+                          {item.isComposite ? (
+                            <span style={{ background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.85rem', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                              مُجمَّع (باقة)
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>مفرد</span>
+                          )}
+                        </td>
+                        <td style={{ fontWeight: 'bold', color: '#f97316', fontSize: '1.1rem' }}>
+                          {item.quantity}
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Add Product Modal */}

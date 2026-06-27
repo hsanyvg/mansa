@@ -537,4 +537,172 @@
 
 .printModalOverlay {
   z-index: 10000;
+}\n\n.teamDatePickerContainer {
+  position: relative;
+  display: inline-block;
+}
+
+.teamDateRangeBtn {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.4rem 0.8rem;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.teamDateRangeBtn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
+}
+
+.teamDateModal {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: auto;
+  z-index: 100;
+  background-color: #1e1e28;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 15px rgba(139, 92, 246, 0.05);
+  z-index: 50;
+  min-width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.teamShortcutList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.teamShortcutBtn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  text-align: right;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.teamShortcutBtn:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+}
+
+.teamShortcutBtn.activeShortcut {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.teamDateInputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 0.75rem;
+}
+
+.teamDateInputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: right;
+}
+
+.teamDateInputGroup label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.teamDateInput {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color-scheme: dark; /* ensures browser datepicker looks great on dark theme */
+}
+
+.teamDateInput:hover, .teamDateInput:focus {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--primary);
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+}
+
+.teamModalActions {
+  display: flex;
+  gap: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.teamApplyBtn {
+  flex: 1;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  text-align: center;
+}
+
+.teamApplyBtn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.teamCancelBtn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.teamCancelBtn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.15);
 }

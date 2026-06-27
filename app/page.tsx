@@ -21,7 +21,16 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [productsCount, setProductsCount] = useState(0);
   const [inStockCount, setInStockCount] = useState(0);
+  const [allProducts, setAllProducts] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [allCategories, setAllCategories] = useState<any[]>([]);
+  const [pages, setPages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Expanded States for Analysis Tree
+  const [expandedAnalysisPages, setExpandedAnalysisPages] = useState<Record<string, boolean>>({});
+  const [expandedAnalysisBranches, setExpandedAnalysisBranches] = useState<Record<string, boolean>>({});
+  const [expandedAnalysisSubcats, setExpandedAnalysisSubcats] = useState<Record<string, boolean>>({});
 
   // Active Orders (Gauge Card) Period Filter states
   const [gaugeFilter, setGaugeFilter] = useState('الشهر');
@@ -174,7 +183,7 @@ export default function Dashboard() {
       console.error("Error fetching orders:", error);
     });
 
-    // Listen to products
+    // Listen to products count and instock stats
     const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
       const prods = snapshot.docs.map(doc => doc.data());
       setProductsCount(prods.length);
@@ -193,9 +202,41 @@ export default function Dashboard() {
       console.error("Error fetching products:", error);
     });
 
+    // Listen to all products for profit analysis
+    const unsubAllProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
+      setAllProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching all products:", error);
+    });
+
+    // Listen to expenses for profit analysis
+    const unsubExpenses = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses'), (snapshot) => {
+      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching expenses:", error);
+    });
+
+    // Listen to categories for profit analysis
+    const unsubCategories = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
+      setAllCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching categories:", error);
+    });
+
+    // Listen to pages for profit analysis
+    const unsubPages = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
+      setPages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching pages:", error);
+    });
+
     return () => {
       unsubOrders();
       unsubProducts();
+      unsubAllProducts();
+      unsubExpenses();
+      unsubCategories();
+      unsubPages();
     };
   }, []);
 
@@ -226,7 +267,7 @@ export default function Dashboard() {
   const stats = React.useMemo(() => {
     const activeOrders = filteredOrders.filter(o => o.status !== 'cancelled');
     const totalSales = filteredOrders
-      .filter(o => o.status === 'delivered')
+      .filter(o => o.is_settled === true)
       .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
 
     return {
@@ -354,7 +395,7 @@ export default function Dashboard() {
         points.push({ value: 0, label });
       }
       filteredOrders.forEach(order => {
-        if (order.status !== 'delivered' || !order.date) return;
+        if (order.is_settled !== true || !order.date) return;
         const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
         const hour = date.getHours();
         const blockIndex = Math.min(11, Math.floor(hour / 2));
@@ -368,7 +409,7 @@ export default function Dashboard() {
         points.push({ value: 0, time: getStartOfDay(d), label: days[d.getDay()] });
       }
       filteredOrders.forEach(order => {
-        if (order.status !== 'delivered' || !order.date) return;
+        if (order.is_settled !== true || !order.date) return;
         const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
         const orderDayStart = getStartOfDay(new Date(orderTime));
         const point = points.find(p => p.time === orderDayStart);
@@ -383,7 +424,7 @@ export default function Dashboard() {
         points.push({ value: 0, time: getStartOfDay(d), label: `${d.getDate()}` });
       }
       filteredOrders.forEach(order => {
-        if (order.status !== 'delivered' || !order.date) return;
+        if (order.is_settled !== true || !order.date) return;
         const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
         const orderDayStart = getStartOfDay(new Date(orderTime));
         let minDiff = Infinity;
@@ -407,7 +448,7 @@ export default function Dashboard() {
         points.push({ value: 0, time: d.getTime(), label: monthsShort[d.getMonth()] });
       }
       filteredOrders.forEach(order => {
-        if (order.status !== 'delivered' || !order.date) return;
+        if (order.is_settled !== true || !order.date) return;
         const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
         const yr = date.getFullYear();
         const mo = date.getMonth();
@@ -503,7 +544,7 @@ export default function Dashboard() {
 
     const currentSales = orders
       .filter(o => {
-        if (o.status !== 'delivered' || !o.date) return false;
+        if (o.is_settled !== true || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
         return oTime >= currentStart;
       })
@@ -511,7 +552,7 @@ export default function Dashboard() {
 
     const prevSales = orders
       .filter(o => {
-        if (o.status !== 'delivered' || !o.date) return false;
+        if (o.is_settled !== true || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
         return oTime >= prevStart && oTime < prevEnd;
       })
@@ -598,7 +639,300 @@ export default function Dashboard() {
     };
   }, [gaugeFilteredOrders]);
 
+  const filteredExpenses = React.useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    
+    const getDaysAgo = (days: number) => {
+      const d = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      return d.toISOString().split('T')[0];
+    };
+
+    return expenses.filter(exp => {
+      if (!exp.date) return false;
+      if (exp.isArchived) return false;
+      
+      if (filter === 'اليوم') {
+        return exp.date === todayStr;
+      } else if (filter === 'هذا الأسبوع') {
+        return exp.date >= getDaysAgo(7);
+      } else if (filter === 'هذا الشهر') {
+        return exp.date >= getDaysAgo(30);
+      } else if (filter === 'هذا العام') {
+        return exp.date >= getDaysAgo(365);
+      }
+      return true;
+    });
+  }, [expenses, filter]);
+
+  const toggleAnalysisPage = (pageName: string) => {
+    setExpandedAnalysisPages(prev => ({ ...prev, [pageName]: !prev[pageName] }));
+  };
+
+  const toggleAnalysisBranch = (branchKey: string) => {
+    setExpandedAnalysisBranches(prev => ({ ...prev, [branchKey]: !prev[branchKey] }));
+  };
+
+  const toggleAnalysisSubcat = (subcatKey: string) => {
+    setExpandedAnalysisSubcats(prev => ({ ...prev, [subcatKey]: !prev[subcatKey] }));
+  };
+
+  const analysisStats = React.useMemo(() => {
+    // 1. Resolve product hierarchy helper
+    const resolveProductHierarchy = (prodName: string) => {
+      const prod = allProducts.find(p => p.name === prodName);
+      if (!prod) return { page: 'عامة (بدون بيج)', branch: 'غير محدد', subcat: 'بدون فئة فرعية' };
+
+      const cat = allCategories.find(c => c.id === prod.categoryId);
+      if (!cat) return { page: 'عامة (بدون بيج)', branch: 'غير محدد', subcat: 'بدون فئة فرعية' };
+
+      const pg = pages.find(p => p.id === cat.pageId);
+      const pageName = pg ? pg.name : 'عامة (بدون بيج)';
+      const branchName = cat.name || 'غير محدد';
+
+      let subcatName = 'بدون فئة فرعية';
+      if (prod.subcategoryId && cat.subcategories) {
+        const sub = cat.subcategories.find((s: any) => s.id === prod.subcategoryId);
+        if (sub) subcatName = sub.name;
+      }
+
+      return { page: pageName, branch: branchName, subcat: subcatName };
+    };
+
+    // 2. Initialize tree data structure
+    const tree: Record<string, {
+      name: string;
+      revenue: number;
+      expenses: number;
+      deliveryCost: number;
+      netProfit: number;
+      deliveredOrdersCount: number;
+      branches: Record<string, {
+        name: string;
+        revenue: number;
+        expenses: number;
+        netProfit: number;
+        subcategories: Record<string, {
+          name: string;
+          revenue: number;
+          expenses: number;
+          netProfit: number;
+          items: Record<string, {
+            name: string;
+            revenue: number;
+            expenses: number;
+            netProfit: number;
+          }>
+        }>
+      }>
+    }> = {};
+
+    // Helper to ensure path exists in tree
+    const ensurePath = (page: string, branch: string, subcat: string, item: string) => {
+      if (!tree[page]) {
+        tree[page] = {
+          name: page,
+          revenue: 0,
+          expenses: 0,
+          deliveryCost: 0,
+          netProfit: 0,
+          deliveredOrdersCount: 0,
+          branches: {}
+        };
+      }
+      const p = tree[page];
+      if (!p.branches[branch]) {
+        p.branches[branch] = {
+          name: branch,
+          revenue: 0,
+          expenses: 0,
+          netProfit: 0,
+          subcategories: {}
+        };
+      }
+      const b = p.branches[branch];
+      if (!b.subcategories[subcat]) {
+        b.subcategories[subcat] = {
+          name: subcat,
+          revenue: 0,
+          expenses: 0,
+          netProfit: 0,
+          items: {}
+        };
+      }
+      const s = b.subcategories[subcat];
+      if (!s.items[item]) {
+        s.items[item] = {
+          name: item,
+          revenue: 0,
+          expenses: 0,
+          netProfit: 0
+        };
+      }
+    };
+
+    // 3. Accumulate revenues from settled orders
+    filteredOrders.forEach(order => {
+      if (order.is_settled !== true) return;
+
+      // 3.1 Calculate total of all items in this order to scale proportionally
+      const orderItemsTotal = (order.items || []).reduce((sum: number, it: any) => {
+        const iQty = Number(it.quantity) || 0;
+        const iPrice = Number(it.unitPrice) || Number(it.price) || 0;
+        return sum + (iQty * iPrice);
+      }, 0) || 1;
+
+      const orderTotalAmount = Number(order.totalAmount) || 0;
+
+      // 3.2 Distribute to pages and items
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach((item: any) => {
+          const pName = item.productName || item.name;
+          if (!pName) return;
+
+          const hierarchy = resolveProductHierarchy(pName);
+          ensurePath(hierarchy.page, hierarchy.branch, hierarchy.subcat, pName);
+
+          const qty = Number(item.quantity) || 0;
+          const price = Number(item.unitPrice) || Number(item.price) || 0;
+          const itemTotal = qty * price;
+
+          // Proportional share of this item in the entire order
+          const proportion = itemTotal / orderItemsTotal;
+
+          // Page level nodes (proportional share of gross totalAmount and order count)
+          const pGrp = tree[hierarchy.page];
+          pGrp.deliveredOrdersCount += proportion;
+          pGrp.revenue += proportion * orderTotalAmount;
+
+          // Branch/Subcategory/Item level nodes
+          const bGrp = pGrp.branches[hierarchy.branch];
+          const sGrp = bGrp.subcategories[hierarchy.subcat];
+          const iGrp = sGrp.items[pName];
+
+          bGrp.revenue += itemTotal;
+          sGrp.revenue += itemTotal;
+          iGrp.revenue += itemTotal;
+        });
+      }
+    });
+
+    // 4. Accumulate expenses
+    filteredExpenses.forEach(exp => {
+      const expAmount = Number(exp.amount) || 0; // assuming IQD
+      
+      const pageKey = exp.pageName || 'عامة (بدون بيج)';
+      const branchKey = exp.branchName || '';
+      const itemKey = exp.itemName || '';
+      
+      let subcatKey = '';
+      if (itemKey) {
+        subcatKey = resolveProductHierarchy(itemKey).subcat;
+      }
+
+      if (!tree[pageKey]) {
+        tree[pageKey] = {
+          name: pageKey,
+          revenue: 0,
+          expenses: 0,
+          deliveryCost: 0,
+          netProfit: 0,
+          deliveredOrdersCount: 0,
+          branches: {}
+        };
+      }
+      const pGrp = tree[pageKey];
+      pGrp.expenses += expAmount;
+
+      if (branchKey) {
+        if (!pGrp.branches[branchKey]) {
+          pGrp.branches[branchKey] = {
+            name: branchKey,
+            revenue: 0,
+            expenses: 0,
+            netProfit: 0,
+            subcategories: {}
+          };
+        }
+        const bGrp = pGrp.branches[branchKey];
+        bGrp.expenses += expAmount;
+
+        const finalSubcatKey = subcatKey || 'بدون فئة فرعية';
+        if (!bGrp.subcategories[finalSubcatKey]) {
+          bGrp.subcategories[finalSubcatKey] = {
+            name: finalSubcatKey,
+            revenue: 0,
+            expenses: 0,
+            netProfit: 0,
+            items: {}
+          };
+        }
+        const sGrp = bGrp.subcategories[finalSubcatKey];
+        sGrp.expenses += expAmount;
+
+        if (itemKey) {
+          if (!sGrp.items[itemKey]) {
+            sGrp.items[itemKey] = {
+              name: itemKey,
+              revenue: 0,
+              expenses: 0,
+              netProfit: 0
+            };
+          }
+          const iGrp = sGrp.items[itemKey];
+          iGrp.expenses += expAmount;
+        }
+      }
+    });
+
+    // 5. Finalize Net Profit calculations for all nodes (No COGS subtraction) and round to nearest whole IQD
+    Object.values(tree).forEach(page => {
+      page.revenue = Math.round(page.revenue);
+      page.expenses = Math.round(page.expenses);
+      page.netProfit = page.revenue - page.expenses;
+
+      Object.values(page.branches).forEach(branch => {
+        branch.revenue = Math.round(branch.revenue);
+        branch.expenses = Math.round(branch.expenses);
+        branch.netProfit = branch.revenue - branch.expenses;
+
+        Object.values(branch.subcategories).forEach(subcat => {
+          subcat.revenue = Math.round(subcat.revenue);
+          subcat.expenses = Math.round(subcat.expenses);
+          subcat.netProfit = subcat.revenue - subcat.expenses;
+
+          Object.values(subcat.items).forEach(item => {
+            item.revenue = Math.round(item.revenue);
+            item.expenses = Math.round(item.expenses);
+            item.netProfit = item.revenue - item.expenses;
+          });
+        });
+      });
+    });
+
+    return tree;
+  }, [allProducts, allCategories, pages, filteredOrders, filteredExpenses]);
+
+  const overallStats = React.useMemo(() => {
+    let totalRevenue = 0;
+    let totalExpenses = 0;
+    let totalNetProfit = 0;
+
+    Object.values(analysisStats).forEach((page: any) => {
+      totalRevenue += page.revenue || 0;
+      totalExpenses += page.expenses || 0;
+      totalNetProfit += page.netProfit || 0;
+    });
+
+    return {
+      totalRevenue,
+      totalExpenses,
+      totalNetProfit
+    };
+  }, [analysisStats]);
+
   const [animatedRate, setAnimatedRate] = useState(0);
+
 
   useEffect(() => {
     if (!loading) {
@@ -1116,6 +1450,147 @@ export default function Dashboard() {
             </div>
             <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
               عدد المنتجات المتوفرة: <strong>{inStockCount}</strong> من أصل <strong>{productsCount}</strong> منتج
+            </div>
+          </div>
+
+          {/* Card 4: Product Profit & Loss Analysis */}
+          <div className={`${styles.card} ${styles.colSpan4}`} style={{ marginTop: '1rem' }}>
+            <div className={styles.cardHeader}>
+              <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>📊 شجرة تحليل الأرباح والخسائر والأداء (البيج ⬅️ الفئة ⬅️ الصنف)</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>صافي الربح = الإيرادات من الكشوفات - المصاريف المباشرة</span>
+            </div>
+
+            <div className={styles.treeSection} style={{ border: 'none', paddingTop: 0 }}>
+              {/* Overall Summary Panel */}
+              <div className={styles.summaryStatsRow} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <div className={styles.summaryStatCard}>
+                  <span className={styles.summaryStatLabel}>💰 إجمالي المبيعات (الواصلة)</span>
+                  <span className={styles.summaryStatValue} style={{ color: '#60a5fa' }}>{overallStats.totalRevenue.toLocaleString()} د.ع</span>
+                </div>
+                <div className={styles.summaryStatCard}>
+                  <span className={styles.summaryStatLabel}>💸 إجمالي المصاريف المباشرة</span>
+                  <span className={styles.summaryStatValue} style={{ color: '#c084fc' }}>{overallStats.totalExpenses.toLocaleString()} د.ع</span>
+                </div>
+                <div className={styles.summaryStatCard}>
+                  <span className={styles.summaryStatLabel}>📈 صافي الأرباح الكلية</span>
+                  <span className={styles.summaryStatValue} style={{ color: overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444' }}>
+                    {overallStats.totalNetProfit >= 0 ? '+' : ''}{overallStats.totalNetProfit.toLocaleString()} د.ع
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.treeContainer} style={{ marginTop: '1rem' }}>
+                {Object.values(analysisStats).map(page => {
+                  const pageKey = page.name;
+                  const isPageExpanded = !!expandedAnalysisPages[pageKey];
+                  const hasBranches = Object.keys(page.branches).length > 0;
+
+                  return (
+                    <div key={pageKey} className={styles.treeNode}>
+                      <div 
+                        className={`${styles.nodeHeader} ${styles.pageNode}`}
+                        onClick={() => hasBranches && toggleAnalysisPage(pageKey)}
+                        style={{ cursor: hasBranches ? 'pointer' : 'default' }}
+                      >
+                        <div className={styles.nodeLeft}>
+                          {hasBranches && <span className={styles.arrowIcon}>{isPageExpanded ? '▼' : '▶'}</span>}
+                          <span className={styles.nodeName}>🏢 {page.name}</span>
+                        </div>
+                        <div className={styles.nodeAmount}>
+                          <span className={styles.revenueText}>مبيعات: {page.revenue.toLocaleString()} د.ع</span>
+                          <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {page.expenses.toLocaleString()} د.ع</span>
+                          <span className={page.netProfit >= 0 ? styles.profitText : styles.lossText}>
+                            الصافي: {page.netProfit >= 0 ? '+' : ''}{page.netProfit.toLocaleString()} د.ع
+                          </span>
+                        </div>
+                      </div>
+
+                      {isPageExpanded && hasBranches && (
+                        <div className={styles.nodeChildren}>
+                          {Object.values(page.branches).map(branch => {
+                            const branchKey = `${pageKey}::${branch.name}`;
+                            const isBranchExpanded = !!expandedAnalysisBranches[branchKey];
+                            const hasSubcats = Object.keys(branch.subcategories).length > 0;
+
+                            return (
+                              <div key={branchKey} className={styles.treeNode}>
+                                <div 
+                                  className={`${styles.nodeHeader} ${styles.branchNode}`}
+                                  onClick={() => hasSubcats && toggleAnalysisBranch(branchKey)}
+                                  style={{ cursor: hasSubcats ? 'pointer' : 'default' }}
+                                >
+                                  <div className={styles.nodeLeft}>
+                                    {hasSubcats && <span className={styles.arrowIcon}>{isBranchExpanded ? '▼' : '▶'}</span>}
+                                    <span className={styles.nodeName}>🌿 {branch.name}</span>
+                                  </div>
+                                  <div className={styles.nodeAmount}>
+                                    <span className={styles.revenueText}>مبيعات: {branch.revenue.toLocaleString()} د.ع</span>
+                                    <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {branch.expenses.toLocaleString()} د.ع</span>
+                                    <span className={branch.netProfit >= 0 ? styles.profitText : styles.lossText}>
+                                      الصافي: {branch.netProfit >= 0 ? '+' : ''}{branch.netProfit.toLocaleString()} د.ع
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {isBranchExpanded && hasSubcats && (
+                                  <div className={styles.nodeChildren}>
+                                    {Object.values(branch.subcategories).map(subcat => {
+                                      const subcatKey = `${branchKey}::${subcat.name}`;
+                                      const isSubcatExpanded = !!expandedAnalysisSubcats[subcatKey];
+                                      const hasItems = Object.keys(subcat.items).length > 0;
+
+                                      return (
+                                        <div key={subcatKey} className={styles.treeNode}>
+                                          <div 
+                                            className={`${styles.nodeHeader} ${styles.subcatNode}`}
+                                            onClick={() => hasItems && toggleAnalysisSubcat(subcatKey)}
+                                            style={{ cursor: hasItems ? 'pointer' : 'default' }}
+                                          >
+                                            <div className={styles.nodeLeft}>
+                                              {hasItems && <span className={styles.arrowIcon}>{isSubcatExpanded ? '▼' : '▶'}</span>}
+                                              <span className={styles.nodeName}>🍂 {subcat.name}</span>
+                                            </div>
+                                            <div className={styles.nodeAmount}>
+                                              <span className={styles.revenueText}>مبيعات: {subcat.revenue.toLocaleString()} د.ع</span>
+                                              <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {subcat.expenses.toLocaleString()} د.ع</span>
+                                              <span className={subcat.netProfit >= 0 ? styles.profitText : styles.lossText}>
+                                                الصافي: {subcat.netProfit >= 0 ? '+' : ''}{subcat.netProfit.toLocaleString()} د.ع
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          {isSubcatExpanded && hasItems && (
+                                            <div className={styles.nodeChildren}>
+                                              {Object.values(subcat.items).map(item => (
+                                                <div key={item.name} className={`${styles.nodeHeader} ${styles.itemNode}`}>
+                                                  <div className={styles.nodeLeft}>
+                                                    <span className={styles.nodeName}>🏷️ {item.name}</span>
+                                                  </div>
+                                                  <div className={styles.nodeAmount}>
+                                                    <span className={styles.revenueText}>مبيعات: {item.revenue.toLocaleString()} د.ع</span>
+                                                    <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {item.expenses.toLocaleString()} د.ع</span>
+                                                    <span className={item.netProfit >= 0 ? styles.profitText : styles.lossText}>
+                                                      الصافي: {item.netProfit >= 0 ? '+' : ''}{item.netProfit.toLocaleString()} د.ع
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

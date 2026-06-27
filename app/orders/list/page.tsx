@@ -7,6 +7,7 @@ import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
 import { db, auth } from "../../../lib/firebase";
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { createJenniShipment } from '../../../lib/jenni-api';
 import * as XLSX from 'xlsx';
 
@@ -19,6 +20,24 @@ export default function OrdersListPage() {
   
   const [isSendingToDelivery, setIsSendingToDelivery] = useState(false);
   const currentUserId = 'default_tenant';
+  const [isAdmin, setIsAdmin] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const mappingRef = doc(db, 'employee_mappings', user.uid);
+          const snap = await getDoc(mappingRef);
+          setIsAdmin(!snap.exists());
+        } catch (e) {
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
   
   // Custom Modals
   const [notificationModal, setNotificationModal] = useState({ show: false, message: '' });
@@ -69,6 +88,141 @@ export default function OrdersListPage() {
   const [showStatusFilterDropdown, setShowStatusFilterDropdown] = useState(false);
   const statusFilterRef = React.useRef<HTMLDivElement>(null);
 
+  // Column Visibility State
+  const defaultVisibleColumns = {
+    id: true,
+    customerName: true,
+    governorate: true,
+    phone: true,
+    totalAmount: true,
+    deliveryCost: true,
+    netAmount: true,
+    notes: true,
+    status: true,
+    addDate: true,
+    employeeName: true,
+    shippingCompany: true,
+    goodsPosition: true
+  };
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(defaultVisibleColumns);
+  const [showColumnVisibilityDropdown, setShowColumnVisibilityDropdown] = useState(false);
+  const columnVisibilityRef = React.useRef<HTMLDivElement>(null);
+  const dragLineRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('orders_visible_columns');
+    if (saved) {
+      try {
+        setVisibleColumns({ ...defaultVisibleColumns, ...JSON.parse(saved) });
+      } catch (e) {}
+    }
+  }, []);
+
+
+  // Column Widths State
+  const defaultColumnWidths = {
+    selection: 40,
+    id: 110,
+    customerName: 180,
+    governorate: 120,
+    phone: 130,
+    totalAmount: 130,
+    deliveryCost: 130,
+    netAmount: 130,
+    notes: 250,
+    status: 180,
+    addDate: 140,
+    employeeName: 180,
+    shippingCompany: 140,
+    goodsPosition: 140,
+    actions: 70
+  };
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(defaultColumnWidths);
+  const [resizingCol, setResizingCol] = useState<string | null>(null);
+  const [startX, setStartX] = useState(0);
+  const [startWidth, setStartWidth] = useState(0);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('orders_column_widths');
+    if (saved) {
+      try {
+        setColumnWidths({ ...defaultColumnWidths, ...JSON.parse(saved) });
+      } catch (e) {}
+    }
+  }, []);
+
+  const handleResizeStart = (e: React.MouseEvent, colKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizingCol(colKey);
+    setStartX(e.clientX);
+    setStartWidth(columnWidths[colKey] || defaultColumnWidths[colKey as keyof typeof defaultColumnWidths] || 100);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingCol) return;
+      if (dragLineRef.current) {
+        dragLineRef.current.style.left = `${e.clientX}px`;
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (resizingCol) {
+        const diff = startX - e.clientX; 
+        let newWidth = startWidth + diff;
+        if (newWidth < 40) newWidth = 40; // minimum width
+        
+        setColumnWidths(prev => ({
+          ...prev,
+          [resizingCol]: newWidth
+        }));
+        setResizingCol(null);
+        if (dragLineRef.current) {
+          dragLineRef.current.style.display = 'none';
+        }
+      }
+    };
+
+    if (resizingCol) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      if (dragLineRef.current) {
+        dragLineRef.current.style.display = 'block';
+        dragLineRef.current.style.left = `${startX}px`;
+      }
+    } else {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      if (dragLineRef.current) {
+        dragLineRef.current.style.display = 'none';
+      }
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [resizingCol, startX, startWidth]);
+
+  useEffect(() => {
+    if (resizingCol === null && Object.keys(columnWidths).length > 0) {
+      localStorage.setItem('orders_column_widths', JSON.stringify(columnWidths));
+    }
+  }, [resizingCol]);
+
+  const toggleColumnVisibility = (colKey: string) => {
+    setVisibleColumns(prev => {
+      const next = { ...prev, [colKey]: !prev[colKey] };
+      localStorage.setItem('orders_visible_columns', JSON.stringify(next));
+      return next;
+    });
+  };
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (bulkActionsRef.current && !bulkActionsRef.current.contains(event.target as Node)) {
@@ -76,6 +230,9 @@ export default function OrdersListPage() {
       }
       if (statusFilterRef.current && !statusFilterRef.current.contains(event.target as Node)) {
         setShowStatusFilterDropdown(false);
+      }
+      if (columnVisibilityRef.current && !columnVisibilityRef.current.contains(event.target as Node)) {
+        setShowColumnVisibilityDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -117,16 +274,24 @@ export default function OrdersListPage() {
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
     'pending': { label: 'قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
-    'in_progress': { label: 'قيد التنفيذ', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
-    'backordered': { label: 'بانتظار المخزون', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+    'backordered': { label: 'قيد الانتظار (مخزن)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
     'processing': { label: 'جاري التجهيز', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
     'shipped': { label: 'تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
     'ofd': { label: 'قيد التوصيل', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
-    'delivered': { label: 'مكتمل', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'delivered': { label: 'مكتمل (لم تتم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'delivered_settled': { label: 'مكتمل (تم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
     'cancelled': { label: 'ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
-    'returned': { label: 'راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
-    'new': { label: 'جديد', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' },
+    'returned_agent': { label: 'راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
+    'returned_warehouse': { label: 'راجع تم استلامه في المخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
     'postponed': { label: 'مؤجل', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' }
+  };
+
+  const getStatusKey = (order: any) => {
+    const status = (order.status || 'pending').toLowerCase();
+    if (status === 'delivered') {
+      return order.is_settled === true ? 'delivered_settled' : 'delivered';
+    }
+    return status;
   };
 
   // Fetch Orders from Firestore
@@ -167,7 +332,8 @@ export default function OrdersListPage() {
          return tB - tA;
       });
 
-      setOrders(dbOrders);
+      const validOrders = dbOrders.filter(o => o.isDeleted !== true);
+      setOrders(validOrders);
     });
 
     return () => unsubscribe();
@@ -552,10 +718,12 @@ export default function OrdersListPage() {
   });
 
   const returnedOrdersList = activeOrders.filter(o => o.status === 'returned');
+  const discrepancyOrdersList = activeOrders.filter(o => o.has_discrepancy);
 
   const baseList = activeTab === 'archived' ? archivedOrdersList 
                  : activeTab === 'duplicates' ? duplicateOrdersList 
                  : activeTab === 'returned' ? returnedOrdersList
+                 : activeTab === 'discrepancies' ? discrepancyOrdersList
                  : activeOrders;
 
   const statusCounts = React.useMemo(() => {
@@ -565,7 +733,7 @@ export default function OrdersListPage() {
       : baseList;
 
     listToCount.forEach(order => {
-      const status = order.status || 'pending';
+      const status = getStatusKey(order);
       counts[status] = (counts[status] || 0) + 1;
     });
     return counts;
@@ -574,11 +742,11 @@ export default function OrdersListPage() {
   const baseListAfterStatus = React.useMemo(() => {
     let list = baseList;
     if (selectedStatus === 'all') return list;
-    return list.filter(o => (o.status || 'pending') === selectedStatus);
+    return list.filter(o => getStatusKey(o) === selectedStatus);
   }, [baseList, selectedStatus]);
 
   const filteredOrders = (showOnlySelected 
-    ? orders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || (o.status || 'pending') === selectedStatus)
+    ? orders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || getStatusKey(o) === selectedStatus)
     : baseListAfterStatus).filter(order => {
     // We slice the ID exactly how it's displayed to match the user's visual search
     const displayId = order.id.slice(-6).toLowerCase();
@@ -588,7 +756,7 @@ export default function OrdersListPage() {
     const phone = (order.customerPhone || order.phone || '').toLowerCase();
     const total = (order.formattedTotal || '').toString().toLowerCase();
     const rawTotal = (order.totalAmount || order.price || '').toString().toLowerCase();
-    const statusKey = (order.status || 'pending').toLowerCase();
+    const statusKey = getStatusKey(order);
     const statusLabel = statusMap[statusKey]?.label.toLowerCase() || statusKey;
     const aDate = (order.addDate || '').toLowerCase();
     const aTime = (order.addTime || '').toLowerCase();
@@ -877,8 +1045,8 @@ export default function OrdersListPage() {
         }
       }
 
-      // Delete the order document
-      batch.delete(orderRef);
+      // Soft Delete the order document
+      batch.update(orderRef, { isDeleted: true });
       await batch.commit();
       
       setOrderToDelete(null);
@@ -968,7 +1136,8 @@ export default function OrdersListPage() {
             }
           }
         }
-        batch.delete(orderRef);
+        // Soft delete the order
+        batch.update(orderRef, { isDeleted: true });
       }
       
       await batch.commit();
@@ -1189,13 +1358,28 @@ export default function OrdersListPage() {
     }
   };
 
+  const handleStatusChangeRequest = (newStatus: string, targetOrderIds: string[]) => {
+    const isExemptStatus = newStatus === 'pending' || newStatus === 'backordered' || newStatus === 'cancelled';
+    
+    // Check if ALL target orders already have a shipping company
+    const allHaveCompany = targetOrderIds.every(id => {
+      const order = orders.find(o => o.id === id);
+      return order && !!order.shippingCompany && order.shippingCompany.trim() !== '';
+    });
+
+    setBulkStatusValue(newStatus);
+    setSelectedOrderIds(targetOrderIds);
+
+    if (isExemptStatus || allHaveCompany) {
+      confirmBulkStatusChange(targetOrderIds, newStatus);
+    } else {
+      setShowBulkStatusModal(true);
+    }
+  };
+
   const handleInlineStatusChange = async (orderId: string, oldStatus: string, newStatus: string) => {
     if (oldStatus === newStatus && newStatus !== 'delivered' && newStatus !== 'shipped') return;
-
-    // Open the status modal so they can select shipping company or see warnings
-    setBulkStatusValue(newStatus);
-    setSelectedOrderIds([orderId]);
-    setShowBulkStatusModal(true);
+    handleStatusChangeRequest(newStatus, [orderId]);
   };
 
   const handleCancelOrder = async (order: any) => {
@@ -1274,15 +1458,16 @@ export default function OrdersListPage() {
     }
   };
 
-  const confirmBulkStatusChange = async () => {
-    if (selectedOrderIds.length === 0) return;
+  const confirmBulkStatusChange = async (overrideOrderIds?: string[], overrideStatus?: string) => {
+    const targetOrderIds = overrideOrderIds || selectedOrderIds;
+    if (targetOrderIds.length === 0) return;
 
     setIsUpdating(true);
     try {
       const batch = writeBatch(db);
       let updatedCount = 0;
       
-      const newStatus = bulkStatusValue;
+      const newStatus = overrideStatus || bulkStatusValue;
       const newState = getStockState(newStatus);
       
       const productCache: Record<string, { ref: any; data: any; stock: any; isDirty: boolean }> = {};
@@ -1290,7 +1475,7 @@ export default function OrdersListPage() {
 
       // 1. Identify which orders are valid and which products we need
       const validOrders = [];
-      for (const orderId of selectedOrderIds) {
+      for (const orderId of targetOrderIds) {
         const orderToUpdate = orders.find(o => o.id === orderId);
         if (!orderToUpdate) continue;
         
@@ -1342,7 +1527,7 @@ export default function OrdersListPage() {
         const finalDeliveryCompany = deliveryCompany === 'أخرى' ? customDeliveryCompany : deliveryCompany;
         const updateData: any = { status: newStatus };
         
-        if ((newStatus === 'delivered' || newStatus === 'shipped') && finalDeliveryCompany.trim() !== '') {
+        if (finalDeliveryCompany.trim() !== '') {
           updateData.shippingCompany = finalDeliveryCompany.trim();
           
           // Apply delivery cost deduction based on governorate
@@ -1551,6 +1736,7 @@ export default function OrdersListPage() {
         notes: editingOrder.notes || '',
         status: editingOrder.status || 'pending',
         employeeName: editingOrder.employeeName || '',
+        shippingCompany: editingOrder.shippingCompany || '',
         items: editingOrder.items || [],
         totalAmount: Number(editingOrder.totalAmount) || 0
       });
@@ -2102,8 +2288,39 @@ export default function OrdersListPage() {
     }
   };
 
+  const calculateTableWidth = () => {
+    let w = (columnWidths.selection || 50) + (columnWidths.actions || 160);
+    if (visibleColumns.id) w += columnWidths.id || 110;
+    if (visibleColumns.customerName) w += columnWidths.customerName || 180;
+    if (visibleColumns.governorate) w += columnWidths.governorate || 120;
+    if (visibleColumns.phone) w += columnWidths.phone || 130;
+    if (visibleColumns.totalAmount) w += columnWidths.totalAmount || 130;
+    if (visibleColumns.deliveryCost) w += columnWidths.deliveryCost || 130;
+    if (visibleColumns.netAmount) w += columnWidths.netAmount || 130;
+    if (visibleColumns.notes) w += columnWidths.notes || 250;
+    if (visibleColumns.status) w += columnWidths.status || 180;
+    if (visibleColumns.addDate) w += columnWidths.addDate || 140;
+    if (visibleColumns.employeeName) w += columnWidths.employeeName || 180;
+    if (visibleColumns.shippingCompany) w += columnWidths.shippingCompany || 140;
+    if (activeTab === 'returned' && visibleColumns.goodsPosition) w += columnWidths.goodsPosition || 180;
+    return w;
+  };
+
   return (
     <div className={styles.container}>
+      <div 
+        ref={dragLineRef} 
+        style={{ 
+          display: 'none', 
+          position: 'fixed', 
+          top: 0, 
+          bottom: 0, 
+          width: '2px', 
+          backgroundColor: '#3b82f6', 
+          zIndex: 9999, 
+          pointerEvents: 'none' 
+        }} 
+      />
       {/* Header Area */}
       <div className={styles.header}>
         <div className={styles.title}>
@@ -2129,14 +2346,16 @@ export default function OrdersListPage() {
                 value={bulkStatusValue}
                 onChange={(e) => {
                   const newStatus = e.target.value;
-                  setBulkStatusValue(newStatus);
-                  setShowBulkStatusModal(true);
+                  handleStatusChangeRequest(newStatus, selectedOrderIds);
                 }}
               >
                 <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem'}}>اختر الحالة...</option>
-                {Object.entries(statusMap).map(([key, info]) => (
-                   <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem'}}>{info.label} ({key})</option>
-                ))}
+                {Object.entries(statusMap).map(([key, info]) => {
+                  if (key === 'returned_warehouse' || key === 'delivered_settled') return null;
+                  return (
+                    <option key={key} value={key} style={{color: info.color, backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>{info.label} ({key})</option>
+                  );
+                })}
               </select>
             </div>
           )}
@@ -2206,11 +2425,11 @@ export default function OrdersListPage() {
                     </button>
                   )}
 
-                  {(canTransfer || canArchive || canConfirmReturn || canRestore) && (canDelete || canDeletePermanent) && (
+                  {(canTransfer || canArchive || canConfirmReturn || canRestore) && (canDelete || canDeletePermanent) && isAdmin && (
                     <div className={styles.bulkDropdownDivider} />
                   )}
 
-                  {canDelete && (
+                  {canDelete && isAdmin && (
                     <button 
                       className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
                       onClick={() => {
@@ -2223,7 +2442,7 @@ export default function OrdersListPage() {
                     </button>
                   )}
 
-                  {canDeletePermanent && (
+                  {canDeletePermanent && isAdmin && (
                     <button 
                       className={`${styles.bulkDropdownItem} ${styles.bulkDropdownItemDanger}`}
                       onClick={() => {
@@ -2256,6 +2475,16 @@ export default function OrdersListPage() {
           📦 كافة الطلبات
           {activeOrders.length > 0 && (
             <span className={styles.badgeGreen}>{activeOrders.length}</span>
+          )}
+        </button>
+        <button 
+          className={`${styles.tabButton} ${activeTab === 'discrepancies' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('discrepancies')}
+          style={{ borderColor: activeTab === 'discrepancies' ? '#ef4444' : 'transparent' }}
+        >
+          🚨 الطلبات غير المتطابقة
+          {discrepancyOrdersList.length > 0 && (
+            <span className={styles.badge} style={{ backgroundColor: '#ef4444' }}>{discrepancyOrdersList.length}</span>
           )}
         </button>
         <button 
@@ -2310,14 +2539,15 @@ export default function OrdersListPage() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.4rem 0.8rem',
-              borderRadius: '6px',
+              gap: '0.5rem',
+              padding: '0.6rem 1rem',
+              borderRadius: '8px',
               border: selectedStatus === 'all' ? '2px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.08)',
               backgroundColor: selectedStatus === 'all' ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
               color: '#fff',
               cursor: 'pointer',
               fontWeight: 'bold',
+              fontSize: '0.95rem',
               transition: 'all 0.2s',
               whiteSpace: 'nowrap'
             }}
@@ -2325,9 +2555,9 @@ export default function OrdersListPage() {
             <span>📁 الكل</span>
             <span style={{
               backgroundColor: 'rgba(255,255,255,0.12)',
-              padding: '0.1rem 0.4rem',
+              padding: '0.2rem 0.5rem',
               borderRadius: '20px',
-              fontSize: '0.8rem',
+              fontSize: '0.9rem',
               color: '#fff'
             }}>
               {baseList.length}
@@ -2339,7 +2569,7 @@ export default function OrdersListPage() {
             const isActive = selectedStatus === statusKey;
             const emojiMap: Record<string, string> = {
               pending: '⏳', backordered: '📥', processing: '⚙️', shipped: '📦',
-              ofd: '🚚', delivered: '✅', cancelled: '❌', returned: '↩️',
+              ofd: '🚚', delivered: '✅', delivered_settled: '🏦', cancelled: '❌', returned: '↩️',
               new: '✨', postponed: '📅'
             };
             
@@ -2352,14 +2582,15 @@ export default function OrdersListPage() {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.4rem',
-                  padding: '0.4rem 0.8rem',
-                  borderRadius: '6px',
+                  gap: '0.5rem',
+                  padding: '0.6rem 1rem',
+                  borderRadius: '8px',
                   border: isActive ? `2px solid ${info.color}` : '1px solid rgba(255,255,255,0.04)',
                   backgroundColor: isActive ? info.bg : 'rgba(255,255,255,0.02)',
                   color: isActive ? '#fff' : 'var(--text-muted)',
                   cursor: 'pointer',
                   fontWeight: 'bold',
+                  fontSize: '0.95rem',
                   transition: 'all 0.2s',
                   whiteSpace: 'nowrap'
                 }}
@@ -2368,9 +2599,9 @@ export default function OrdersListPage() {
                 <span style={{
                   backgroundColor: info.bg,
                   color: info.color,
-                  padding: '0.1rem 0.4rem',
+                  padding: '0.2rem 0.5rem',
                   borderRadius: '20px',
-                  fontSize: '0.8rem',
+                  fontSize: '0.9rem',
                   fontWeight: 'bold'
                 }}>
                   {count}
@@ -2575,16 +2806,61 @@ export default function OrdersListPage() {
           <button className={styles.controlButton} onClick={handlePrintLabels}>طباعة ملصق 100x150</button>
           <button className={styles.controlButton} onClick={handleExportZitaExcel}>تصدير Excel (زيطة)</button>
           <button className={styles.controlButton} onClick={handleExportExcel}>تصدير Excel</button>
+          <div style={{ position: 'relative' }} ref={columnVisibilityRef}>
+            <button 
+              className={styles.controlButton} 
+              style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}
+              onClick={() => setShowColumnVisibilityDropdown(!showColumnVisibilityDropdown)}
+            >
+              عرض الأعمدة 👁️
+            </button>
+            {showColumnVisibilityDropdown && (
+              <div style={{ 
+                position: 'absolute', top: '100%', right: 0, zIndex: 60, minWidth: '200px',
+                backgroundColor: 'var(--surface)', border: '1px solid var(--border)', 
+                borderRadius: '6px', marginTop: '4px', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.6)'
+              }}>
+                <div style={{ fontSize: '0.8rem', color: '#94a3b8', padding: '0.3rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.3rem', textAlign: 'center' }}>
+                  تخصيص أعمدة الجدول
+                </div>
+                {[
+                  { key: 'id', label: 'المعرف' },
+                  { key: 'customerName', label: 'مستخدم النظام' },
+                  { key: 'governorate', label: 'المحافظة' },
+                  { key: 'phone', label: 'الهاتف' },
+                  { key: 'totalAmount', label: 'المبلغ الكلي' },
+                  { key: 'deliveryCost', label: 'أجرة التوصيل' },
+                  { key: 'netAmount', label: 'المبلغ الصافي' },
+                  { key: 'notes', label: 'الملاحظات' },
+                  { key: 'status', label: 'الحالة' },
+                  { key: 'addDate', label: 'تاريخ الإضافة' },
+                  { key: 'employeeName', label: 'الموظف اللي حجز الطلب' },
+                  { key: 'shippingCompany', label: 'شركة الشحن' }
+                ].map(col => (
+                  <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: visibleColumns[col.key] ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={visibleColumns[col.key]} 
+                      onChange={() => toggleColumnVisibility(col.key)} 
+                      style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Data Table */}
       {activeTab !== 'returns_archive' && (
         <div className={styles.tableWrapper}>
-        <table className={styles.table}>
+        <table className={styles.table} style={{ minWidth: '100%', width: calculateTableWidth() }}>
           <thead>
             <tr>
-              <th style={{ width: '50px', verticalAlign: 'top' }}>
+              <th style={{ width: columnWidths.selection || 50, position: 'relative', verticalAlign: 'top' }}>
                 <div className={styles.checkboxContainer} style={{ marginTop: '0.5rem' }}>
                   <input 
                     type="checkbox" 
@@ -2593,142 +2869,181 @@ export default function OrdersListPage() {
                     onChange={toggleAllSelection}
                   />
                 </div>
+                <div onMouseDown={(e) => handleResizeStart(e, 'selection')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'selection' ? '#3b82f6' : 'transparent' }}></div>
               </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>المعرف</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.id} onChange={(e) => handleFilterChange('id', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>مستخدم النظام</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.customerName} onChange={(e) => handleFilterChange('customerName', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>المحافظة</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.governorate} onChange={(e) => handleFilterChange('governorate', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>الهاتف</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.phone} onChange={(e) => handleFilterChange('phone', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>المبلغ الكلي</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.totalAmount} onChange={(e) => handleFilterChange('totalAmount', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>أجرة التوصيل</span>
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>المبلغ الصافي</span>
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>الملاحظات</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.notes} onChange={(e) => handleFilterChange('notes', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>الحالة</span>
-                  <div style={{ position: 'relative', width: '100%' }} ref={statusFilterRef}>
-                    <div 
-                      className={styles.colFilterInput} 
-                      style={{ padding: '0.4rem', cursor: 'pointer', backgroundColor: 'var(--surface)', color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '32px', userSelect: 'none' }}
-                      onClick={() => setShowStatusFilterDropdown(!showStatusFilterDropdown)}
-                    >
-                      <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {columnFilters.status === '' ? 'الكل' : `${columnFilters.status.split(',').length} محدد`}
-                      </span>
-                      <span style={{ fontSize: '0.6rem' }}>▼</span>
-                    </div>
-                    {showStatusFilterDropdown && (
-                      <div style={{ 
-                        position: 'absolute', top: '100%', right: 0, zIndex: 50, minWidth: '220px',
-                        backgroundColor: 'var(--surface)', border: '1px solid var(--border)', 
-                        borderRadius: '6px', marginTop: '4px', maxHeight: '300px', overflowY: 'auto',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.6)', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem'
-                      }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: columnFilters.status === '' ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }} onClick={(e) => e.stopPropagation()}>
-                           <input 
-                              type="checkbox" 
-                              checked={columnFilters.status === ''} 
-                              onChange={() => handleFilterChange('status', '')} 
-                              style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold' }}>تحديد الكل</span>
-                        </label>
-                        <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.1)', margin: '0.2rem 0' }}></div>
-                        {Object.entries(statusMap).map(([key, info]) => {
-                          const isChecked = (columnFilters.status ? columnFilters.status.split(',') : []).includes(key);
-                          return (
-                            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.15)' : 'transparent' }} onClick={(e) => e.stopPropagation()}>
-                              <input 
+              {visibleColumns.id && (
+                <th style={{ width: columnWidths.id || 110, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>المعرف</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.id} onChange={(e) => handleFilterChange('id', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'id')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'id' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.customerName && (
+                <th style={{ width: columnWidths.customerName || 180, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>مستخدم النظام</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.customerName} onChange={(e) => handleFilterChange('customerName', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'customerName')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'customerName' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.governorate && (
+                <th style={{ width: columnWidths.governorate || 120, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>المحافظة</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.governorate} onChange={(e) => handleFilterChange('governorate', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'governorate')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'governorate' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.phone && (
+                <th style={{ width: columnWidths.phone || 130, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>الهاتف</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.phone} onChange={(e) => handleFilterChange('phone', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'phone')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'phone' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.totalAmount && (
+                <th style={{ width: columnWidths.totalAmount || 130, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>المبلغ الكلي</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.totalAmount} onChange={(e) => handleFilterChange('totalAmount', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'totalAmount')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'totalAmount' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.deliveryCost && (
+                <th style={{ width: columnWidths.deliveryCost || 130, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>أجرة التوصيل</span>
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'deliveryCost')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'deliveryCost' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.netAmount && (
+                <th style={{ width: columnWidths.netAmount || 130, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>المبلغ الصافي</span>
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'netAmount')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'netAmount' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.notes && (
+                <th style={{ width: columnWidths.notes || 250, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>الملاحظات</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.notes} onChange={(e) => handleFilterChange('notes', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'notes')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'notes' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.status && (
+                <th style={{ width: columnWidths.status || 180, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>الحالة</span>
+                    <div style={{ position: 'relative', width: '100%' }} ref={statusFilterRef}>
+                      <div 
+                        className={styles.colFilterInput} 
+                        style={{ padding: '0.4rem', cursor: 'pointer', backgroundColor: 'var(--surface)', color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '32px', userSelect: 'none' }}
+                        onClick={() => setShowStatusFilterDropdown(!showStatusFilterDropdown)}
+                      >
+                        <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {columnFilters.status === '' ? 'الكل' : `${columnFilters.status.split(',').length} محدد`}
+                        </span>
+                        <span style={{ fontSize: '0.6rem' }}>▼</span>
+                      </div>
+                      {showStatusFilterDropdown && (
+                        <div style={{ 
+                          position: 'absolute', top: '100%', right: 0, zIndex: 50, minWidth: '220px',
+                          backgroundColor: 'var(--surface)', border: '1px solid var(--border)', 
+                          borderRadius: '6px', marginTop: '4px', maxHeight: '300px', overflowY: 'auto',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.6)', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem'
+                        }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: columnFilters.status === '' ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }} onClick={(e) => e.stopPropagation()}>
+                             <input 
                                 type="checkbox" 
-                                checked={isChecked} 
-                                onChange={(e) => {
-                                  const currentArr = columnFilters.status ? columnFilters.status.split(',') : [];
-                                  let newArr;
-                                  if (e.target.checked) {
-                                    newArr = [...currentArr, key];
-                                  } else {
-                                    newArr = currentArr.filter(k => k !== key);
-                                  }
-                                  handleFilterChange('status', newArr.join(','));
-                                }} 
+                                checked={columnFilters.status === ''} 
+                                onChange={() => handleFilterChange('status', '')} 
                                 style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }}
                               />
-                              <span style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>{info.label} ({key})</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 'bold' }}>تحديد الكل</span>
+                          </label>
+                          <div style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.1)', margin: '0.2rem 0' }}></div>
+                          {Object.entries(statusMap).map(([key, info]) => {
+                            const isChecked = (columnFilters.status ? columnFilters.status.split(',') : []).includes(key);
+                            return (
+                              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.15)' : 'transparent' }} onClick={(e) => e.stopPropagation()}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isChecked} 
+                                  onChange={(e) => {
+                                    const currentArr = columnFilters.status ? columnFilters.status.split(',') : [];
+                                    let newArr;
+                                    if (e.target.checked) {
+                                      newArr = [...currentArr, key];
+                                    } else {
+                                      newArr = currentArr.filter(k => k !== key);
+                                    }
+                                    handleFilterChange('status', newArr.join(','));
+                                  }} 
+                                  style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }}
+                                />
+                                <span style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>{info.label} ({key})</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>تاريخ الإضافة</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.addDate} onChange={(e) => handleFilterChange('addDate', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>الموظف</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.employeeName} onChange={(e) => handleFilterChange('employeeName', e.target.value)} />
-                </div>
-              </th>
-              <th>
-                <div className={styles.thContent}>
-                  <span>شركة الشحن</span>
-                  <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.shippingCompany || ''} onChange={(e) => handleFilterChange('shippingCompany', e.target.value)} />
-                </div>
-              </th>
-              {activeTab === 'returned' && (
-                <th style={{ width: '180px' }}>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'status')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'status' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.addDate && (
+                <th style={{ width: columnWidths.addDate || 140, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>تاريخ الإضافة</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.addDate} onChange={(e) => handleFilterChange('addDate', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'addDate')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'addDate' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.employeeName && (
+                <th style={{ width: columnWidths.employeeName || 180, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>الموظف اللي حجز الطلب</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.employeeName} onChange={(e) => handleFilterChange('employeeName', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'employeeName')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'employeeName' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.shippingCompany && (
+                <th style={{ width: columnWidths.shippingCompany || 140, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>شركة الشحن</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.shippingCompany || ''} onChange={(e) => handleFilterChange('shippingCompany', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'shippingCompany')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'shippingCompany' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {activeTab === 'returned' && visibleColumns.goodsPosition && (
+                <th style={{ width: columnWidths.goodsPosition || 180, position: 'relative' }}>
                   <div className={styles.thContent}>
                     <span>موقف البضاعة</span>
                   </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'goodsPosition')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'goodsPosition' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
               )}
-              <th style={{ width: '160px' }}>
+              <th style={{ width: columnWidths.actions || 160, position: 'relative' }}>
                 <div className={styles.thContent}>
                   <span>الإجراءات</span>
                   <input type="text" className={styles.colFilterInput} disabled style={{ visibility: 'hidden' }} />
                 </div>
+                <div onMouseDown={(e) => handleResizeStart(e, 'actions')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'actions' ? '#3b82f6' : 'transparent' }}></div>
               </th>
             </tr>
           </thead>
@@ -2755,37 +3070,46 @@ export default function OrdersListPage() {
                       />
                     </div>
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
-                      <div style={{ display: 'inline-block', background: '#fff', padding: '2px', borderRadius: '4px', overflow: 'hidden' }}>
-                        <Barcode value={order.id.slice(-6).toUpperCase()} width={1.2} height={25} displayValue={true} fontSize={11} margin={0} background="#ffffff" lineColor="#000000" />
+                  {visibleColumns.id && (
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
+                        <div style={{ display: 'inline-block', background: '#fff', padding: '2px', borderRadius: '4px', overflow: 'hidden' }}>
+                          <Barcode value={order.id.slice(-6).toUpperCase()} width={1.2} height={25} displayValue={true} fontSize={11} margin={0} background="#ffffff" lineColor="#000000" />
+                        </div>
+                        {order.isArchived && (
+                          <span style={{ backgroundColor: '#475569', color: '#f8fafc', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                            📁 مؤرشف
+                          </span>
+                        )}
                       </div>
-                      {order.isArchived && (
-                        <span style={{ backgroundColor: '#475569', color: '#f8fafc', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                          📁 مؤرشف
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td>{order.customerName}</td>
-                  <td>{order.governorate}</td>
-                  <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>
-                  <td style={{ color: '#10B981', fontWeight: 'bold' }}>
-                    {new Intl.NumberFormat('en-US').format((order.totalAmount || order.price || 0) + (order.deliveryCost || 0))} د.ع
-                  </td>
-                  <td style={{ color: '#f59e0b', fontWeight: 'bold' }}>
-                    {order.deliveryCost ? `${new Intl.NumberFormat('en-US').format(order.deliveryCost)} د.ع` : '-'}
-                  </td>
-                  <td style={{ color: '#3b82f6', fontWeight: 'bold' }}>
-                    {new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع
-                  </td>
-                  <td>{order.notes || '-'}</td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    </td>
+                  )}
+                  {visibleColumns.customerName && <td>{order.customerName}</td>}
+                  {visibleColumns.governorate && <td>{order.governorate}</td>}
+                  {visibleColumns.phone && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>}
+                  {visibleColumns.totalAmount && (
+                    <td style={{ color: '#10B981', fontWeight: 'bold' }}>
+                      {new Intl.NumberFormat('en-US').format((order.totalAmount || order.price || 0) + (order.deliveryCost || 0))} د.ع
+                    </td>
+                  )}
+                  {visibleColumns.deliveryCost && (
+                    <td style={{ color: '#f59e0b', fontWeight: 'bold' }}>
+                      {order.deliveryCost ? `${new Intl.NumberFormat('en-US').format(order.deliveryCost)} د.ع` : '-'}
+                    </td>
+                  )}
+                  {visibleColumns.netAmount && (
+                    <td style={{ color: '#3b82f6', fontWeight: 'bold' }}>
+                      {new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع
+                    </td>
+                  )}
+                  {visibleColumns.notes && <td>{order.notes || '-'}</td>}
+                  {visibleColumns.status && (
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                       <select 
                         style={{ 
-                          backgroundColor: statusMap[order.status || 'pending']?.bg || 'rgba(148, 163, 184, 0.15)', 
-                          color: statusMap[order.status || 'pending']?.color || '#94a3b8', 
+                          backgroundColor: statusMap[getStatusKey(order)]?.bg || 'rgba(148, 163, 184, 0.15)', 
+                          color: statusMap[getStatusKey(order)]?.color || '#94a3b8', 
                           padding: '0.45rem 0.8rem', 
                           borderRadius: '1.5rem', 
                           fontSize: '1rem', 
@@ -2794,19 +3118,33 @@ export default function OrdersListPage() {
                           outline: 'none',
                           cursor: 'pointer',
                           appearance: 'none',
-                          textAlign: 'center'
+                          textAlign: 'center',
+                          width: '100%'
                         }}
                         value={order.status || 'pending'}
                         onChange={(e) => handleInlineStatusChange(order.id, order.status || 'pending', e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {Object.entries(statusMap).map(([key, info]) => (
-                          <option key={key} value={key} style={{color: '#ffffff', backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem'}}>
-                            {info.label} ({key})
-                          </option>
-                        ))}
+                        {Object.entries(statusMap).map(([key, info]) => {
+                          if (key === 'returned_warehouse' || key === 'delivered_settled') return null;
+                          return (
+                            <option key={key} value={key} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
+                              {info.label} ({key})
+                            </option>
+                          );
+                        })}
                       </select>
-                      {order.paymentStatus === 'settled' && (
+                      {order.status === 'backordered' && (
+                         <div style={{ fontSize: '0.8rem', color: '#f59e0b', width: '100%', textAlign: 'center', marginTop: '-4px', fontWeight: 'bold' }}>
+                            (بانتظار المخزون)
+                         </div>
+                      )}
+                      {order.status === 'delivered' && (
+                         <div style={{ fontSize: '0.8rem', color: order.paymentStatus === 'settled' ? '#10b981' : '#ef4444', width: '100%', textAlign: 'center', marginTop: '-4px', fontWeight: 'bold' }}>
+                            {order.paymentStatus === 'settled' ? '(تم المحاسبة)' : '(لم تتم المحاسبة)'}
+                         </div>
+                      )}
+                      {/* {order.paymentStatus === 'settled' && (
                         <span style={{ 
                           backgroundColor: '#10b981', 
                           color: '#fff', 
@@ -2817,7 +3155,7 @@ export default function OrdersListPage() {
                         }}>
                           [تمت التسوية]
                         </span>
-                      )}
+                      )} */}
                       {order.isPaidToStaff && (
                         <span style={{ 
                           backgroundColor: 'rgba(16, 185, 129, 0.1)', 
@@ -2829,27 +3167,33 @@ export default function OrdersListPage() {
                           border: '1px solid rgba(16, 185, 129, 0.2)',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '0.25rem'
+                          gap: '0.25rem',
+                          width: '100%',
+                          justifyContent: 'center'
                         }}>
                         {order.isPaidToStaff ? '✔️ عمولة مدفوعة' : '⏳ بانتظار الدفع'}
                       </span>
                       )}
                     </div>
                   </td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem' }}>
-                      <span>{order.addDate}</span>
-                      <span style={{ color: 'var(--text-muted)' }}>{order.addTime}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
-                      <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }} title="مُدخل الطلب">إ: {order.employeeName || '---'}</span>
-                      <span style={{ color: '#60a5fa' }} title="موظف الحجز (النازل)">ح: {order.bookingEmployeeName || '---'}</span>
-                    </div>
-                  </td>
-                  <td>{order.shippingCompany || '---'}</td>
-                  {activeTab === 'returned' && (
+                )}
+                  {visibleColumns.addDate && (
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem' }}>
+                        <span>{order.addDate}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{order.addTime}</span>
+                      </div>
+                    </td>
+                  )}
+                  {visibleColumns.employeeName && (
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
+                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || order.employeeName || '---'}</span>
+                      </div>
+                    </td>
+                  )}
+                  {visibleColumns.shippingCompany && <td>{order.shippingCompany || '---'}</td>}
+                  {activeTab === 'returned' && visibleColumns.goodsPosition && (
                     <td onClick={(e) => e.stopPropagation()}>
                       <button 
                         onClick={() => handleReturnStatusToggle(order.id, order.returnStatus)}
@@ -3103,6 +3447,17 @@ export default function OrdersListPage() {
             </div>
             
             <div className={styles.modalBody}>
+              {selectedOrder.has_discrepancy && (
+                <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', color: '#fca5a5' }}>
+                  <h3 style={{ color: '#ef4444', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>🚨</span> مشكلة في كشف التسوية
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.5' }}>
+                    {selectedOrder.discrepancy_note || 'تمت محاولة استلام هذا الوصل ضمن كشف تسوية، ولكن كان هناك اختلاف في المبلغ.'}
+                  </p>
+                </div>
+              )}
+
               {/* Customer Information Grid */}
               <div className={styles.detailsGrid}>
                 <div className={styles.detailsItem}>
@@ -3232,7 +3587,19 @@ export default function OrdersListPage() {
                     <h3 style={{ color: 'var(--primary)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>👤 بيانات مستخدم النظام</h3>
                     <div className={styles.formGroup}>
                       <label className={styles.label}>مستخدم النظام</label>
-                      <input type="text" className={styles.input} value={editingOrder.customerName || ''} onChange={e => setEditingOrder({...editingOrder, customerName: e.target.value})} required disabled={isPartiallyLocked} style={lockedInputStyle} />
+                      <select 
+                        className={styles.input} 
+                        value={editingOrder.customerName || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, customerName: e.target.value})} 
+                        required 
+                        disabled={isPartiallyLocked} 
+                        style={lockedInputStyle}
+                      >
+                        <option value="">-- اختر مستخدم النظام --</option>
+                        {employeesList.map((name, idx) => (
+                          <option key={idx} value={name}>{name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className={styles.formGroup}>
                       <label className={styles.label}>رقم الهاتف</label>
@@ -3302,26 +3669,33 @@ export default function OrdersListPage() {
                     </div>
                     <div className={styles.formGroup}>
                       <label className={styles.label}>اسم الموظف</label>
-                      <input 
-                        type="text" 
+                      <select 
                         className={styles.input} 
                         value={editingOrder.employeeName || ''} 
                         onChange={e => setEditingOrder({...editingOrder, employeeName: e.target.value})} 
                         disabled={isPartiallyLocked}
                         style={lockedInputStyle}
-                      />
+                      >
+                        <option value="">-- اختر الموظف --</option>
+                        {employeesList.map((name, idx) => (
+                          <option key={idx} value={name}>{name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className={styles.formGroup}>
                       <label className={styles.label}>شركة الشحن</label>
-                      <input 
-                        type="text" 
+                      <select 
                         className={styles.input} 
                         value={editingOrder.shippingCompany || ''} 
                         onChange={e => setEditingOrder({...editingOrder, shippingCompany: e.target.value})} 
                         disabled={isPartiallyLocked}
                         style={lockedInputStyle}
-                        placeholder="مثال: زاجل، جيني..."
-                      />
+                      >
+                        <option value="">-- اختر شركة الشحن --</option>
+                        {shippingCompanies.map((c, idx) => (
+                          <option key={idx} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className={styles.formGroup}>
                       <label className={styles.label}>الملاحظات</label>
@@ -3690,14 +4064,16 @@ export default function OrdersListPage() {
                 </span>
                 ؟
               </p>
-              {(bulkStatusValue === 'cancelled' || bulkStatusValue === 'returned') && (
+              {(bulkStatusValue === 'cancelled' || bulkStatusValue === 'returned' || bulkStatusValue === 'returned_agent' || bulkStatusValue === 'returned_warehouse') && (
                 <p style={{ color: '#fbbf24', fontSize: '0.9rem', marginTop: '1rem' }}>
                   ملاحظة: سيتم إرجاع المواد للمخزن تلقائياً.
                 </p>
               )}
               {(bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && (
                 <div style={{ marginTop: '1.5rem', textAlign: 'right', backgroundColor: 'var(--surface-hover)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>أي شركة توصيل سلمت هذا الطلب؟ (اختياري)</label>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
+                    أي شركة توصيل استلمت/سلمت هذا الطلب؟ {bulkStatusValue === 'shipped' && <span style={{color: '#ef4444'}}>* إجباري</span>}
+                  </label>
                   <select 
                     className={styles.input} 
                     value={deliveryCompany} 
@@ -3706,7 +4082,7 @@ export default function OrdersListPage() {
                       if (e.target.value !== 'أخرى') setCustomDeliveryCompany('');
                     }}
                   >
-                    <option value="">-- حدد الشركة لتسهيل الحسابات --</option>
+                    <option value="">-- حدد الشركة --</option>
                     {shippingCompanies.map(c => (
                       <option key={c.id} value={c.name}>{c.name}</option>
                     ))}
@@ -3728,9 +4104,9 @@ export default function OrdersListPage() {
             <div className={styles.modalFooter} style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
               <button 
                 className={styles.submitButton} 
-                onClick={confirmBulkStatusChange}
-                disabled={isUpdating}
-                style={{ flex: 1 }}
+                onClick={() => confirmBulkStatusChange()}
+                disabled={isUpdating || !deliveryCompany || (deliveryCompany === 'أخرى' && !customDeliveryCompany)}
+                style={{ flex: 1, opacity: (!deliveryCompany) ? 0.5 : 1 }}
               >
                 {isUpdating ? 'جاري التحديث...' : 'نعم، تحديث الحالة'}
               </button>
@@ -3886,12 +4262,12 @@ export default function OrdersListPage() {
                         <span style={{ 
                           padding: '0.2rem 0.5rem', 
                           borderRadius: '1rem', 
-                          backgroundColor: statusMap[ord.status]?.bg || '#f1f5f9',
-                          color: statusMap[ord.status]?.color || '#333',
+                          backgroundColor: statusMap[getStatusKey(ord)]?.bg || '#f1f5f9',
+                          color: statusMap[getStatusKey(ord)]?.color || '#333',
                           fontSize: '0.75rem',
                           fontWeight: 'bold'
                         }}>
-                          {statusMap[ord.status]?.label || ord.status}
+                          {statusMap[getStatusKey(ord)]?.label || ord.status}
                         </span>
                       </td>
                       <td onClick={e => e.stopPropagation()}>
@@ -3964,7 +4340,7 @@ export default function OrdersListPage() {
                               <td>#${ord.id?.slice(-6).toUpperCase()}</td>
                               <td>${ord.customerName}</td>
                               <td>${new Intl.NumberFormat('en-US').format(ord.totalAmount)} د.ع</td>
-                              <td>${statusMap[ord.status]?.label || ord.status}</td>
+                              <td>${statusMap[getStatusKey(ord)]?.label || ord.status}</td>
                             </tr>
                           `).join('')}
                         </tbody>

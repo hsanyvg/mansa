@@ -579,8 +579,10 @@ export default function MobileApp() {
                     <span className={`${styles.badge} ${styles[ord.status] || styles.pending}`}>
                       {ord.status === 'delivered' ? 'واصل' :
                        ord.status === 'returned' ? 'راجع' :
+                       ord.status === 'returned_agent' ? 'راجع بحوزة مندوب' :
+                       ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
                        ord.status === 'cancelled' ? 'ملغي' :
-                       ord.status === 'backordered' ? 'بانتظار توفر المخزون' :
+                       ord.status === 'backordered' ? 'بانتظار المخزون' :
                        ord.status === 'in_progress' ? 'قيد التنفيذ' : 'قيد الانتظار'}
                     </span>
                   </div>

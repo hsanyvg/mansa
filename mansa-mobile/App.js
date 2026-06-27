@@ -1221,7 +1221,8 @@ export default function App() {
                   ]}>
                     <Text style={styles.statusBadgeText}>
                       {ord.status === 'delivered' ? 'واصل' :
-                       ord.status === 'returned' ? 'راجع' :
+                       ord.status === 'returned_agent' ? 'راجع بحوزة مندوب' :
+                       ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
                        ord.status === 'cancelled' ? 'ملغي' :
                        ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
                     </Text>
@@ -1643,7 +1644,8 @@ export default function App() {
                         ]}>
                           <Text style={styles.statusBadgeText}>
                             {ord.status === 'delivered' ? 'واصل' :
-                             ord.status === 'returned' ? 'راجع' :
+                             ord.status === 'returned_agent' ? 'راجع بحوزة مندوب' :
+                             ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
                              ord.status === 'cancelled' ? 'ملغي' :
                              ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
                           </Text>

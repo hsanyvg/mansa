@@ -112,6 +112,12 @@ export default function ExpensesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
+  // Aggregated Expenses Summary States
+  const [showSummary, setShowSummary] = useState(false);
+  const [expandedSummaryPages, setExpandedSummaryPages] = useState<Record<string, boolean>>({});
+  const [expandedSummaryBranches, setExpandedSummaryBranches] = useState<Record<string, boolean>>({});
+  const [expandedSummarySubcats, setExpandedSummarySubcats] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     setIsMounted(true);
     const today = new Date().toISOString().split('T')[0];
@@ -365,6 +371,142 @@ export default function ExpensesPage() {
 
   const months = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
+  const toggleSummaryPage = (pageName: string) => {
+    setExpandedSummaryPages(prev => ({ ...prev, [pageName]: !prev[pageName] }));
+  };
+
+  const toggleSummaryBranch = (branchKey: string) => {
+    setExpandedSummaryBranches(prev => ({ ...prev, [branchKey]: !prev[branchKey] }));
+  };
+
+  const toggleSummarySubcat = (subcatKey: string) => {
+    setExpandedSummarySubcats(prev => ({ ...prev, [subcatKey]: !prev[subcatKey] }));
+  };
+
+  const getAggregatedSummary = () => {
+    let totalIQD = 0;
+    let totalUSD = 0;
+    let generalIQD = 0;
+    let generalUSD = 0;
+    let pageIQD = 0;
+    let pageUSD = 0;
+
+    const pageGroups: Record<string, {
+      name: string;
+      totalIQD: number;
+      totalUSD: number;
+      branches: Record<string, {
+        name: string;
+        totalIQD: number;
+        totalUSD: number;
+        subcategories: Record<string, {
+          name: string;
+          totalIQD: number;
+          totalUSD: number;
+          items: Record<string, {
+            name: string;
+            totalIQD: number;
+            totalUSD: number;
+          }>
+        }>
+      }>
+    }> = {};
+
+    filteredAndSearched.forEach(exp => {
+      const amt = Number(exp.amount) || 0;
+      const curr = exp.currency || 'IQD';
+
+      if (curr === 'IQD') {
+        totalIQD += amt;
+        if (!exp.pageName) generalIQD += amt;
+        else pageIQD += amt;
+      } else {
+        totalUSD += amt;
+        if (!exp.pageName) generalUSD += amt;
+        else pageUSD += amt;
+      }
+
+      const pKey = exp.pageName || 'مصروفات عامة (بدون بيج)';
+      if (!pageGroups[pKey]) {
+        pageGroups[pKey] = {
+          name: pKey,
+          totalIQD: 0,
+          totalUSD: 0,
+          branches: {}
+        };
+      }
+      const pGrp = pageGroups[pKey];
+      if (curr === 'IQD') pGrp.totalIQD += amt;
+      else pGrp.totalUSD += amt;
+
+      if (exp.branchName) {
+        const bKey = exp.branchName;
+        if (!pGrp.branches[bKey]) {
+          pGrp.branches[bKey] = {
+            name: bKey,
+            totalIQD: 0,
+            totalUSD: 0,
+            subcategories: {}
+          };
+        }
+        const bGrp = pGrp.branches[bKey];
+        if (curr === 'IQD') bGrp.totalIQD += amt;
+        else bGrp.totalUSD += amt;
+
+        // Resolve subcategory dynamically from product data or category
+        let subName = 'بدون فئة فرعية';
+        if (exp.itemName) {
+          const product = allProducts.find(p => p.name === exp.itemName);
+          if (product && product.subcategoryId) {
+            const category = allCategories.find(c => c.id === product.categoryId);
+            if (category && category.subcategories) {
+              const sub = category.subcategories.find((s: any) => s.id === product.subcategoryId);
+              if (sub) subName = sub.name;
+            }
+          }
+        }
+
+        if (!bGrp.subcategories[subName]) {
+          bGrp.subcategories[subName] = {
+            name: subName,
+            totalIQD: 0,
+            totalUSD: 0,
+            items: {}
+          };
+        }
+        const sGrp = bGrp.subcategories[subName];
+        if (curr === 'IQD') sGrp.totalIQD += amt;
+        else sGrp.totalUSD += amt;
+
+        if (exp.itemName) {
+          const iKey = exp.itemName;
+          if (!sGrp.items[iKey]) {
+            sGrp.items[iKey] = {
+              name: iKey,
+              totalIQD: 0,
+              totalUSD: 0
+            };
+          }
+          const iGrp = sGrp.items[iKey];
+          if (curr === 'IQD') iGrp.totalIQD += amt;
+          else iGrp.totalUSD += amt;
+        }
+      }
+    });
+
+    return {
+      totalIQD,
+      totalUSD,
+      generalIQD,
+      generalUSD,
+      pageIQD,
+      pageUSD,
+      pageGroups
+    };
+  };
+
+  const summary = getAggregatedSummary();
+
   if (!isMounted) return null;
 
   return (
@@ -530,6 +672,154 @@ export default function ExpensesPage() {
           <button className={styles.archiveAllBtn} onClick={handleArchiveFiltered}>📦 أرشفة المصفاة</button>
         )}
       </div>
+
+      <div className={styles.summaryToggleContainer}>
+        <button 
+          className={styles.summaryToggleBtn} 
+          onClick={() => setShowSummary(!showSummary)}
+        >
+          {showSummary ? '📊 إخفاء خلاصة المصروفات المجمّعة' : '📊 عرض خلاصة وإجمالي المصروفات بالتفصيل'}
+        </button>
+      </div>
+
+      {showSummary && (
+        <div className={styles.summaryCard}>
+          <div className={styles.statsGrid}>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>💰</div>
+              <div className={styles.statInfo}>
+                <span className={styles.statLabel}>إجمالي المصروفات (دينار)</span>
+                <span className={styles.statValue}>{summary.totalIQD.toLocaleString()} د.ع</span>
+              </div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>💵</div>
+              <div className={styles.statInfo}>
+                <span className={styles.statLabel}>إجمالي المصروفات (دولار)</span>
+                <span className={styles.statValue}>${summary.totalUSD.toLocaleString()}</span>
+              </div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>🏢</div>
+              <div className={styles.statInfo}>
+                <span className={styles.statLabel}>مصروفات البيجات</span>
+                <span className={styles.statValue}>{summary.pageIQD.toLocaleString()} د.ع / ${summary.pageUSD.toLocaleString()}</span>
+              </div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>🌍</div>
+              <div className={styles.statInfo}>
+                <span className={styles.statLabel}>مصروفات عامة (بدون بيج)</span>
+                <span className={styles.statValue}>{summary.generalIQD.toLocaleString()} د.ع / ${summary.generalUSD.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.treeSection}>
+            <h3 className={styles.treeSectionTitle}>📂 تفصيل المصروفات الهرمي (شجرة الحسابات)</h3>
+            <div className={styles.treeContainer}>
+              {Object.values(summary.pageGroups).map(page => {
+                const pageKey = page.name;
+                const isPageExpanded = !!expandedSummaryPages[pageKey];
+                const hasBranches = Object.keys(page.branches).length > 0;
+
+                return (
+                  <div key={pageKey} className={styles.treeNode}>
+                    <div 
+                      className={`${styles.nodeHeader} ${styles.pageNode}`}
+                      onClick={() => hasBranches && toggleSummaryPage(pageKey)}
+                      style={{ cursor: hasBranches ? 'pointer' : 'default' }}
+                    >
+                      <div className={styles.nodeLeft}>
+                        {hasBranches && <span className={styles.arrowIcon}>{isPageExpanded ? '▼' : '▶'}</span>}
+                        <span className={styles.nodeName}>🏢 {page.name}</span>
+                      </div>
+                      <div className={styles.nodeAmount}>
+                        {page.totalIQD > 0 && <span className={styles.iqdBadge}>{page.totalIQD.toLocaleString()} د.ع</span>}
+                        {page.totalUSD > 0 && <span className={styles.usdBadge}>${page.totalUSD.toLocaleString()}</span>}
+                      </div>
+                    </div>
+
+                    {isPageExpanded && hasBranches && (
+                      <div className={styles.nodeChildren}>
+                        {Object.values(page.branches).map(branch => {
+                          const branchKey = `${pageKey}::${branch.name}`;
+                          const isBranchExpanded = !!expandedSummaryBranches[branchKey];
+                          const hasSubcats = Object.keys(branch.subcategories).length > 0;
+
+                          return (
+                            <div key={branchKey} className={styles.treeNode}>
+                              <div 
+                                className={`${styles.nodeHeader} ${styles.branchNode}`}
+                                onClick={() => hasSubcats && toggleSummaryBranch(branchKey)}
+                                style={{ cursor: hasSubcats ? 'pointer' : 'default' }}
+                              >
+                                <div className={styles.nodeLeft}>
+                                  {hasSubcats && <span className={styles.arrowIcon}>{isBranchExpanded ? '▼' : '▶'}</span>}
+                                  <span className={styles.nodeName}>🌿 {branch.name}</span>
+                                </div>
+                                <div className={styles.nodeAmount}>
+                                  {branch.totalIQD > 0 && <span className={styles.iqdBadge}>{branch.totalIQD.toLocaleString()} د.ع</span>}
+                                  {branch.totalUSD > 0 && <span className={styles.usdBadge}>${branch.totalUSD.toLocaleString()}</span>}
+                                </div>
+                              </div>
+
+                              {isBranchExpanded && hasSubcats && (
+                                <div className={styles.nodeChildren}>
+                                  {Object.values(branch.subcategories).map(subcat => {
+                                    const subcatKey = `${branchKey}::${subcat.name}`;
+                                    const isSubcatExpanded = !!expandedSummarySubcats[subcatKey];
+                                    const hasItems = Object.keys(subcat.items).length > 0;
+
+                                    return (
+                                      <div key={subcatKey} className={styles.treeNode}>
+                                        <div 
+                                          className={`${styles.nodeHeader} ${styles.subcatNode}`}
+                                          onClick={() => hasItems && toggleSummarySubcat(subcatKey)}
+                                          style={{ cursor: hasItems ? 'pointer' : 'default' }}
+                                        >
+                                          <div className={styles.nodeLeft}>
+                                            {hasItems && <span className={styles.arrowIcon}>{isSubcatExpanded ? '▼' : '▶'}</span>}
+                                            <span className={styles.nodeName}>🍂 {subcat.name}</span>
+                                          </div>
+                                          <div className={styles.nodeAmount}>
+                                            {subcat.totalIQD > 0 && <span className={styles.iqdBadge}>{subcat.totalIQD.toLocaleString()} د.ع</span>}
+                                            {subcat.totalUSD > 0 && <span className={styles.usdBadge}>${subcat.totalUSD.toLocaleString()}</span>}
+                                          </div>
+                                        </div>
+
+                                        {isSubcatExpanded && hasItems && (
+                                          <div className={styles.nodeChildren}>
+                                            {Object.values(subcat.items).map(item => (
+                                              <div key={item.name} className={`${styles.nodeHeader} ${styles.itemNode}`}>
+                                                <div className={styles.nodeLeft}>
+                                                  <span className={styles.nodeName}>🏷️ {item.name}</span>
+                                                </div>
+                                                <div className={styles.nodeAmount}>
+                                                  {item.totalIQD > 0 && <span className={styles.iqdBadge}>{item.totalIQD.toLocaleString()} د.ع</span>}
+                                                  {item.totalUSD > 0 && <span className={styles.usdBadge}>${item.totalUSD.toLocaleString()}</span>}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className={styles.tableSection}>
         {activeTab === 'archive' ? (

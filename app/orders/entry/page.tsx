@@ -884,11 +884,17 @@ export default function OrderEntryPage() {
             <label className={styles.label}>المبلغ الكلي (دينار)</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface-hover)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
               <input 
-                type="number" 
+                type="text" 
+                inputMode="numeric"
+                dir="ltr"
                 className={styles.input} 
-                style={{ border: 'none', background: 'transparent', flex: 1, color: '#10b981', fontWeight: 'bold', fontSize: '1.1rem' }}
-                value={manualTotal !== '' ? manualTotal : calculatedTotal}
-                onChange={(e) => setManualTotal(e.target.value)}
+                style={{ border: 'none', background: 'transparent', flex: 1, color: '#10b981', fontWeight: 'bold', fontSize: '1.1rem', textAlign: 'right', fontFamily: 'system-ui, sans-serif' }}
+                value={manualTotal !== '' ? new Intl.NumberFormat('en-US').format(Number(manualTotal)) : new Intl.NumberFormat('en-US').format(calculatedTotal)}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+                  const numericVal = val.replace(/[^0-9]/g, '');
+                  setManualTotal(numericVal);
+                }}
                 placeholder="تلقائي..."
               />
               <span style={{ color: '#10b981', fontWeight: 'bold', padding: '0 1rem' }}>د.ع</span>

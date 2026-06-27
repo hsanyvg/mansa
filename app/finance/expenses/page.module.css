@@ -942,3 +942,213 @@
   background-color: #ef4444;
   color: white;
 }
+
+/* Aggregated Expenses Summary Dashboard Styles */
+.summaryToggleContainer {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.summaryToggleBtn {
+  background: linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color: white;
+  border: none;
+  padding: 0.8rem 2rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.2);
+}
+
+.summaryToggleBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.35);
+}
+
+.summaryCard {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.2rem;
+  margin-bottom: 2rem;
+}
+
+.statCard {
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.2s ease;
+}
+
+.statCard:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+
+.statIcon {
+  font-size: 2rem;
+  background-color: var(--surface-hover);
+  padding: 0.5rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.statValue {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.treeSection {
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem;
+}
+
+.treeSectionTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 1.2rem;
+}
+
+.treeContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.treeNode {
+  display: flex;
+  flex-direction: column;
+}
+
+.nodeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.nodeLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.nodeName {
+  font-weight: 600;
+}
+
+.nodeAmount {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.arrowIcon {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  width: 12px;
+}
+
+.pageNode {
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.pageNode:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--primary);
+}
+
+.branchNode {
+  background-color: rgba(255, 255, 255, 0.01);
+  border: 1px dashed var(--border);
+  font-size: 0.95rem;
+  color: #60a5fa;
+}
+
+.branchNode:hover {
+  background-color: var(--surface-hover);
+  border-color: #60a5fa;
+}
+
+.subcatNode {
+  background-color: transparent;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  color: #34d399;
+}
+
+.subcatNode:hover {
+  background-color: var(--surface-hover);
+}
+
+.itemNode {
+  font-size: 0.85rem;
+  color: #fbbf24;
+  padding-left: 2rem !important;
+}
+
+.nodeChildren {
+  padding-left: 1.5rem;
+  border-left: 1px dashed var(--border);
+  margin-left: 1.5rem;
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.iqdBadge {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.usdBadge {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}

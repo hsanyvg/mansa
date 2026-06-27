@@ -31,6 +31,8 @@ interface Order {
   settlementImages?: string[];
   isSettlementArchived?: boolean;
   paidAmount?: number;
+  has_discrepancy?: boolean;
+  discrepancy_note?: string;
 }
 
 interface GroupedStatement {
@@ -510,6 +512,7 @@ export default function TreasurySettlementPage() {
       const batch = writeBatch(db);
       let totalAmountToDeposit = 0;
 
+      let isFirstOrder = true;
       selectedOrders.forEach(orderId => {
         const order = pendingOrders.find(o => o.id === orderId);
         if (order) {
@@ -534,14 +537,30 @@ export default function TreasurySettlementPage() {
             settlementStatementId: externalStatementId || '',
             settlementAgent: deliveryAgent || '',
             settlementNotes: settlementNotes || '',
-            settlementImages: uploadedImages.map(img => img.dataUrl)
+            settlementImages: isFirstOrder ? uploadedImages.map(img => img.dataUrl) : []
           });
+
+          isFirstOrder = false;
         }
       });
 
-      // Create a deposit transaction record in treasury_transactions
       const now = new Date();
       const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+      // Update mismatched orders with a flag and a note
+      if (reconciliationReport && reconciliationReport.mismatchedAmounts && reconciliationReport.mismatchedAmounts.length > 0) {
+        const statementNameStr = externalStatementId ? `"${externalStatementId}"` : "كشف غير مسمى";
+        const todayStr = now.toISOString().split('T')[0];
+        reconciliationReport.mismatchedAmounts.forEach(mismatch => {
+          const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', mismatch.id);
+          batch.update(orderRef, {
+            has_discrepancy: true,
+            discrepancy_note: `تمت محاولة تسوية هذا الوصل ضمن كشف ${statementNameStr} بتاريخ ${todayStr}، ولم يتم الاستلام لأن مبلغ الكشف كان ${mismatch.inputted} بينما المطلوب ${mismatch.expected}.`
+          });
+        });
+      }
+
+      // Create a deposit transaction record in treasury_transactions
       const dateStr = now.toISOString().split('T')[0];
 
       const transactionRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'));
@@ -680,6 +699,9 @@ export default function TreasurySettlementPage() {
     const newAmounts: Record<string, number> = { ...bulkSettlementAmounts };
     let notFound: string[] = [];
     let addedCount = 0;
+    const mismatchedAmounts: { id: string, expected: number, inputted: number }[] = [];
+    const processedOrderIds = new Set<string>();
+    let matchedCount = 0;
 
     lines.forEach(line => {
       const parts = line.trim().split(/[\t\s]+/);
@@ -694,13 +716,36 @@ export default function TreasurySettlementPage() {
       );
 
       if (order) {
-        newSelected.add(order.id);
-        addedCount++;
+        processedOrderIds.add(order.id);
+        
+        let hasAmount = false;
+        let parsedAmount = 0;
         if (amountStr) {
-          const parsedAmount = parseFloat(amountStr.replace(/,/g, ''));
+          parsedAmount = parseFloat(amountStr.replace(/,/g, ''));
           if (!isNaN(parsedAmount)) {
-            newAmounts[order.id] = parsedAmount;
+            hasAmount = true;
           }
+        }
+
+        if (hasAmount) {
+          const expected = order.totalAmount - (order.paidAmount || 0);
+          if (parsedAmount !== expected) {
+            // Mismatch: show in report, do NOT select
+            mismatchedAmounts.push({ id: order.id, expected, inputted: parsedAmount });
+            newSelected.delete(order.id);
+            delete newAmounts[order.id];
+          } else {
+            // Match: select and add to amounts
+            newSelected.add(order.id);
+            newAmounts[order.id] = parsedAmount;
+            matchedCount++;
+            addedCount++;
+          }
+        } else {
+          // No amount specified: assume full match
+          newSelected.add(order.id);
+          matchedCount++;
+          addedCount++;
         }
       } else {
         notFound.push(identifier);
@@ -711,26 +756,9 @@ export default function TreasurySettlementPage() {
     setBulkSettlementAmounts(newAmounts);
     setShowBulkSelectModal(false);
     setBulkSelectText('');
-    
-    // Generate Reconciliation Report
-    const mismatchedAmounts: { id: string, expected: number, inputted: number }[] = [];
-    let matchedCount = 0;
-    
-    newSelected.forEach(orderId => {
-       const order = pendingOrders.find(o => o.id === orderId);
-       if (order) {
-         const expected = order.totalAmount - (order.paidAmount || 0);
-         const inputted = newAmounts[orderId];
-         if (inputted !== undefined && inputted !== expected) {
-            mismatchedAmounts.push({ id: order.id, expected, inputted });
-         } else {
-            matchedCount++;
-         }
-       }
-    });
 
     const unselectedExtra = pendingOrders
-       .filter(o => !newSelected.has(o.id))
+       .filter(o => !newSelected.has(o.id) && !processedOrderIds.has(o.id))
        .map(o => ({ id: o.id, name: o.customerName || 'بدون اسم', expected: o.totalAmount - (o.paidAmount || 0) }));
 
     setReconciliationReport({
@@ -1568,7 +1596,7 @@ export default function TreasurySettlementPage() {
                     type="file"
                     ref={fileInputRef}
                     style={{ display: 'none' }}
-                    accept="image/*"
+                    accept="image/*,.pdf,.xls,.xlsx,.doc,.docx,.txt"
                     multiple
                     onChange={handleImageChange}
                   />
@@ -1592,17 +1620,31 @@ export default function TreasurySettlementPage() {
                 {uploadedImages.length > 0 && (
                   <div className={styles.thumbnailsContainer}>
                     <div className={styles.thumbnailsTitle}>
-                      الصور المرفقة ({uploadedImages.length}):
+                      المرفقات المرفوعة ({uploadedImages.length}):
                     </div>
                     <div className={styles.thumbnailsGrid}>
                       {uploadedImages.map(img => (
                         <div key={img.id} className={styles.thumbnailCard}>
-                          <img src={img.dataUrl} alt={img.name} className={styles.thumbnailImg} />
+                          {img.dataUrl && img.dataUrl.startsWith('data:image/') ? (
+                            <img src={img.dataUrl} alt={img.name} className={styles.thumbnailImg} />
+                          ) : (
+                            <div className={styles.thumbnailImg} style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              color: '#60a5fa',
+                              fontSize: '2rem'
+                            }}>
+                              📄
+                            </div>
+                          )}
                           <button 
                             type="button" 
                             className={styles.deleteThumbnailBtn}
                             onClick={() => removeImage(img.id)}
-                            title="إزالة الصورة"
+                            title="إزالة المرفق"
                           >
                             ❌
                           </button>
@@ -1746,18 +1788,52 @@ export default function TreasurySettlementPage() {
                 <div className={styles.settlementDetailsSection}>
                   <h3 className={styles.sectionSubTitle}>🖼️ مرفقات وصور الكشف الورقي ({selectedStatement.settlementImages.length})</h3>
                   <div className={styles.imageGallery}>
-                    {selectedStatement.settlementImages.map((imgUrl, index) => (
-                      <div 
-                        key={index} 
-                        className={styles.galleryImageCard}
-                        onClick={() => setLightboxImage(imgUrl)}
-                      >
-                        <img src={imgUrl} alt={`مرفق كشف ${index + 1}`} className={styles.galleryImage} />
-                        <div className={styles.galleryImageOverlay}>
-                          <span>🔍 تكبير</span>
-                        </div>
-                      </div>
-                    ))}
+                    {selectedStatement.settlementImages.map((imgUrl, index) => {
+                      const isImage = imgUrl && (imgUrl.startsWith('data:image/') || imgUrl.match(/\.(jpeg|jpg|gif|png|webp)/i));
+                      if (isImage) {
+                        return (
+                          <div 
+                            key={index} 
+                            className={styles.galleryImageCard}
+                            onClick={() => setLightboxImage(imgUrl)}
+                          >
+                            <img src={imgUrl} alt={`مرفق كشف ${index + 1}`} className={styles.galleryImage} />
+                            <div className={styles.galleryImageOverlay}>
+                              <span>🔍 تكبير</span>
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        let ext = 'file';
+                        if (imgUrl.includes('spreadsheet') || imgUrl.includes('excel') || imgUrl.includes('sheet')) ext = 'xlsx';
+                        else if (imgUrl.includes('pdf')) ext = 'pdf';
+                        else if (imgUrl.includes('word') || imgUrl.includes('document')) ext = 'docx';
+                        
+                        return (
+                          <a 
+                            key={index}
+                            href={imgUrl} 
+                            download={`document_${index + 1}.${ext}`}
+                            className={styles.galleryImageCard}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              textDecoration: 'none',
+                              color: '#60a5fa',
+                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              border: '1px dashed rgba(255,255,255,0.1)'
+                            }}
+                          >
+                            <span style={{ fontSize: '2rem' }}>📄</span>
+                            <span style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', padding: '0 4px' }}>
+                              تحميل الملف ({ext.toUpperCase()})
+                            </span>
+                          </a>
+                        );
+                      }
+                    })}
                   </div>
                 </div>
               )}
@@ -1890,27 +1966,75 @@ export default function TreasurySettlementPage() {
                     </div>
                   </div>
                   
-                  {selectedOrder.settlementImages && selectedOrder.settlementImages.length > 0 && (
-                    <div className={styles.imagesSection}>
-                      <span className={styles.detailsLabel} style={{ marginBottom: '0.8rem', display: 'block', fontWeight: 'bold' }}>
-                        🖼️ المرفقات وصور الكشف ({selectedOrder.settlementImages.length})
-                      </span>
-                      <div className={styles.imageGallery}>
-                        {selectedOrder.settlementImages.map((imgUrl, index) => (
-                          <div 
-                            key={index} 
-                            className={styles.galleryImageCard}
-                            onClick={() => setLightboxImage(imgUrl)}
-                          >
-                            <img src={imgUrl} alt={`مرفق كشف ${index + 1}`} className={styles.galleryImage} />
-                            <div className={styles.galleryImageOverlay}>
-                              <span>🔍 تكبير</span>
-                            </div>
-                          </div>
-                        ))}
+                  {(() => {
+                    const orderImages = selectedOrder.settlementImages && selectedOrder.settlementImages.length > 0 
+                      ? selectedOrder.settlementImages 
+                      : (selectedOrder.settlementStatementId 
+                          ? [...settledOrders, ...archivedSettlements].find(o => 
+                              o.settlementStatementId === selectedOrder.settlementStatementId && 
+                              o.settlementImages && 
+                              o.settlementImages.length > 0
+                            )?.settlementImages 
+                          : []) || [];
+                    
+                    if (orderImages.length === 0) return null;
+
+                    return (
+                      <div className={styles.imagesSection}>
+                        <span className={styles.detailsLabel} style={{ marginBottom: '0.8rem', display: 'block', fontWeight: 'bold' }}>
+                          🖼️ المرفقات وصور الكشف ({orderImages.length})
+                        </span>
+                        <div className={styles.imageGallery}>
+                          {orderImages.map((imgUrl, index) => {
+                            const isImage = imgUrl && (imgUrl.startsWith('data:image/') || imgUrl.match(/\.(jpeg|jpg|gif|png|webp)/i));
+                            if (isImage) {
+                              return (
+                                <div 
+                                  key={index} 
+                                  className={styles.galleryImageCard}
+                                  onClick={() => setLightboxImage(imgUrl)}
+                                >
+                                  <img src={imgUrl} alt={`مرفق كشف ${index + 1}`} className={styles.galleryImage} />
+                                  <div className={styles.galleryImageOverlay}>
+                                    <span>🔍 تكبير</span>
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              let ext = 'file';
+                              if (imgUrl.includes('spreadsheet') || imgUrl.includes('excel') || imgUrl.includes('sheet')) ext = 'xlsx';
+                              else if (imgUrl.includes('pdf')) ext = 'pdf';
+                              else if (imgUrl.includes('word') || imgUrl.includes('document')) ext = 'docx';
+                              
+                              return (
+                                <a 
+                                  key={index}
+                                  href={imgUrl} 
+                                  download={`document_${index + 1}.${ext}`}
+                                  className={styles.galleryImageCard}
+                                  style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    textDecoration: 'none',
+                                    color: '#60a5fa',
+                                    backgroundColor: 'rgba(255,255,255,0.03)',
+                                    border: '1px dashed rgba(255,255,255,0.1)'
+                                  }}
+                                >
+                                  <span style={{ fontSize: '2rem' }}>📄</span>
+                                  <span style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', padding: '0 4px' }}>
+                                    تحميل الملف ({ext.toUpperCase()})
+                                  </span>
+                                </a>
+                              );
+                            }
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
             </div>
