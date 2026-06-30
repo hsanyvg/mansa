@@ -106,7 +106,7 @@ export async function GET(request: Request) {
       if (orderDate >= today) {
         const status = order.status || 'pending';
         const isValid = !['cancelled', 'returned'].includes(status);
-        const isDelivered = status === 'delivered';
+        const isDelivered = status === 'delivered' || status === 'partial';
 
         if (order.items && Array.isArray(order.items)) {
           order.items.forEach((item: any) => {

@@ -241,7 +241,7 @@ export default function UnifiedCPOControlCenter() {
         if (orderDate >= sDateObj && orderDate <= uDateObj) {
            const status = order.status || 'pending';
            const isCancelledOrReturned = ['cancelled', 'returned'].includes(status);
-           const isDelivered = status === 'delivered';
+           const isDelivered = status === 'delivered' || status === 'partial';
            const isValid = !isCancelledOrReturned;
 
            if (order.items && Array.isArray(order.items)) {

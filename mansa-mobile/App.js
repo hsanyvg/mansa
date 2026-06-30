@@ -1613,8 +1613,8 @@ export default function App() {
               <View style={styles.neonCardInner}>
                 {orders
                   .filter((ord) => {
-                    if (ordersFilter === 'completed') return ord.status === 'delivered';
-                    if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'cancelled' && ord.status !== 'returned';
+                    if (ordersFilter === 'completed') return ord.status === 'delivered' || ord.status === 'partial';
+                    if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'partial' && ord.status !== 'cancelled' && ord.status !== 'returned';
                     return true;
                   })
                   .filter((ord) => {
@@ -1638,13 +1638,15 @@ export default function App() {
                         <View style={[
                           styles.statusBadge,
                           ord.status === 'delivered' ? styles.badgeDelivered :
+                          ord.status === 'partial' ? styles.badgePartial :
                           ord.status === 'returned' ? styles.badgeReturned :
                           ord.status === 'cancelled' ? styles.badgeCancelled :
                           ord.status === 'backordered' ? styles.badgeBackordered : styles.badgePending
                         ]}>
                           <Text style={styles.statusBadgeText}>
                             {ord.status === 'delivered' ? 'واصل' :
-                             ord.status === 'returned_agent' ? 'راجع بحوزة مندوب' :
+                             ord.status === 'partial' ? 'واصل جزئي' :
+                             ord.status === 'returned' ? 'راجع' :
                              ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
                              ord.status === 'cancelled' ? 'ملغي' :
                              ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
@@ -1655,8 +1657,8 @@ export default function App() {
                   ))}
                 {orders
                   .filter((ord) => {
-                    if (ordersFilter === 'completed') return ord.status === 'delivered';
-                    if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'cancelled' && ord.status !== 'returned';
+                    if (ordersFilter === 'completed') return ord.status === 'delivered' || ord.status === 'partial';
+                    if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'partial' && ord.status !== 'cancelled' && ord.status !== 'returned';
                     return true;
                   })
                   .filter((ord) => {
@@ -2158,6 +2160,9 @@ const styles = StyleSheet.create({
   },
   badgeDelivered: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
+  },
+  badgePartial: {
+    backgroundColor: 'rgba(14, 165, 233, 0.15)',
   },
   badgeReturned: {
     backgroundColor: 'rgba(244, 63, 94, 0.15)',

@@ -5,7 +5,7 @@ import styles from './page.module.css';
 import { db, auth } from "../../../lib/firebase";
 import { 
   collection, onSnapshot, addDoc, deleteDoc, doc,
-  serverTimestamp, query, orderBy, getDocs, getDoc
+  serverTimestamp, query, orderBy, getDocs, getDoc, writeBatch
 } from 'firebase/firestore';
 
 // Types
@@ -206,12 +206,32 @@ export default function TreasuryPage() {
   const confirmDeleteTransaction = async () => {
     if (!deleteConfirmId) return;
     const id = deleteConfirmId;
+    const transaction = transactions.find(t => t.id === id);
     setDeleteConfirmId(null);
     
     try {
-      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions', id));
-      showToastMsg("تم إلغاء الحركة وتحديث الأرصدة بنجاح");
+      const batch = writeBatch(db);
+      
+      // Delete the transaction itself
+      batch.delete(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions', id));
+      
+      // If this transaction was a settlement, revert all associated orders to unsettled
+      if (transaction && transaction.settledOrderIds && transaction.settledOrderIds.length > 0) {
+        transaction.settledOrderIds.forEach(orderId => {
+          batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId), {
+            is_settled: false,
+            paymentStatus: '',
+            settlementStatementId: '',
+            isSettlementArchived: false,
+            paidAmount: 0
+          });
+        });
+      }
+      
+      await batch.commit();
+      showToastMsg("تم إلغاء الحركة وتحديث الأرصدة والطلبات بنجاح");
     } catch (err) {
+      console.error(err);
       showToastMsg("حدث خطأ أثناء الإلغاء", "error");
     }
   };
@@ -736,18 +756,55 @@ export default function TreasuryPage() {
                 <div className={styles.settlementDetailsSection}>
                   <h3 className={styles.sectionSubTitle}>🖼️ مرفقات وصور الحركة ({selectedTransaction.images.length})</h3>
                   <div className={styles.imageGallery}>
-                    {selectedTransaction.images.map((imgUrl, index) => (
-                      <div 
-                        key={index} 
-                        className={styles.galleryImageCard}
-                        onClick={() => setLightboxImage(imgUrl)}
-                      >
-                        <img src={imgUrl} alt={`مرفق حركة ${index + 1}`} className={styles.galleryImage} />
-                        <div className={styles.galleryImageOverlay}>
-                          <span>🔍 تكبير</span>
-                        </div>
-                      </div>
-                    ))}
+                    {selectedTransaction.images.map((imgUrl, index) => {
+                      const urlStr = imgUrl ? decodeURIComponent(imgUrl.split('?')[0]) : '';
+                      const isImage = imgUrl && (imgUrl.startsWith('data:image/') || urlStr.match(/\.(jpeg|jpg|gif|png|webp)$/i));
+                      if (isImage) {
+                        return (
+                          <div 
+                            key={index} 
+                            className={styles.galleryImageCard}
+                            onClick={() => setLightboxImage(imgUrl)}
+                          >
+                            <img src={imgUrl} alt={`مرفق حركة ${index + 1}`} className={styles.galleryImage} />
+                            <div className={styles.galleryImageOverlay}>
+                              <span>🔍 تكبير</span>
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        let ext = 'ملف';
+                        if (urlStr.match(/\.(xlsx|xls|csv)$/i) || imgUrl.includes('spreadsheet') || imgUrl.includes('excel')) ext = 'EXCEL';
+                        else if (urlStr.match(/\.pdf$/i) || imgUrl.includes('pdf')) ext = 'PDF';
+                        else if (urlStr.match(/\.(doc|docx)$/i) || imgUrl.includes('word')) ext = 'WORD';
+                        
+                        return (
+                          <a 
+                            key={index}
+                            href={imgUrl} 
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={`document_${index + 1}.${ext.toLowerCase()}`}
+                            className={styles.galleryImageCard}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              textDecoration: 'none',
+                              color: '#60a5fa',
+                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              border: '1px dashed rgba(255,255,255,0.1)'
+                            }}
+                          >
+                            <span style={{ fontSize: '2rem' }}>📄</span>
+                            <span style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', padding: '0 4px' }}>
+                              تحميل ({ext})
+                            </span>
+                          </a>
+                        );
+                      }
+                    })}
                   </div>
                 </div>
               )}

@@ -47,7 +47,7 @@ export default function SalesReturnsPage() {
   useEffect(() => {
     const q = query(
       collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'),
-      where('status', '==', 'delivered'),
+      where('status', 'in', ['delivered', 'partial']),
       orderBy('date', 'desc')
     );
 

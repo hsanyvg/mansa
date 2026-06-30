@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { db, auth } from "../../lib/firebase";
+import { db, auth, storage } from "../../lib/firebase";
 import { collection, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import styles from './page.module.css';
 
 interface Order {
@@ -360,7 +361,7 @@ export default function TreasurySettlementPage() {
         const amount = Number(data.totalAmount) || Number(data.price) || 0;
         
         const isSettled = data.is_settled === true || data.paymentStatus === 'settled';
-        const isDelivered = data.status === 'delivered' || data.fulfillmentStatus === 'Delivered';
+        const isDelivered = data.status === 'delivered' || data.status === 'partial' || data.fulfillmentStatus === 'Delivered';
 
         if (isDelivered) {
           // Format dates
@@ -509,6 +510,22 @@ export default function TreasurySettlementPage() {
 
     setIsSettling(true);
     try {
+      // Upload files to Cloud Storage first
+      const uploadedUrls: string[] = [];
+      if (uploadedImages.length > 0) {
+        for (const img of uploadedImages) {
+          if (img.file) {
+            const storageRef = ref(storage, `treasury_statements/${auth.currentUser?.uid || 'anonymous'}/${Date.now()}_${img.name}`);
+            const snapshot = await uploadBytes(storageRef, img.file);
+            const downloadUrl = await getDownloadURL(snapshot.ref);
+            uploadedUrls.push(downloadUrl);
+          } else if (img.dataUrl) {
+            // Fallback
+            uploadedUrls.push(img.dataUrl);
+          }
+        }
+      }
+
       const batch = writeBatch(db);
       let totalAmountToDeposit = 0;
 
@@ -537,7 +554,7 @@ export default function TreasurySettlementPage() {
             settlementStatementId: externalStatementId || '',
             settlementAgent: deliveryAgent || '',
             settlementNotes: settlementNotes || '',
-            settlementImages: isFirstOrder ? uploadedImages.map(img => img.dataUrl) : []
+            settlementImages: isFirstOrder ? uploadedUrls : []
           });
 
           isFirstOrder = false;
@@ -576,7 +593,7 @@ export default function TreasurySettlementPage() {
         externalStatementId: externalStatementId || '',
         deliveryAgent: deliveryAgent || '',
         notes: settlementNotes || '',
-        images: uploadedImages.map(img => img.dataUrl),
+        images: uploadedUrls,
         settledOrderIds: Array.from(selectedOrders)
       });
 
@@ -591,9 +608,9 @@ export default function TreasurySettlementPage() {
       setSettlementNotes('');
       setUploadedImages([]);
       alert('تمت تسوية الطلبات المحددة وإيداع المبلغ في المحفظة بنجاح!');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error during settlement:", error);
-      alert('حدث خطأ أثناء التسوية. يرجى المحاولة مرة أخرى.');
+      alert(`حدث خطأ أثناء التسوية: ${error.message || 'خطأ غير معروف'}`);
     } finally {
       setIsSettling(false);
     }
@@ -665,14 +682,20 @@ export default function TreasurySettlementPage() {
 
   const handleDeleteGroup = async (group: GroupedStatement) => {
     const message = group.isStatement 
-      ? `هل أنت متأكد من حذف هذا الكشف (#${group.settlementStatementId}) وجميع الطلبات المرتبطة به (${group.orders.length} طلب) بشكل نهائي من النظام؟`
-      : `هل أنت متأكد من حذف هذا الطلب بشكل نهائي من النظام؟`;
+      ? `هل أنت متأكد من إلغاء تسوية هذا الكشف (#${group.settlementStatementId}) وإعادة الطلبات المرتبطة به (${group.orders.length} طلب) إلى حالة "غير محاسب عليها"؟`
+      : `هل أنت متأكد من إلغاء تسوية هذا الطلب الفردي وإعادته إلى حالة "غير محاسب عليها"؟`;
       
     if (confirm(message)) {
       try {
         const batch = writeBatch(db);
         group.orders.forEach(order => {
-          batch.delete(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id));
+          batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id), {
+            is_settled: false,
+            paymentStatus: '',
+            settlementStatementId: '',
+            isSettlementArchived: false,
+            paidAmount: 0
+          });
         });
         await batch.commit();
         if (selectedStatement?.id === group.id) {
@@ -680,7 +703,7 @@ export default function TreasurySettlementPage() {
         }
       } catch (error) {
         console.error("Error deleting group:", error);
-        alert("حدث خطأ أثناء حذف الكشف.");
+        alert("حدث خطأ أثناء العملية.");
       }
     }
   };
@@ -1047,14 +1070,20 @@ export default function TreasurySettlementPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (confirm(`هل أنت متأكد من حذف ${selectedOrders.size} كشفاً (وجميع الطلبات المرتبطة بها) بشكل نهائي من النظام؟`)) {
+                      if (confirm(`هل أنت متأكد من إلغاء تسوية ${selectedOrders.size} كشفاً وإعادة الطلبات المرتبطة بها إلى حالة "غير محاسب عليها"؟`)) {
                         try {
                           const batch = writeBatch(db);
                           selectedOrders.forEach(id => {
                             const group = archivedGroups.find(g => g.id === id);
                             if (group) {
                               group.orders.forEach(order => {
-                                batch.delete(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id));
+                                batch.update(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id), {
+                                  is_settled: false,
+                                  paymentStatus: '',
+                                  settlementStatementId: '',
+                                  isSettlementArchived: false,
+                                  paidAmount: 0
+                                });
                               });
                             }
                           });
@@ -1063,7 +1092,7 @@ export default function TreasurySettlementPage() {
                           setShowActionsDropdown(false);
                         } catch (err) {
                           console.error(err);
-                          alert("حدث خطأ أثناء حذف الكشوفات.");
+                          alert("حدث خطأ أثناء تعديل الكشوفات.");
                         }
                       }
                     }}
@@ -1081,7 +1110,7 @@ export default function TreasurySettlementPage() {
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
-                    🗑️ حذف الكشوفات المحددة
+                    🗑️ إلغاء تسوية الكشوفات المحددة
                   </button>
                 </div>
               )}
@@ -1789,7 +1818,8 @@ export default function TreasurySettlementPage() {
                   <h3 className={styles.sectionSubTitle}>🖼️ مرفقات وصور الكشف الورقي ({selectedStatement.settlementImages.length})</h3>
                   <div className={styles.imageGallery}>
                     {selectedStatement.settlementImages.map((imgUrl, index) => {
-                      const isImage = imgUrl && (imgUrl.startsWith('data:image/') || imgUrl.match(/\.(jpeg|jpg|gif|png|webp)/i));
+                      const urlStr = imgUrl ? decodeURIComponent(imgUrl.split('?')[0]) : '';
+                      const isImage = imgUrl && (imgUrl.startsWith('data:image/') || urlStr.match(/\.(jpeg|jpg|gif|png|webp)$/i));
                       if (isImage) {
                         return (
                           <div 
@@ -1804,16 +1834,18 @@ export default function TreasurySettlementPage() {
                           </div>
                         );
                       } else {
-                        let ext = 'file';
-                        if (imgUrl.includes('spreadsheet') || imgUrl.includes('excel') || imgUrl.includes('sheet')) ext = 'xlsx';
-                        else if (imgUrl.includes('pdf')) ext = 'pdf';
-                        else if (imgUrl.includes('word') || imgUrl.includes('document')) ext = 'docx';
+                        let ext = 'ملف';
+                        if (urlStr.match(/\.(xlsx|xls|csv)$/i) || imgUrl.includes('spreadsheet') || imgUrl.includes('excel')) ext = 'EXCEL';
+                        else if (urlStr.match(/\.pdf$/i) || imgUrl.includes('pdf')) ext = 'PDF';
+                        else if (urlStr.match(/\.(doc|docx)$/i) || imgUrl.includes('word')) ext = 'WORD';
                         
                         return (
                           <a 
                             key={index}
                             href={imgUrl} 
-                            download={`document_${index + 1}.${ext}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={`document_${index + 1}.${ext.toLowerCase()}`}
                             className={styles.galleryImageCard}
                             style={{
                               display: 'flex',
@@ -1828,7 +1860,7 @@ export default function TreasurySettlementPage() {
                           >
                             <span style={{ fontSize: '2rem' }}>📄</span>
                             <span style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', padding: '0 4px' }}>
-                              تحميل الملف ({ext.toUpperCase()})
+                              تحميل ({ext})
                             </span>
                           </a>
                         );
@@ -1986,7 +2018,8 @@ export default function TreasurySettlementPage() {
                         </span>
                         <div className={styles.imageGallery}>
                           {orderImages.map((imgUrl, index) => {
-                            const isImage = imgUrl && (imgUrl.startsWith('data:image/') || imgUrl.match(/\.(jpeg|jpg|gif|png|webp)/i));
+                            const urlStr = imgUrl ? decodeURIComponent(imgUrl.split('?')[0]) : '';
+                            const isImage = imgUrl && (imgUrl.startsWith('data:image/') || urlStr.match(/\.(jpeg|jpg|gif|png|webp)$/i));
                             if (isImage) {
                               return (
                                 <div 
@@ -2001,16 +2034,18 @@ export default function TreasurySettlementPage() {
                                 </div>
                               );
                             } else {
-                              let ext = 'file';
-                              if (imgUrl.includes('spreadsheet') || imgUrl.includes('excel') || imgUrl.includes('sheet')) ext = 'xlsx';
-                              else if (imgUrl.includes('pdf')) ext = 'pdf';
-                              else if (imgUrl.includes('word') || imgUrl.includes('document')) ext = 'docx';
+                              let ext = 'ملف';
+                              if (urlStr.match(/\.(xlsx|xls|csv)$/i) || imgUrl.includes('spreadsheet') || imgUrl.includes('excel')) ext = 'EXCEL';
+                              else if (urlStr.match(/\.pdf$/i) || imgUrl.includes('pdf')) ext = 'PDF';
+                              else if (urlStr.match(/\.(doc|docx)$/i) || imgUrl.includes('word')) ext = 'WORD';
                               
                               return (
                                 <a 
                                   key={index}
                                   href={imgUrl} 
-                                  download={`document_${index + 1}.${ext}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={`document_${index + 1}.${ext.toLowerCase()}`}
                                   className={styles.galleryImageCard}
                                   style={{
                                     display: 'flex',
@@ -2025,7 +2060,7 @@ export default function TreasurySettlementPage() {
                                 >
                                   <span style={{ fontSize: '2rem' }}>📄</span>
                                   <span style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', padding: '0 4px' }}>
-                                    تحميل الملف ({ext.toUpperCase()})
+                                    تحميل ({ext})
                                   </span>
                                 </a>
                               );

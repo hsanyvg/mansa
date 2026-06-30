@@ -441,7 +441,7 @@ export default function EmployeesPage() {
         }
 
         // Commission Logic
-        const deliveredOrders = ordersSnap.docs.filter(d => d.data().status === 'delivered').length;
+        const deliveredOrders = ordersSnap.docs.filter(d => d.data().status === 'delivered' || d.data().status === 'partial').length;
         const pendingOrders = ordersSnap.docs.filter(d => ['processing', 'shipped', 'pending'].includes(d.data().status)).length;
         const commissionPerOrder = selectedAttendanceEmployee.commissionRate || 0;
         
@@ -566,7 +566,7 @@ export default function EmployeesPage() {
         const d = doc.data().date?.toDate();
         if (d) activeDays.add(toLocalDate(d));
         
-        if (doc.data().status === 'delivered' && !doc.data().isPaidToStaff) {
+        if ((doc.data().status === 'delivered' || doc.data().status === 'partial') && !doc.data().isPaidToStaff) {
             payrollMap[emp.id].deliveredOrdersCount++;
             payrollMap[emp.id].unpaidOrderIds.push(doc.id);
         }

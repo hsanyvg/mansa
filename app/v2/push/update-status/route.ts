@@ -62,6 +62,7 @@ export async function POST(req: Request) {
 
       try {
         let foundUid = null;
+        let existingData: any = null;
         // Search for the actual user who owns this order
         if (adminAuth && adminDb) {
           try {
@@ -70,6 +71,7 @@ export async function POST(req: Request) {
               const snap = await adminDb.collection('users').doc(u.uid).collection('orders').doc(orderId).get();
               if (snap.exists) {
                 foundUid = u.uid;
+                existingData = snap.data();
                 break;
               }
             }
@@ -81,7 +83,7 @@ export async function POST(req: Request) {
         const targetUid = foundUid || auth.currentUser?.uid || 'anonymous';
         const orderRef = doc(db, 'users', targetUid, 'orders', orderId);
         
-        await updateDoc(orderRef, {
+        const updateData: any = {
           status: newStatus,
           deliveryStatus: update.action_code || update.current_step,
           deliveryNote: update.note || '',
@@ -90,7 +92,28 @@ export async function POST(req: Request) {
           shipmentId: update.shipment_id,
           jenniShipmentId: update.shipment_id || '',
           updatedAt: serverTimestamp()
-        });
+        };
+
+        if (newStatus === 'returned') {
+          updateData.deliveryCost = 0;
+          if (existingData && existingData.deliveryCost > 0) {
+            const currentTotal = existingData.totalAmount || existingData.price || 0;
+            updateData.totalAmount = currentTotal + existingData.deliveryCost;
+          } else if (!existingData) {
+            try {
+              const clientSnap = await getDoc(orderRef);
+              if (clientSnap.exists()) {
+                const clientData = clientSnap.data();
+                if (clientData.deliveryCost > 0) {
+                  const currentTotal = clientData.totalAmount || clientData.price || 0;
+                  updateData.totalAmount = currentTotal + clientData.deliveryCost;
+                }
+              }
+            } catch (e) {}
+          }
+        }
+
+        await updateDoc(orderRef, updateData);
         processedCount++;
       } catch (docErr) {
         console.error(`Failed to update order ${orderId}:`, docErr);

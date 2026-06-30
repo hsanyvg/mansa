@@ -97,13 +97,13 @@ export default function MobileApp() {
         // Today's stats
         if (orderTime >= startOfToday) {
           countToday++;
-          if (order.status === 'delivered') {
+          if (order.status === 'delivered' || order.status === 'partial') {
             salesToday += Number(order.totalAmount) || 0;
           }
         }
 
         // Active orders count
-        if (order.status !== 'delivered' && order.status !== 'cancelled') {
+        if (order.status !== 'delivered' && order.status !== 'partial' && order.status !== 'cancelled') {
           activeCount++;
         }
       });
@@ -575,6 +575,7 @@ export default function MobileApp() {
                     </span>
                     <span className={`${styles.badge} ${styles[ord.status] || styles.pending}`}>
                       {ord.status === 'delivered' ? 'واصل' :
+                       ord.status === 'partial' ? 'واصل جزئي' :
                        ord.status === 'returned' ? 'راجع' :
                        ord.status === 'returned_agent' ? 'راجع بحوزة مندوب' :
                        ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :

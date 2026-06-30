@@ -14,7 +14,7 @@ export default function SalesInvoicesPage() {
     // We fetch orders that are marked as 'delivered' (مكتمل)
     const q = query(
       collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'),
-      where('status', '==', 'delivered'),
+      where('status', 'in', ['delivered', 'partial']),
       orderBy('date', 'desc')
     );
 

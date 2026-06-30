@@ -166,7 +166,7 @@ export default function OrderEntryPage() {
           snapOrders.forEach(doc => {
             const data = doc.data();
             count++;
-            if (data.status === 'delivered') {
+            if (data.status === 'delivered' || data.status === 'partial') {
               totalSpent += (data.totalAmount || 0);
               deliveredCount++;
             }

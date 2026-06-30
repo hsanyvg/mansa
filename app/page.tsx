@@ -388,7 +388,7 @@ export default function Dashboard() {
 
       const empStats = empMap.get(empName)!;
       empStats.total += 1;
-      if (order.status === 'delivered') {
+      if (order.status === 'delivered' || order.status === 'partial') {
         empStats.delivered += 1;
       } else if (order.status === 'returned') {
         empStats.returned += 1;
@@ -686,7 +686,7 @@ export default function Dashboard() {
     const activeOrders = gaugeFilteredOrders.filter(o => o.status !== 'cancelled');
     const total = activeOrders.length;
     if (total === 0) return { activeOrdersCount: 0, deliveryRate: 0 };
-    const delivered = gaugeFilteredOrders.filter(o => o.status === 'delivered').length;
+    const delivered = gaugeFilteredOrders.filter(o => o.status === 'delivered' || o.status === 'partial').length;
     const rate = Math.round((delivered / total) * 100);
     return {
       activeOrdersCount: total,
@@ -831,47 +831,55 @@ export default function Dashboard() {
       const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
       if (!isSettledOrPartial) return;
 
-      // 3.1 Calculate total of all items in this order to scale proportionally
-      const orderItemsTotal = (order.items || []).reduce((sum: number, it: any) => {
-        const iQty = Number(it.quantity) || 0;
+      // 3.1 Get items to process, ensuring we don't lose orders with empty items
+      let itemsToProcess = (order.items && Array.isArray(order.items) && order.items.length > 0) 
+        ? order.items 
+        : [{ name: 'غير مصنف', quantity: 1, unitPrice: order.totalAmount || 0 }];
+
+      let orderItemsTotal = itemsToProcess.reduce((sum: number, it: any) => {
+        const iQty = Number(it.quantity) || 1; // Treat qty 0 as 1 for proportion
         const iPrice = Number(it.unitPrice) || Number(it.price) || 0;
         return sum + (iQty * iPrice);
-      }, 0) || 1;
+      }, 0);
+
+      // If all items have 0 price, distribute evenly
+      let fallbackProportion = false;
+      if (orderItemsTotal === 0) {
+        orderItemsTotal = itemsToProcess.length;
+        fallbackProportion = true;
+      }
 
       const orderTotalAmount = Number(order.totalAmount) || 0;
 
       // 3.2 Distribute to pages and items
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach((item: any) => {
-          const pName = item.productName || item.name;
-          if (!pName) return;
+      itemsToProcess.forEach((item: any) => {
+        const pName = item.productName || item.name || 'غير مصنف';
+        
+        const hierarchy = resolveProductHierarchy(pName);
+        ensurePath(hierarchy.page, hierarchy.branch, hierarchy.subcat, pName);
 
-          const hierarchy = resolveProductHierarchy(pName);
-          ensurePath(hierarchy.page, hierarchy.branch, hierarchy.subcat, pName);
+        const qty = Number(item.quantity) || 1;
+        const price = Number(item.unitPrice) || Number(item.price) || 0;
+        const itemTotal = fallbackProportion ? 1 : (qty * price);
 
-          const qty = Number(item.quantity) || 0;
-          const price = Number(item.unitPrice) || Number(item.price) || 0;
-          const itemTotal = qty * price;
+        // Proportional share of this item in the entire order
+        const proportion = itemTotal / orderItemsTotal;
+        const allocatedRevenue = proportion * orderTotalAmount;
 
-          // Proportional share of this item in the entire order
-          const proportion = itemTotal / orderItemsTotal;
-          const allocatedRevenue = proportion * orderTotalAmount;
+        // Page level nodes (proportional share of gross totalAmount and order count)
+        const pGrp = tree[hierarchy.page];
+        pGrp.deliveredOrdersCount += proportion;
+        pGrp.revenue += allocatedRevenue;
 
-          // Page level nodes (proportional share of gross totalAmount and order count)
-          const pGrp = tree[hierarchy.page];
-          pGrp.deliveredOrdersCount += proportion;
-          pGrp.revenue += allocatedRevenue;
+        // Branch/Subcategory/Item level nodes
+        const bGrp = pGrp.branches[hierarchy.branch];
+        const sGrp = bGrp.subcategories[hierarchy.subcat];
+        const iGrp = sGrp.items[pName];
 
-          // Branch/Subcategory/Item level nodes
-          const bGrp = pGrp.branches[hierarchy.branch];
-          const sGrp = bGrp.subcategories[hierarchy.subcat];
-          const iGrp = sGrp.items[pName];
-
-          bGrp.revenue += allocatedRevenue;
-          sGrp.revenue += allocatedRevenue;
-          iGrp.revenue += allocatedRevenue;
-        });
-      }
+        bGrp.revenue += allocatedRevenue;
+        sGrp.revenue += allocatedRevenue;
+        iGrp.revenue += allocatedRevenue;
+      });
     });
 
     // 4. Accumulate expenses

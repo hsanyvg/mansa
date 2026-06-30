@@ -117,8 +117,10 @@ export async function POST(req: Request) {
           let newStatus = '';
           const step = (shipment.current_step || shipment.action_code || '').toUpperCase();
           
-          if (step === 'DELIVERED' || step === 'SUCCESSFUL_DELIVERY' || step === 'SUCCESSFUL_DELIVERY_WITH_AMOUNT_CHANGE' || step === 'PARTIAL_DELIVERY') {
+          if (step === 'DELIVERED' || step === 'SUCCESSFUL_DELIVERY' || step === 'SUCCESSFUL_DELIVERY_WITH_AMOUNT_CHANGE') {
             newStatus = 'delivered';
+          } else if (step === 'PARTIAL_DELIVERY') {
+            newStatus = 'partial';
           } else if (step === 'RETURNED' || step.startsWith('RTO_') || step === 'RETURN_TO_STORE' || step === 'RETURNED_WITH_AGENT') {
             newStatus = 'returned';
           } else if (step === 'OFD' || step === 'OUT_FOR_DELIVERY') {
@@ -150,7 +152,7 @@ export async function POST(req: Request) {
               const detailsChanged = currentData.deliveryStatus !== shipment.current_step || currentData.deliveryNote !== (shipment.note || '');
 
               if (statusChanged || missingIds || detailsChanged) {
-                const updateData = {
+                const updateData: any = {
                   status: targetStatus,
                   deliveryStatus: shipment.current_step || '',
                   deliveryNote: shipment.note || '',
@@ -158,6 +160,14 @@ export async function POST(req: Request) {
                   jenniShipmentId: resolvedShipmentId,
                   updatedAt: new Date()
                 };
+
+                if (targetStatus === 'returned') {
+                  updateData.deliveryCost = 0;
+                  if (currentData.deliveryCost > 0) {
+                    const currentTotal = currentData.totalAmount || currentData.price || 0;
+                    updateData.totalAmount = currentTotal + currentData.deliveryCost;
+                  }
+                }
 
                 try {
                   const orderRef = doc(db, 'users', orderInfo.uid, 'orders', orderInfo.id);

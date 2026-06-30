@@ -280,6 +280,8 @@ export default function OrdersListPage() {
     'ofd': { label: 'قيد التوصيل', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
     'delivered': { label: 'مكتمل (لم تتم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
     'delivered_settled': { label: 'مكتمل (تم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'partial': { label: 'واصل جزئي (لم تتم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
+    'partial_settled': { label: 'واصل جزئي (تم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
     'cancelled': { label: 'ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
     'returned_agent': { label: 'راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
     'returned_warehouse': { label: 'راجع تم استلامه في المخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
@@ -290,6 +292,12 @@ export default function OrdersListPage() {
     const status = (order.status || 'pending').toLowerCase();
     if (status === 'delivered') {
       return order.is_settled === true ? 'delivered_settled' : 'delivered';
+    }
+    if (status === 'partial') {
+      return order.is_settled === true ? 'partial_settled' : 'partial';
+    }
+    if (status === 'returned') {
+      return 'returned_agent'; // Unify 'returned' and 'returned_agent' for display & filtering
     }
     return status;
   };
@@ -641,13 +649,13 @@ export default function OrdersListPage() {
       const phoneStr = String(order.customerPhone || order.phone || '').toLowerCase();
 
       return searchIds.some(searchId => 
-        orderIdStr.includes(searchId) || 
+        orderIdStr === searchId || 
         orderIdShortStr === searchId ||
-        (orderNumberStr && orderNumberStr.includes(searchId)) ||
-        (shipmentIdStr && shipmentIdStr.includes(searchId)) ||
-        (jenniShipmentIdStr && jenniShipmentIdStr.includes(searchId)) ||
-        (shipmentNumberStr && shipmentNumberStr.includes(searchId)) ||
-        (phoneStr && phoneStr.includes(searchId))
+        (orderNumberStr && orderNumberStr === searchId) ||
+        (shipmentIdStr && shipmentIdStr === searchId) ||
+        (jenniShipmentIdStr && jenniShipmentIdStr === searchId) ||
+        (shipmentNumberStr && shipmentNumberStr === searchId) ||
+        (phoneStr && (phoneStr === searchId || (searchId.length >= 10 && phoneStr.includes(searchId))))
       );
     });
 
@@ -717,7 +725,7 @@ export default function OrdersListPage() {
     return phA.localeCompare(phB);
   });
 
-  const returnedOrdersList = activeOrders.filter(o => o.status === 'returned');
+  const returnedOrdersList = activeOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent');
   const discrepancyOrdersList = activeOrders.filter(o => o.has_discrepancy);
 
   const baseList = activeTab === 'archived' ? archivedOrdersList 
@@ -838,7 +846,7 @@ export default function OrdersListPage() {
       let lastError = '';
 
       for (const orderData of selectedOrdersData) {
-        if (orderData.status === 'shipped' || orderData.status === 'delivered') {
+        if (orderData.status === 'shipped' || orderData.status === 'delivered' || orderData.status === 'partial') {
            failCount++;
            lastError = 'الطلب مشحون أو مكتمل مسبقاً';
            continue;
@@ -973,7 +981,7 @@ export default function OrdersListPage() {
   const confirmDeleteOrder = async () => {
     if (!orderToDelete) return;
     
-    const isDeleteLocked = !orderToDelete.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(orderToDelete.status) || orderToDelete.is_settled === true);
+    const isDeleteLocked = !orderToDelete.isArchived && (['shipped', 'delivered', 'partial', 'returned', 'returned_agent', 'returned_warehouse', 'cancelled'].includes(orderToDelete.status) || orderToDelete.is_settled === true);
     if (isDeleteLocked) {
        alert("لا يمكن حذف طلب نشط تم تسليمه أو إرجاعه أو تسويته. يرجى أرشفة الطلب أولاً لحذفه نهائياً.");
        setOrderToDelete(null);
@@ -986,7 +994,7 @@ export default function OrdersListPage() {
       const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderToDelete.id);
       
       // If order is not cancelled or returned, we should return items to stock
-      const isCancelled = orderToDelete.status === 'cancelled' || orderToDelete.status === 'returned';
+      const isCancelled = ['cancelled', 'returned', 'returned_agent', 'returned_warehouse'].includes(orderToDelete.status);
       
       if (!isCancelled && orderToDelete.items && orderToDelete.items.length > 0) {
         for (const item of orderToDelete.items) {
@@ -1067,7 +1075,7 @@ export default function OrdersListPage() {
       const batch = writeBatch(db);
       const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
       const validOrdersToDelete = selectedOrdersData.filter(o => {
-         const isDeleteLocked = !o.isArchived && (['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) || o.is_settled === true);
+         const isDeleteLocked = !o.isArchived && (['shipped', 'delivered', 'partial', 'returned', 'returned_agent', 'returned_warehouse', 'cancelled'].includes(o.status) || o.is_settled === true);
          return !isDeleteLocked;
       });
       
@@ -1081,7 +1089,7 @@ export default function OrdersListPage() {
       // Process each order for stock reversal
       for (const orderItem of validOrdersToDelete) {
         const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderItem.id);
-        const isCancelled = orderItem.status === 'cancelled' || orderItem.status === 'returned';
+        const isCancelled = ['cancelled', 'returned', 'returned_agent', 'returned_warehouse'].includes(orderItem.status);
         
         if (!isCancelled && orderItem.items && orderItem.items.length > 0) {
           for (const item of orderItem.items) {
@@ -1158,8 +1166,8 @@ export default function OrdersListPage() {
   const [customDeliveryCompany, setCustomDeliveryCompany] = useState('');
 
   const getStockState = (status: string) => {
-    if (['shipped', 'delivered'].includes(status)) return 'HARD_DEDUCTED';
-    if (['cancelled', 'returned'].includes(status)) return 'FREE';
+    if (['shipped', 'delivered', 'partial'].includes(status)) return 'HARD_DEDUCTED';
+    if (['cancelled', 'returned', 'returned_agent', 'returned_warehouse'].includes(status)) return 'FREE';
     return 'SOFT_ALLOCATED'; // pending, processing, backordered, new
   };
 
@@ -1378,13 +1386,13 @@ export default function OrdersListPage() {
   };
 
   const handleInlineStatusChange = async (orderId: string, oldStatus: string, newStatus: string) => {
-    if (oldStatus === newStatus && newStatus !== 'delivered' && newStatus !== 'shipped') return;
+    if (oldStatus === newStatus && newStatus !== 'delivered' && newStatus !== 'shipped' && newStatus !== 'partial') return;
     handleStatusChangeRequest(newStatus, [orderId]);
   };
 
   const handleCancelOrder = async (order: any) => {
-    if (['cancelled', 'returned', 'delivered'].includes(order.status)) {
-      alert("لا يمكن إلغاء طلب ملغي، راجع، أو مكتمل بالفعل.");
+    if (['cancelled', 'returned', 'returned_agent', 'returned_warehouse', 'delivered', 'partial'].includes(order.status)) {
+      alert("لا يمكن إلغاء طلب ملغي، راجع، مكتمل، أو واصل جزئي بالفعل.");
       return;
     }
 
@@ -1483,7 +1491,7 @@ export default function OrdersListPage() {
         if (isFullyLocked) continue; // Unlocked shipped and delivered statuses
         
         const oldStatus = orderToUpdate.status || 'pending';
-        if (oldStatus !== newStatus || newStatus === 'delivered' || newStatus === 'shipped') {
+        if (oldStatus !== newStatus || newStatus === 'delivered' || newStatus === 'shipped' || newStatus === 'partial') {
           validOrders.push({ order: orderToUpdate, oldStatus, newStatus });
           for (const item of (orderToUpdate.items || [])) {
             if (item.isComposite && item.composition) {
@@ -1524,16 +1532,46 @@ export default function OrdersListPage() {
       for (const { order, oldStatus, newStatus } of validOrders) {
         const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
         
-        const finalDeliveryCompany = deliveryCompany === 'أخرى' ? customDeliveryCompany : deliveryCompany;
+        const inputDeliveryCompany = deliveryCompany === 'أخرى' ? customDeliveryCompany : deliveryCompany;
+        const effectiveCompany = inputDeliveryCompany.trim() !== '' ? inputDeliveryCompany.trim() : (order.shippingCompany || '').trim();
         const updateData: any = { status: newStatus };
         
-        if (finalDeliveryCompany.trim() !== '') {
-          updateData.shippingCompany = finalDeliveryCompany.trim();
+        if (effectiveCompany !== '') {
+          // Only update shippingCompany if it was explicitly selected in the UI
+          if (inputDeliveryCompany.trim() !== '') {
+            updateData.shippingCompany = inputDeliveryCompany.trim();
+          }
           
-          // Apply delivery cost deduction based on governorate
-          const company = shippingCompanies.find(c => c.name === finalDeliveryCompany.trim());
+          // Apply delivery cost deduction based on governorate using the effective company
+          const company = shippingCompanies.find(c => c.name === effectiveCompany);
           if (company && company.rates && order.governorate) {
-            const matchedKey = Object.keys(company.rates).find(govKey => order.governorate.includes(govKey));
+            const EN_TO_AR_GOV: Record<string, string[]> = {
+              "BAGHDAD": ["بغداد"], "BASRA": ["البصرة", "بصرة"], "BASRAH": ["البصرة", "بصرة"],
+              "NINEVEH": ["نينوى", "الموصل", "موصل"], "MOSUL": ["نينوى", "الموصل", "موصل"],
+              "ERBIL": ["أربيل", "اربيل"], "ARBIL": ["أربيل", "اربيل"],
+              "BABIL": ["بابل", "الحلة", "حلة"], "BABYLON": ["بابل", "الحلة", "حلة"],
+              "NAJAF": ["النجف", "نجف"], "KARBALA": ["كربلاء"], "KIRKUK": ["كركوك"],
+              "ANBAR": ["الأنبار", "الانبار", "الرمادي", "رمادي"], "DIYALA": ["ديالى", "بعقوبة"],
+              "DHI QAR": ["ذي قار", "الناصرية", "ناصرية"], "THI QAR": ["ذي قار", "الناصرية", "ناصرية"],
+              "SALAH AL-DIN": ["صلاح الدين", "تكريت"], "SALAHADDIN": ["صلاح الدين", "تكريت"],
+              "MAYSAN": ["ميسان", "العمارة", "عمارة", "العماره", "عماره"],
+              "MUTHANNA": ["المثنى", "مثنى", "السماوة", "سماوة", "السماوه", "سماوه"],
+              "AL-MUTHANNA": ["المثنى", "مثنى", "السماوة", "سماوة"],
+              "WASIT": ["واسط", "الكوت", "كوت"], "SULAYMANIYAH": ["السليمانية", "سليمانية"],
+              "DUHOK": ["دهوك"], "DOHUK": ["دهوك"],
+              "QADISIYAH": ["القادسية", "قادسية", "الديوانية", "ديوانية"],
+              "AL-QADISIYAH": ["القادسية", "قادسية", "الديوانية", "ديوانية"]
+            };
+
+            const matchedKey = Object.keys(company.rates).find(govKey => {
+              const oGov = order.governorate.toUpperCase().trim();
+              const rKey = govKey.trim();
+              if (oGov.includes(rKey) || rKey.includes(oGov)) return true;
+              
+              const mapped = EN_TO_AR_GOV[oGov] || [];
+              return mapped.some(ar => rKey.includes(ar) || ar.includes(rKey));
+            });
+
             if (matchedKey) {
               const cost = company.rates[matchedKey];
               if (cost > 0 && !order.deliveryCost) {
@@ -1542,6 +1580,14 @@ export default function OrdersListPage() {
                 updateData.totalAmount = currentTotal - cost;
               }
             }
+          }
+        }
+        
+        if (newStatus === 'returned' || newStatus === 'returned_agent') {
+          updateData.deliveryCost = 0;
+          if (order.deliveryCost > 0) {
+            const currentTotal = order.totalAmount || order.price || 0;
+            updateData.totalAmount = currentTotal + order.deliveryCost;
           }
         }
         
@@ -1728,7 +1774,7 @@ export default function OrdersListPage() {
       const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', editingOrder.id);
       const batch = writeBatch(db);
 
-      batch.update(orderRef, {
+      const updates: any = {
         customerName: editingOrder.customerName || '',
         customerPhone: editingOrder.customerPhone || editingOrder.phone || '',
         governorate: editingOrder.governorate || '',
@@ -1739,7 +1785,16 @@ export default function OrdersListPage() {
         shippingCompany: editingOrder.shippingCompany || '',
         items: editingOrder.items || [],
         totalAmount: Number(editingOrder.totalAmount) || 0
-      });
+      };
+
+      if (editingOrder.status === 'returned' || editingOrder.status === 'returned_agent') {
+        updates.deliveryCost = 0;
+        if (oldOrder.deliveryCost > 0) {
+          updates.totalAmount = (Number(editingOrder.totalAmount) || 0) + oldOrder.deliveryCost;
+        }
+      }
+
+      batch.update(orderRef, updates);
 
       // Handle Stock Logic for order edits (both items and status changes)
       await syncStockForOrderEdit(
@@ -1789,11 +1844,17 @@ export default function OrdersListPage() {
         const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderId);
         const orderData = orders.find(o => o.id === orderId);
         
-        // 1. Update internal Return Status AND Archive it
+        const currentTotal = orderData?.totalAmount || orderData?.price || 0;
+        const currentDeliveryCost = orderData?.deliveryCost || 0;
+        const restoredTotal = currentTotal + currentDeliveryCost;
+
+        // 1. Update internal Return Status AND Archive it, zero out deliveryCost and restore old totalAmount
         batch.update(orderRef, { 
           returnStatus: 'in_warehouse',
           isArchived: true,
-          archivedAt: serverTimestamp()
+          archivedAt: serverTimestamp(),
+          deliveryCost: 0,
+          totalAmount: restoredTotal
         });
 
         if (orderData) {
@@ -1833,7 +1894,7 @@ export default function OrdersListPage() {
   const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id));
   
   const canTransfer = selectedOrders.some(o => 
-    !['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) && 
+    !['shipped', 'delivered', 'partial', 'returned', 'returned_agent', 'returned_warehouse', 'cancelled'].includes(o.status) && 
     !o.isArchived && 
     o.paymentStatus !== 'settled' && 
     o.is_settled !== true
@@ -1842,13 +1903,13 @@ export default function OrdersListPage() {
   const canArchive = selectedOrders.some(o => !o.isArchived);
   
   const canDelete = selectedOrders.some(o => 
-    !['shipped', 'delivered', 'returned', 'cancelled'].includes(o.status) && 
+    !['shipped', 'delivered', 'partial', 'returned', 'returned_agent', 'returned_warehouse', 'cancelled'].includes(o.status) && 
     !o.isArchived && 
     o.paymentStatus !== 'settled' && 
     o.is_settled !== true
   );
 
-  const canConfirmReturn = selectedOrders.some(o => o.status === 'returned' && !o.isArchived);
+  const canConfirmReturn = selectedOrders.some(o => (o.status === 'returned' || o.status === 'returned_agent') && !o.isArchived);
 
   const canRestore = selectedOrders.some(o => o.isArchived);
   const canDeletePermanent = selectedOrders.some(o => o.isArchived);
@@ -2351,7 +2412,7 @@ export default function OrdersListPage() {
               >
                 <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem'}}>اختر الحالة...</option>
                 {Object.entries(statusMap).map(([key, info]) => {
-                  if (key === 'returned_warehouse' || key === 'delivered_settled') return null;
+                  if (key === 'returned_warehouse' || key === 'delivered_settled' || key === 'partial_settled') return null;
                   return (
                     <option key={key} value={key} style={{color: info.color, backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>{info.label} ({key})</option>
                   );
@@ -2569,7 +2630,7 @@ export default function OrdersListPage() {
             const isActive = selectedStatus === statusKey;
             const emojiMap: Record<string, string> = {
               pending: '⏳', backordered: '📥', processing: '⚙️', shipped: '📦',
-              ofd: '🚚', delivered: '✅', delivered_settled: '🏦', cancelled: '❌', returned: '↩️',
+              ofd: '🚚', delivered: '✅', delivered_settled: '🏦', partial: '🌗', partial_settled: '🏦', cancelled: '❌', returned: '↩️',
               new: '✨', postponed: '📅'
             };
             
@@ -3126,7 +3187,7 @@ export default function OrdersListPage() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         {Object.entries(statusMap).map(([key, info]) => {
-                          if (key === 'returned_warehouse' || key === 'delivered_settled') return null;
+                          if (key === 'returned_warehouse' || key === 'delivered_settled' || key === 'partial_settled') return null;
                           return (
                             <option key={key} value={key} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
                               {info.label} ({key})
@@ -3139,7 +3200,7 @@ export default function OrdersListPage() {
                             (بانتظار المخزون)
                          </div>
                       )}
-                      {order.status === 'delivered' && (
+                      {(order.status === 'delivered' || order.status === 'partial') && (
                          <div style={{ fontSize: '0.8rem', color: order.paymentStatus === 'settled' ? '#10b981' : '#ef4444', width: '100%', textAlign: 'center', marginTop: '-4px', fontWeight: 'bold' }}>
                             {order.paymentStatus === 'settled' ? '(تم المحاسبة)' : '(لم تتم المحاسبة)'}
                          </div>
@@ -3253,7 +3314,7 @@ export default function OrdersListPage() {
                       >
                         🗑️
                       </button>
-                      {!['cancelled', 'returned', 'delivered'].includes(order.status) && (
+                      {!['cancelled', 'returned', 'returned_agent', 'returned_warehouse', 'delivered', 'partial'].includes(order.status) && (
                         <button 
                           className={styles.actionButton} 
                           title="إلغاء الطلب"
@@ -3663,6 +3724,7 @@ export default function OrdersListPage() {
                         <option value="processing">جاري التجهيز (processing)</option>
                         <option value="shipped">مشحون (shipped)</option>
                         <option value="delivered">مكتمل (delivered)</option>
+                        <option value="partial">واصل جزئي (partial)</option>
                         <option value="cancelled">ملغي (cancelled)</option>
                         <option value="returned">راجع (returned)</option>
                       </select>
@@ -4069,7 +4131,7 @@ export default function OrdersListPage() {
                   ملاحظة: سيتم إرجاع المواد للمخزن تلقائياً.
                 </p>
               )}
-              {(bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && (
+              {(bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped' || bulkStatusValue === 'partial') && (
                 <div style={{ marginTop: '1.5rem', textAlign: 'right', backgroundColor: 'var(--surface-hover)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
                     أي شركة توصيل استلمت/سلمت هذا الطلب؟ {bulkStatusValue === 'shipped' && <span style={{color: '#ef4444'}}>* إجباري</span>}
@@ -4105,8 +4167,8 @@ export default function OrdersListPage() {
               <button 
                 className={styles.submitButton} 
                 onClick={() => confirmBulkStatusChange()}
-                disabled={isUpdating || ((bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && (!deliveryCompany || (deliveryCompany === 'أخرى' && !customDeliveryCompany)))}
-                style={{ flex: 1, opacity: ((bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped') && !deliveryCompany) ? 0.5 : 1 }}
+                disabled={isUpdating || ((bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped' || bulkStatusValue === 'partial') && (!deliveryCompany || (deliveryCompany === 'أخرى' && !customDeliveryCompany)))}
+                style={{ flex: 1, opacity: ((bulkStatusValue === 'delivered' || bulkStatusValue === 'shipped' || bulkStatusValue === 'partial') && !deliveryCompany) ? 0.5 : 1 }}
               >
                 {isUpdating ? 'جاري التحديث...' : 'نعم، تحديث الحالة'}
               </button>
