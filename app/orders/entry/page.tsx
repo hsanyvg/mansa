@@ -16,8 +16,10 @@ import {
   where, 
   getDocs,
   limit,
-  runTransaction
+  runTransaction,
+  Timestamp
 } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 
 interface Product {
   id: string;
@@ -48,6 +50,21 @@ export default function OrderEntryPage() {
   });
   
   const [manualTotal, setManualTotal] = useState<string>('');
+  const [customDate, setCustomDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [showExcelModal, setShowExcelModal] = useState<boolean>(false);
+  const [importedRows, setImportedRows] = useState<any[]>([]);
+  const [importStatus, setImportStatus] = useState<string>('pending');
+  const [importDeductStock, setImportDeductStock] = useState<boolean>(true);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+
+  const [showQuickSaleModal, setShowQuickSaleModal] = useState<boolean>(false);
+  const [quickProdId, setQuickProdId] = useState<string>('');
+  const [quickQty, setQuickQty] = useState<number>(1);
+  const [quickTotalAmount, setQuickTotalAmount] = useState<string>('');
+  const [quickDate, setQuickDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [quickDeductStock, setQuickDeductStock] = useState<boolean>(true);
+  const [quickSettleFinance, setQuickSettleFinance] = useState<boolean>(true);
+  const [isSavingQuick, setIsSavingQuick] = useState<boolean>(false);
 
   const [customerHistory, setCustomerHistory] = useState<{
     count: number;
@@ -477,6 +494,247 @@ export default function OrderEntryPage() {
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsName = wb.SheetNames[0];
+      const ws = wb.Sheets[wsName];
+      const data = XLSX.utils.sheet_to_json(ws);
+
+      const parsed = data.map((row: any, idx: number) => {
+        const custName = (row['اسم الزبون'] || row['الزبون'] || row['الاسم'] || row['customerName'] || row['name'] || 'زبون بدون اسم').toString().trim();
+        const custPhone = (row['هاتف الزبون'] || row['رقم الهاتف'] || row['الموبايل'] || row['الهاتف'] || row['رقم الموبايل'] || row['customerPhone'] || row['phone'] || '').toString().trim();
+        const custPhone2 = (row['هاتف ثاني'] || row['هاتف 2'] || row['رقم ثاني'] || row['customerPhone2'] || '').toString().trim();
+        const gov = (row['المحافظة'] || row['محافظة'] || row['governorate'] || 'بغداد').toString().trim();
+        const reg = (row['المنطقة'] || row['العنوان'] || row['المنطقه'] || row['region'] || row['address'] || '').toString().trim();
+        const notes = (row['الملاحظات'] || row['ملاحظات'] || row['ملاحظة'] || row['notes'] || '').toString().trim();
+        
+        const prodStr = (row['المنتج'] || row['اسم المنتج'] || row['الصنف'] || row['المادة'] || row['productName'] || row['product'] || 'منتج عام').toString().trim();
+        const matchedProd = products.find(p => p.name && p.name.trim().toLowerCase() === prodStr.toLowerCase()) || products.find(p => p.barcode && p.barcode.toString() === prodStr);
+
+        const qty = Number(row['الكمية'] || row['العدد'] || row['quantity'] || 1) || 1;
+        const itemTotal = Number(row['السعر'] || row['المبلغ'] || row['السعر الكلي'] || row['الاجمالي'] || row['totalAmount'] || row['price'] || 0);
+        const unitPrice = qty > 0 ? itemTotal / qty : itemTotal;
+
+        const rowDateVal = row['التاريخ'] || row['تاريخ الطلب'] || row['date'] || null;
+
+        return {
+          id: idx + 1,
+          customerName: custName,
+          customerPhone: custPhone,
+          customerPhone2: custPhone2,
+          governorate: gov,
+          region: reg,
+          notes: notes,
+          productName: matchedProd ? matchedProd.name : prodStr,
+          productId: matchedProd ? matchedProd.id : 'imported_' + Math.random().toString(36).substring(2, 9),
+          matchedProd: matchedProd || null,
+          quantity: qty,
+          unitPrice: unitPrice,
+          totalAmount: itemTotal,
+          rawDate: rowDateVal
+        };
+      });
+
+      setImportedRows(parsed);
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleSaveImportedOrders = async () => {
+    if (importedRows.length === 0) return;
+    if (!selectedEmployeeId || !selectedBookingEmployeeId) {
+      alert("يرجى اختيار موظف الإدخال وموظف الحجز من أعلى الصفحة أولاً!");
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const batch = writeBatch(db);
+      const ordersColl = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
+      const emp = employees.find(e => e.id === selectedEmployeeId);
+      const bookingEmp = employees.find(e => e.id === selectedBookingEmployeeId);
+
+      for (const row of importedRows) {
+        const newRef = doc(ordersColl);
+        
+        let orderDate: any;
+        if (!row.rawDate) {
+          const todayStr = new Date().toISOString().split('T')[0];
+          orderDate = customDate === todayStr ? serverTimestamp() : Timestamp.fromDate(new Date(customDate + 'T12:00:00'));
+        } else if (typeof row.rawDate === 'number') {
+          const date = new Date(Math.round((row.rawDate - 25569) * 86400 * 1000));
+          orderDate = Timestamp.fromDate(date);
+        } else {
+          const d = new Date(row.rawDate);
+          orderDate = !isNaN(d.getTime()) ? Timestamp.fromDate(d) : Timestamp.fromDate(new Date(customDate + 'T12:00:00'));
+        }
+
+        const orderData = {
+          employeeId: selectedEmployeeId,
+          employeeName: emp?.name || 'مجهول',
+          bookingEmployeeId: selectedBookingEmployeeId,
+          bookingEmployeeName: bookingEmp?.name || 'مجهول',
+          customerName: row.customerName,
+          customerPhone: row.customerPhone,
+          customerPhone2: row.customerPhone2 || '',
+          governorate: row.governorate,
+          region: row.region || '',
+          notes: row.notes || 'تم الاستيراد من ملف إكسل',
+          paymentMethod: 'كاش عند التوصيل',
+          totalAmount: row.totalAmount,
+          items: [{
+            productId: row.productId,
+            productName: row.productName,
+            quantity: row.quantity,
+            unitPrice: row.unitPrice,
+            total: row.totalAmount,
+            isComposite: row.matchedProd?.isComposite || false,
+            composition: row.matchedProd?.composition || null
+          }],
+          date: orderDate,
+          status: importStatus, // 'pending' or 'delivered'
+          is_settled: false
+        };
+
+        batch.set(newRef, orderData);
+
+        // Deduct stock if delivered and option checked
+        if (importStatus === 'delivered' && importDeductStock && row.matchedProd && row.matchedProd.stock) {
+          const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', row.matchedProd.id);
+          const currentStock = { ...row.matchedProd.stock };
+          let remainingQty = row.quantity;
+          
+          for (const storeId in currentStock) {
+            if (remainingQty <= 0) break;
+            const available = currentStock[storeId].quantity || 0;
+            if (available > 0) {
+              const deduct = Math.min(available, remainingQty);
+              currentStock[storeId].quantity -= deduct;
+              remainingQty -= deduct;
+            }
+          }
+          batch.update(prodRef, { stock: currentStock });
+        }
+      }
+
+      await batch.commit();
+      alert(`تم استيراد وحفظ ${importedRows.length} طلب بنجاح! 🎉`);
+      setShowExcelModal(false);
+      setImportedRows([]);
+    } catch (err) {
+      console.error("Error importing orders:", err);
+      alert("حدث خطأ أثناء استيراد الطلبات.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleSaveQuickSale = async () => {
+    if (!quickProdId) {
+      alert("يرجى اختيار المنتج أو الصنف المباع أولاً.");
+      return;
+    }
+    if (!selectedEmployeeId || !selectedBookingEmployeeId) {
+      alert("يرجى اختيار موظف الإدخال وموظف الحجز من أعلى الصفحة أولاً.");
+      return;
+    }
+    const qty = Number(quickQty) || 0;
+    const total = parseFloat(quickTotalAmount) || 0;
+    if (qty <= 0) {
+      alert("يرجى إدخال عدد قطع صحيح أكبر من صفر.");
+      return;
+    }
+    if (total < 0) {
+      alert("يرجى إدخال مبلغ صحيح.");
+      return;
+    }
+
+    setIsSavingQuick(true);
+    try {
+      const prod = products.find(p => p.id === quickProdId);
+      if (!prod) {
+        alert("المنتج غير موجود.");
+        return;
+      }
+
+      const batch = writeBatch(db);
+      const ordersColl = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
+      const emp = employees.find(e => e.id === selectedEmployeeId);
+      const bookingEmp = employees.find(e => e.id === selectedBookingEmployeeId);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const orderDate = quickDate === todayStr ? serverTimestamp() : Timestamp.fromDate(new Date(quickDate + 'T12:00:00'));
+
+      const unitPrice = qty > 0 ? total / qty : total;
+
+      const newRef = doc(ordersColl);
+      const orderData = {
+        employeeId: selectedEmployeeId,
+        employeeName: emp?.name || 'مجهول',
+        bookingEmployeeId: selectedBookingEmployeeId,
+        bookingEmployeeName: bookingEmp?.name || 'مجهول',
+        customerName: 'مبيعات واصلة سريعة (فاتورة مجمعة)',
+        customerPhone: '07000000000',
+        customerPhone2: '',
+        governorate: 'بغداد',
+        region: 'مبيعات مباشر / مجمع',
+        notes: `فاتورة مبيعات واصلة سريعة بدون تفاصيل زبائن - منتج: ${prod.name} (عدد ${qty} قطعة)`,
+        paymentMethod: 'كاش عند التوصيل',
+        totalAmount: total,
+        items: [{
+          productId: prod.id,
+          productName: prod.name,
+          quantity: qty,
+          unitPrice: unitPrice,
+          total: total,
+          isComposite: (prod as any).isComposite || false,
+          composition: (prod as any).composition || null
+        }],
+        date: orderDate,
+        status: 'delivered',
+        is_settled: quickSettleFinance,
+        isQuickSale: true
+      };
+
+      batch.set(newRef, orderData);
+
+      // Deduct stock if checked
+      if (quickDeductStock && prod.stock) {
+        const prodRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', prod.id);
+        const currentStock = { ...prod.stock };
+        let remainingQty = qty;
+        for (const storeId in currentStock) {
+          if (remainingQty <= 0) break;
+          const available = currentStock[storeId].quantity || 0;
+          if (available > 0) {
+            const deduct = Math.min(available, remainingQty);
+            currentStock[storeId].quantity -= deduct;
+            remainingQty -= deduct;
+          }
+        }
+        batch.update(prodRef, { stock: currentStock });
+      }
+
+      await batch.commit();
+      alert(`تم تسجيل وحفظ ${qty} قطعة من (${prod.name}) كمبيعات واصلة بنجاح! 🟢🎉`);
+      setShowQuickSaleModal(false);
+      setQuickQty(1);
+      setQuickTotalAmount('');
+      setQuickProdId('');
+    } catch (err) {
+      console.error("Error saving quick sale:", err);
+      alert("حدث خطأ أثناء حفظ الفاتورة السريعة.");
+    } finally {
+      setIsSavingQuick(false);
+    }
+  };
+
   // Submit Logic with Batch Write
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -562,6 +820,10 @@ export default function OrderEntryPage() {
       }
 
       // 2. Save Order Document
+      const todayStr = new Date().toISOString().split('T')[0];
+      const isToday = customDate === todayStr || !customDate;
+      const orderDate = isToday ? serverTimestamp() : Timestamp.fromDate(new Date(customDate + 'T12:00:00'));
+
       const orderData = {
         employeeId: selectedEmployeeId,
         employeeName: emp?.name || 'مجهول',
@@ -696,10 +958,62 @@ export default function OrderEntryPage() {
   return (
     <div className={styles.container}>
       
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', background: 'rgba(15, 23, 42, 0.8)', padding: '1rem 1.5rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)', flexWrap: 'wrap', gap: '1rem', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.4rem', color: '#fff', fontWeight: 'bold' }}>✍️ إدخال الطلبات والمبيعات</h1>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#94a3b8' }}>اختر بين الإدخال الفردي المفصل للزبائن، أو تسجيل المبيعات الواصلة السريعة دفعة واحدة</p>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button 
+            type="button"
+            onClick={() => setShowQuickSaleModal(true)}
+            style={{ padding: '0.7rem 1.25rem', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: '#fff', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.35)', fontSize: '0.95rem' }}
+          >
+            <span>⚡ مبيعات واصلة سريعة (بدون أسماء)</span>
+          </button>
+          <button 
+            type="button"
+            onClick={() => setShowExcelModal(true)}
+            style={{ padding: '0.7rem 1.1rem', background: 'rgba(255, 255, 255, 0.08)', color: '#cbd5e1', fontWeight: 'bold', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem' }}
+          >
+            <span>📥 استيراد Excel</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.contentWrapper}>
       <div className={styles.mainLayout}>
         <div className={`${styles.formSection} ${hasGlobalError ? styles.formWrapperError : ''}`}>
           <form onSubmit={handleSubmit}>
           
+          {/* Compact Integrated Date Banner */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '1rem', background: 'rgba(30, 41, 59, 0.6)', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>📅 تاريخ تسجيل الطلب (لإحصائيات الأيام السابقة):</span>
+              <input 
+                type="date"
+                className={styles.input}
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                style={{ width: 'auto', padding: '0.35rem 0.7rem', borderColor: customDate === new Date().toISOString().split('T')[0] ? 'rgba(255,255,255,0.15)' : '#10b981', background: 'rgba(0,0,0,0.4)', color: customDate === new Date().toISOString().split('T')[0] ? '#fff' : '#10b981', fontWeight: 'bold', borderRadius: '6px', fontSize: '0.85rem' }}
+              />
+              {customDate !== new Date().toISOString().split('T')[0] && (
+                <span style={{ color: '#fbbf24', fontSize: '0.8rem', background: 'rgba(251, 191, 36, 0.15)', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                  ⚠️ أثر رجعي ({customDate})
+                </span>
+              )}
+            </div>
+            {customDate !== new Date().toISOString().split('T')[0] && (
+              <button 
+                type="button"
+                onClick={() => setCustomDate(new Date().toISOString().split('T')[0])}
+                style={{ padding: '0.35rem 0.75rem', background: '#10b981', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+              >
+                تاريخ اليوم 🟢
+              </button>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', background: 'rgba(139, 92, 246, 0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
             <div className={styles.formGroup} style={{ flex: 1, marginBottom: 0 }}>
               <label className={styles.label} style={{ color: '#c4b5fd' }}>مُدخل الطلب (عنده النظام) *</label>
@@ -1128,6 +1442,7 @@ export default function OrderEntryPage() {
           )}
         </div>
       </div>
+      </div>
 
       {notificationModal.show && (
         <div className={styles.modalOverlay}>
@@ -1141,6 +1456,289 @@ export default function OrderEntryPage() {
                 حسناً
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showExcelModal && (
+        <div className={styles.modalOverlay} style={{ zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(8px)' }}>
+          <div style={{ background: '#0f172a', border: '1px solid rgba(255, 255, 255, 0.15)', borderRadius: '16px', width: '90%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)' }}>
+            
+            {/* Modal Header */}
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)' }}>
+              <h2 style={{ margin: 0, color: '#fff', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>📥 استيراد طلبات من ملف Excel دفعة واحدة</span>
+              </h2>
+              <button 
+                type="button"
+                onClick={() => { setShowExcelModal(false); setImportedRows([]); }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+              
+              {/* Instructions and File Input */}
+              <div style={{ background: 'rgba(139, 92, 246, 0.08)', border: '1px dashed rgba(139, 92, 246, 0.4)', borderRadius: '12px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.5rem' }}>
+                <p style={{ margin: '0 0 1rem 0', color: '#c4b5fd', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                  يرجى التأكد من اختيار موظف الإدخال وموظف الحجز من أعلى الصفحة أولاً. <br />
+                  يمكن أن يحتوي شيت الإكسل على أعمدة مثل: (اسم الزبون، هاتف الزبون، المحافظة، المنطقة، المنتج، الكمية، السعر، التاريخ).
+                </p>
+                <label style={{ display: 'inline-block', padding: '0.75rem 1.5rem', background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', color: '#fff', fontWeight: 'bold', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)' }}>
+                  <span>📂 اختر ملف Excel (.xlsx / .xls / .csv)</span>
+                  <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} style={{ display: 'none' }} />
+                </label>
+              </div>
+
+              {/* Status & Options Selection */}
+              {importedRows.length > 0 && (
+                <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#10b981', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.95rem' }}>
+                      🎯 حالة الطلبات المستوردة عند الحفظ:
+                    </label>
+                    <select 
+                      value={importStatus}
+                      onChange={(e) => setImportStatus(e.target.value)}
+                      style={{ padding: '0.6rem 1rem', background: '#0f172a', color: '#fff', border: '1px solid #10b981', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.95rem' }}
+                    >
+                      <option value="pending">⏳ قيد الانتظار (طلب جديد عادي)</option>
+                      <option value="delivered">🟢 واصل ومكتمل (طلبات قديمة واصلة)</option>
+                    </select>
+                  </div>
+
+                  {importStatus === 'delivered' && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontWeight: 'bold', cursor: 'pointer', background: 'rgba(0,0,0,0.3)', padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={importDeductStock} 
+                        onChange={(e) => setImportDeductStock(e.target.checked)} 
+                        style={{ width: '18px', height: '18px', accentColor: '#10b981' }}
+                      />
+                      <span>☑ خصم كميات المنتجات المباعة من رصيد المخزون تلقائياً</span>
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Preview Table */}
+              {importedRows.length > 0 ? (
+                <div>
+                  <h3 style={{ margin: '0 0 1rem 0', color: '#fff', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>👀 معاينة الطلبات المستخرجة من الملف ({importedRows.length} طلب):</span>
+                    <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'normal' }}>تأكد من مطابقة أسماء المنتجات مع المخزن</span>
+                  </h3>
+                  <div style={{ maxHeight: '350px', overflowY: 'auto', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', fontSize: '0.9rem', color: '#e2e8f0' }}>
+                      <thead style={{ background: 'rgba(255, 255, 255, 0.05)', position: 'sticky', top: 0, zIndex: 10 }}>
+                        <tr>
+                          <th style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>#</th>
+                          <th style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>الزبون</th>
+                          <th style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>الهاتف</th>
+                          <th style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>المحافظة / المنطقة</th>
+                          <th style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>المنتج بالمخزن</th>
+                          <th style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>الكمية</th>
+                          <th style={{ padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>المبلغ الكلي</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importedRows.map((r, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                            <td style={{ padding: '8px 10px' }}>{r.id}</td>
+                            <td style={{ padding: '8px 10px', fontWeight: 'bold' }}>{r.customerName}</td>
+                            <td style={{ padding: '8px 10px', fontFamily: 'monospace' }}>{r.customerPhone}</td>
+                            <td style={{ padding: '8px 10px' }}>{r.governorate} {r.region && `- ${r.region}`}</td>
+                            <td style={{ padding: '8px 10px' }}>
+                              {r.matchedProd ? (
+                                <span style={{ color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '3px 8px', borderRadius: '4px', display: 'inline-block', fontWeight: 'bold' }}>
+                                  ✔ {r.matchedProd.name}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#fbbf24', background: 'rgba(251, 191, 36, 0.15)', padding: '3px 8px', borderRadius: '4px', display: 'inline-block' }}>
+                                  ⚠️ {r.productName} (غير مدرج)
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 10px', fontWeight: 'bold' }}>{r.quantity}</td>
+                            <td style={{ padding: '8px 10px', color: '#38bdf8', fontWeight: 'bold' }}>{new Intl.NumberFormat('en-US').format(r.totalAmount)} د.ع</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
+                  <p style={{ margin: 0 }}>لم يتم اختيار ملف بعد. اختر ملف Excel لعرض ومعاينة الطلبات هنا.</p>
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', background: 'rgba(255, 255, 255, 0.02)' }}>
+              <button 
+                type="button"
+                onClick={() => { setShowExcelModal(false); setImportedRows([]); }}
+                style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 255, 255, 0.1)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                إلغاء
+              </button>
+              <button 
+                type="button"
+                disabled={importedRows.length === 0 || isImporting}
+                onClick={handleSaveImportedOrders}
+                style={{ padding: '0.75rem 2rem', background: importedRows.length === 0 ? '#475569' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: importedRows.length === 0 ? 'not-allowed' : 'pointer', boxShadow: importedRows.length > 0 ? '0 4px 12px rgba(16, 185, 129, 0.3)' : 'none' }}
+              >
+                {isImporting ? '⏳ جاري حفظ الطلبات...' : `🚀 تأكيد وحفظ (${importedRows.length}) طلب`}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {showQuickSaleModal && (
+        <div className={styles.modalOverlay} style={{ zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(10px)' }}>
+          <div style={{ background: '#0f172a', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '16px', width: '90%', maxWidth: '650px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)' }}>
+            
+            {/* Modal Header */}
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.15) 100%)' }}>
+              <h2 style={{ margin: 0, color: '#f59e0b', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+                <span>⚡ تسجيل مبيعات واصلة سريعة (فاتورة مجمعة)</span>
+              </h2>
+              <button 
+                type="button"
+                onClick={() => setShowQuickSaleModal(false)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'right' }}>
+              
+              <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px dashed rgba(245, 158, 11, 0.4)', borderRadius: '10px', padding: '1rem', color: '#fde68a', fontSize: '0.9rem', lineHeight: '1.6' }}>
+                💡 <strong>هذه الميزة مخصصة للسرعة والراحة:</strong> تُسجل الطلبات القديمة الواصلة دفعة واحدة لضبط جرد المخزن، وأرباح الفئة والبيج، ورصيد الخزينة <strong>بدون إدخال أسماء الزبائن أو عناوينهم نهائياً!</strong>
+              </div>
+
+              {/* Date & Product Selection */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#cbd5e1', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>
+                    📅 تاريخ المبيعات القديم:
+                  </label>
+                  <input 
+                    type="date"
+                    value={quickDate}
+                    onChange={(e) => setQuickDate(e.target.value)}
+                    style={{ width: '100%', padding: '0.7rem 1rem', background: '#1e293b', color: '#fff', border: '1px solid #f59e0b', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.95rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#cbd5e1', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>
+                    📦 المنتج أو الصنف المباع *:
+                  </label>
+                  <select 
+                    value={quickProdId}
+                    onChange={(e) => setQuickProdId(e.target.value)}
+                    style={{ width: '100%', padding: '0.7rem 1rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.95rem' }}
+                  >
+                    <option value="">-- اختر المنتج من المخزن --</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.stock ? `(المتوفر: ${Object.values(p.stock).reduce((s: number, st: any) => s + (st.quantity || 0), 0)})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Quantity & Total Amount */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: '#cbd5e1', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>
+                    🔢 العدد الكلي المباع والواصل *:
+                  </label>
+                  <input 
+                    type="number"
+                    min="1"
+                    value={quickQty}
+                    onChange={(e) => setQuickQty(parseInt(e.target.value) || 0)}
+                    placeholder="مثال: 15"
+                    style={{ width: '100%', padding: '0.7rem 1rem', background: '#1e293b', color: '#38bdf8', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', fontWeight: 'bold', fontSize: '1.1rem', textAlign: 'center' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: '#cbd5e1', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>
+                    💰 المبلغ الإجمالي المستلم (دينار) *:
+                  </label>
+                  <input 
+                    type="text"
+                    value={quickTotalAmount}
+                    onChange={(e) => setQuickTotalAmount(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="مثال: 450000"
+                    style={{ width: '100%', padding: '0.7rem 1rem', background: '#1e293b', color: '#10b981', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', fontWeight: 'bold', fontSize: '1.1rem', textAlign: 'center' }}
+                  />
+                  {quickTotalAmount && (
+                    <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '4px', textAlign: 'left' }}>
+                      ({new Intl.NumberFormat('en-US').format(Number(quickTotalAmount))} د.ع)
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Automation Options */}
+              <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={quickDeductStock} 
+                    onChange={(e) => setQuickDeductStock(e.target.checked)} 
+                    style={{ width: '18px', height: '18px', accentColor: '#10b981' }}
+                  />
+                  <span>☑ خصم العدد المباع ({quickQty} قطعة) من رصيد المخزن تلقائياً</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={quickSettleFinance} 
+                    onChange={(e) => setQuickSettleFinance(e.target.checked)} 
+                    style={{ width: '18px', height: '18px', accentColor: '#10b981' }}
+                  />
+                  <span>☑ تسديد الحساب مالياً وإيداع المبلغ في صندوق الخزينة مباشرة</span>
+                </label>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', background: 'rgba(255, 255, 255, 0.02)' }}>
+              <button 
+                type="button"
+                onClick={() => setShowQuickSaleModal(false)}
+                style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 255, 255, 0.1)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                إلغاء
+              </button>
+              <button 
+                type="button"
+                disabled={!quickProdId || isSavingQuick}
+                onClick={handleSaveQuickSale}
+                style={{ padding: '0.75rem 2rem', background: !quickProdId ? '#475569' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: !quickProdId ? 'not-allowed' : 'pointer', boxShadow: quickProdId ? '0 4px 15px rgba(16, 185, 129, 0.4)' : 'none', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                {isSavingQuick ? '⏳ جاري التسجيل...' : `🚀 اعتماد وحفظ المبيعات الواصلة 🟢`}
+              </button>
+            </div>
+
           </div>
         </div>
       )}

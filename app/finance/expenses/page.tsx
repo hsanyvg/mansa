@@ -72,6 +72,11 @@ interface Expense {
   imageUrls?: string[];
 }
 
+const toLocalDate = (d: Date) => {
+  const date = new Date(d.getTime() - (d.getTimezoneOffset() * 60000));
+  return date.toISOString().split('T')[0];
+};
+
 export default function ExpensesPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
@@ -120,12 +125,12 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     setIsMounted(true);
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDate(new Date());
     setDate(today);
     
     // Default range: This Month
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const firstDay = toLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
     setStartDate(firstDay);
     setEndDate(today);
 
@@ -163,7 +168,7 @@ export default function ExpensesPage() {
   const resetForm = () => {
     setCategoryId(''); setAmount(''); setDetails('');
     setSelectedPageId(''); setSelectedBranchId(''); setSelectedItemId(''); setSelectedWalletId('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(toLocalDate(new Date()));
     setEditingId(null);
     setImagePreviews([]);
     setImageUrls([]);
@@ -330,8 +335,8 @@ export default function ExpensesPage() {
         break;
     }
 
-    setStartDate(start.toISOString().split('T')[0]);
-    setEndDate(end.toISOString().split('T')[0]);
+    setStartDate(toLocalDate(start));
+    setEndDate(toLocalDate(end));
     setIsDatePickerOpen(false);
   };
 

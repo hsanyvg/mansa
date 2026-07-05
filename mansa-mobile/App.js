@@ -63,6 +63,8 @@ export default function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [completedSearchQuery, setCompletedSearchQuery] = useState('');
+  const [completedSubTab, setCompletedSubTab] = useState('accounted');
   const [loading, setLoading] = useState(true);
 
   // Authentication State
@@ -983,34 +985,51 @@ export default function App() {
   const partialCount = orders.filter(o => o.status === 'partial' || o.status === 'replaced').length;
   const processedCount = orders.filter(o => o.status === 'processed' || o.status === 'confirmed').length;
   const newCount = orders.filter(o => o.status === 'pending' || o.status === 'new').length;
+  const totalCompletedCount = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status)).length;
 
-  const renderCustomCard = (label, value, bgColor, textColor, svgContent, isWhite) => (
-    <View style={{
-      width: '48%', 
-      backgroundColor: bgColor, 
-      borderRadius: 12, 
-      padding: 12, 
-      minHeight: 100,
-      justifyContent: 'space-between'
-    }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <View style={{
-          backgroundColor: isWhite ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.2)', 
-          borderRadius: 8, 
-          width: 32, 
-          height: 32, 
-          justifyContent: 'center', 
-          alignItems: 'center'
-        }}>
-          <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            {svgContent}
-          </Svg>
+  const renderCustomCard = (label, value, bgColor, textColor, svgContent, isWhite, onPress = null) => {
+    const CardContent = (
+      <View style={{
+        width: onPress ? '100%' : '48%', 
+        backgroundColor: bgColor, 
+        borderRadius: 12, 
+        padding: 12, 
+        minHeight: 100, 
+        justifyContent: 'space-between'
+      }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ 
+            backgroundColor: isWhite ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.2)', 
+            borderRadius: 8, 
+            width: 32, 
+            height: 32, 
+            justifyContent: 'center', 
+            alignItems: 'center' 
+          }}>
+            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              {svgContent}
+            </Svg>
+          </View>
+          <Text style={{ color: textColor, fontSize: 32, fontWeight: '400' }}>{value}</Text>
         </View>
-        <Text style={{ color: textColor, fontSize: 32, fontWeight: '400' }}>{value}</Text>
+        <Text style={{ color: textColor, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginTop: 10 }}>{label}</Text>
       </View>
-      <Text style={{ color: textColor, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginTop: 10 }}>{label}</Text>
-    </View>
-  );
+    );
+
+    if (onPress) {
+      return (
+        <TouchableOpacity 
+          activeOpacity={0.7} 
+          onPress={onPress}
+          style={{ width: '48%' }}
+        >
+          {CardContent}
+        </TouchableOpacity>
+      );
+    }
+    
+    return CardContent;
+  };
 
   if (authLoading) {
     return (
@@ -1170,8 +1189,8 @@ export default function App() {
           <View style={{ marginBottom: 20 }}>
             {/* Row 1 */}
             <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
-              {renderCustomCard('شحنات راجعة', returnedCount, '#991b1b', '#ffffff', 
-                <Path d="M3 10h10a5 5 0 0 1 5 5v2a5 5 0 0 1-5 5H3m0-12l4-4m-4 4l4 4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>, false)}
+              {renderCustomCard('الشحنات المكتملة', totalCompletedCount, '#10b981', '#ffffff', 
+                <Path d="M3 10h10a5 5 0 0 1 5 5v2a5 5 0 0 1-5 5H3m0-12l4-4m-4 4l4 4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>, false, () => setActiveTab('completed_shipments'))}
               {renderCustomCard('شحنات ناجحة', deliveredCount, '#2dd4bf', '#ffffff', 
                 <><Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="#ffffff" strokeWidth="2"/><Path d="M3.27 6.96L12 12.01l8.73-5.05" stroke="#ffffff" strokeWidth="2"/><Path d="M12 22.08V12" stroke="#ffffff" strokeWidth="2"/><Path d="M9 11l2 2 4-4" stroke="#ffffff" strokeWidth="2"/></>, false)}
             </View>
@@ -1675,10 +1694,10 @@ export default function App() {
                 )}
               </View>
             </View>
-          </Animated.View>
-        </ScrollView>
-      ) : (
-        <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
+            </Animated.View>
+          </ScrollView>
+        ) : activeTab === 'settings' ? (
+          <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
           {/* Settings Tab Content */}
           <View style={styles.tabHeaderCard}>
             <Text style={styles.tabHeaderTitle}>⚙️ إعدادات النظام</Text>
@@ -1722,8 +1741,129 @@ export default function App() {
           <View style={styles.statCardBig}>
             <Text style={styles.settingLabel}>عن منصة منسا:</Text>
             <Text style={styles.settingValue}>نظام إدارة ومتابعة الطلبات اللوجستية المتكامل للجوال.</Text>
+            </View>
+          </ScrollView>
+        ) : null}
+
+      
+      {activeTab === 'completed_shipments' && (
+        <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+          {/* Header */}
+          <View style={{ backgroundColor: '#10b951', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* Filter Button Placeholder */}
+              <TouchableOpacity onPress={() => {}}>
+                 <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <Path d="M4 6h16M7 12h10M10 18h4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                 </Svg>
+              </TouchableOpacity>
+              
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>
+                الشحنات المكتملة عدد الطلبيات { (() => {
+                  let fc = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status));
+                  if (completedSubTab === 'accounted') fc = fc.filter(o => o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled')));
+                  else fc = fc.filter(o => !(o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled'))));
+                  if (completedSearchQuery.trim()) {
+                    const q = completedSearchQuery.toLowerCase();
+                    fc = fc.filter(o => (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) || (o.customerName && String(o.customerName).toLowerCase().includes(q)) || (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q)));
+                  }
+                  return fc.length;
+                })() }
+              </Text>
+
+              {/* Back Button */}
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}>
+                 <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                 </Svg>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
+               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/>
+                  <Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/>
+               </Svg>
+               <TextInput 
+                 style={{ flex: 1, marginLeft: 10, textAlign: 'right', color: '#333' }}
+                 placeholder="بحث (رقم الوصل، اسم الزبون، الهاتف...)"
+                 value={completedSearchQuery}
+                 onChangeText={setCompletedSearchQuery}
+               />
+            </View>
+
+            <View style={{ flexDirection: 'row', marginTop: 15, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden' }}>
+               {(() => {
+                  const allC = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status));
+                  const acc = allC.filter(o => o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled'))).length;
+                  const unacc = allC.length - acc;
+                  return (
+                    <>
+                       <TouchableOpacity 
+                          style={{ flex: 1, paddingVertical: 10, backgroundColor: completedSubTab === 'unaccounted' ? '#eab308' : '#fff' }}
+                          onPress={() => setCompletedSubTab('unaccounted')}
+                       >
+                         <Text style={{ textAlign: 'center', color: completedSubTab === 'unaccounted' ? '#fff' : '#666', fontWeight: 'bold', fontSize: 13 }}>لم تتم المحاسبة ({unacc})</Text>
+                       </TouchableOpacity>
+                       <TouchableOpacity 
+                          style={{ flex: 1, paddingVertical: 10, backgroundColor: completedSubTab === 'accounted' ? '#eab308' : '#fff' }}
+                          onPress={() => setCompletedSubTab('accounted')}
+                       >
+                         <Text style={{ textAlign: 'center', color: completedSubTab === 'accounted' ? '#fff' : '#666', fontWeight: 'bold', fontSize: 13 }}>تم المحاسبة ({acc})</Text>
+                       </TouchableOpacity>
+                    </>
+                  )
+               })()}
+            </View>
           </View>
-        </ScrollView>
+
+          {/* List */}
+          <ScrollView style={{ flex: 1, padding: 15 }}>
+            {(() => {
+              // Filter completed
+              let filtered = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status));
+              
+              // Filter by sub tab
+              if (completedSubTab === 'accounted') {
+                filtered = filtered.filter(o => o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled')));
+              } else {
+                filtered = filtered.filter(o => !(o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled'))));
+              }
+
+              // Filter by search
+              if (completedSearchQuery.trim()) {
+                const q = completedSearchQuery.toLowerCase();
+                filtered = filtered.filter(o => 
+                  (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) ||
+                  (o.customerName && String(o.customerName).toLowerCase().includes(q)) ||
+                  (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q))
+                );
+              }
+
+              if (filtered.length === 0) {
+                return (
+                  <View style={{ marginTop: 50, alignItems: 'center' }}>
+                     <Text style={{ fontSize: 16, color: '#666', fontWeight: 'bold' }}>لا يوجد نتائج</Text>
+                  </View>
+                );
+              }
+
+              return filtered.map((item, index) => (
+                <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                   <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+                     <Text style={{ fontWeight: 'bold', color: '#10b951' }}>رقم الوصل: {item.receiptNumber}</Text>
+                     <Text style={{ color: '#666' }}>{item.status === 'delivered' ? 'ناجحة' : item.status === 'returned' ? 'راجعة' : item.status === 'partial' || item.status === 'replaced' ? 'جزئي او استبدال' : item.status}</Text>
+                   </View>
+                   <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                   <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                   <Text style={{ textAlign: 'right', fontWeight: 'bold', color: '#333' }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
+                </View>
+              ));
+            })()}
+            <View style={{height: 50}} />
+          </ScrollView>
+        </View>
       )}
 
       {/* Bottom Tabs Navigation */}

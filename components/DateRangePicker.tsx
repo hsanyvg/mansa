@@ -5,11 +5,12 @@ import styles from './DateRangePicker.module.css';
 
 interface DateRangePickerProps {
   onApply: (range: string) => void;
+  onApplyWithArchived?: (range: string) => void;
   onApplyDates?: (start: Date, end: Date) => void;
   initialPreset?: string;
 }
 
-export default function DateRangePicker({ onApply, onApplyDates, initialPreset = 'اليوم' }: DateRangePickerProps) {
+export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyDates, initialPreset = 'اليوم' }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [preset, setPreset] = useState(initialPreset);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -98,6 +99,22 @@ export default function DateRangePicker({ onApply, onApplyDates, initialPreset =
     setIsOpen(false);
   };
 
+  const handleApplyWithArchived = () => {
+    let output = preset;
+    if (preset === 'تاريخ مخصص') {
+      output = `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
+    }
+    if (onApplyWithArchived) {
+      onApplyWithArchived(output);
+    } else {
+      onApply(output);
+    }
+    if (onApplyDates) {
+      onApplyDates(selectedStartDate, selectedEndDate);
+    }
+    setIsOpen(false);
+  };
+
   const getButtonLabel = () => {
     if (preset === 'تاريخ مخصص') {
       return `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
@@ -107,7 +124,10 @@ export default function DateRangePicker({ onApply, onApplyDates, initialPreset =
 
   // Convert Date object to YYYY-MM-DD for input[type="date"]
   const toISODate = (date: Date) => {
-    return date.toISOString().split('T')[0];
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   const handleDateChange = (type: 'start' | 'end', val: string) => {
@@ -160,6 +180,15 @@ export default function DateRangePicker({ onApply, onApplyDates, initialPreset =
 
               <div className={styles.actionsArea}>
                 <button className={styles.updateBtn} onClick={handleApply}>تحديث النطاق</button>
+                {onApplyWithArchived && (
+                  <button 
+                    className={styles.updateBtn} 
+                    onClick={handleApplyWithArchived} 
+                    style={{backgroundColor: '#4b5563', marginRight: '8px'}}
+                  >
+                    إظهار مع المؤرشف
+                  </button>
+                )}
                 <button className={styles.cancelBtn} onClick={() => setIsOpen(false)}>إلغاء</button>
                 <span className={styles.timezoneText}>توقيت بغداد</span>
               </div>

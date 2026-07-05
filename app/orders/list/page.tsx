@@ -16,6 +16,7 @@ export default function OrdersListPage() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [dateFilter, setDateFilter] = useState('الكل'); // Modified to show All conceptually first
+  const [showArchivedInFilter, setShowArchivedInFilter] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   
   const [isSendingToDelivery, setIsSendingToDelivery] = useState(false);
@@ -64,6 +65,14 @@ export default function OrdersListPage() {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBarcodeMode, setIsBarcodeMode] = useState(false);
   const [showReturnReceiptModal, setShowReturnReceiptModal] = useState(false);
+  
+  // Category / Page / Product Filter States
+  const [filterByProduct, setFilterByProduct] = useState<string>('');
+  const [filterByPage, setFilterByPage] = useState<string>('');
+  const [filterByMainCat, setFilterByMainCat] = useState<string>('');
+  const [filterBySubCat, setFilterBySubCat] = useState<string>('');
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [statsActiveTab, setStatsActiveTab] = useState<'kpis' | 'products' | 'mainCat' | 'subCat' | 'pages'>('kpis');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -710,13 +719,15 @@ export default function OrdersListPage() {
   const activeOrders = orders.filter(o => !o.isArchived);
   const archivedOrdersList = orders.filter(o => o.isArchived);
 
-  const phoneCounts = activeOrders.reduce((acc, order) => {
+  const sourceOrders = showArchivedInFilter ? orders : activeOrders;
+
+  const phoneCounts = sourceOrders.reduce((acc, order) => {
     const ph = (order.customerPhone || order.phone || '').trim();
     if (ph) acc[ph] = (acc[ph] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  const duplicateOrdersList = activeOrders.filter(order => {
+  const duplicateOrdersList = sourceOrders.filter(order => {
     const ph = (order.customerPhone || order.phone || '').trim();
     return ph && phoneCounts[ph] > 1;
   }).sort((a, b) => {
@@ -725,14 +736,14 @@ export default function OrdersListPage() {
     return phA.localeCompare(phB);
   });
 
-  const returnedOrdersList = activeOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent');
-  const discrepancyOrdersList = activeOrders.filter(o => o.has_discrepancy);
+  const returnedOrdersList = sourceOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent');
+  const discrepancyOrdersList = sourceOrders.filter(o => o.has_discrepancy);
 
   const baseList = activeTab === 'archived' ? archivedOrdersList 
                  : activeTab === 'duplicates' ? duplicateOrdersList 
                  : activeTab === 'returned' ? returnedOrdersList
                  : activeTab === 'discrepancies' ? discrepancyOrdersList
-                 : activeOrders;
+                 : sourceOrders;
 
   const statusCounts = React.useMemo(() => {
     const counts: Record<string, number> = {};
@@ -753,10 +764,41 @@ export default function OrdersListPage() {
     return list.filter(o => getStatusKey(o) === selectedStatus);
   }, [baseList, selectedStatus]);
 
-  const filteredOrders = (showOnlySelected 
-    ? orders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || getStatusKey(o) === selectedStatus)
-    : baseListAfterStatus).filter(order => {
-    // We slice the ID exactly how it's displayed to match the user's visual search
+  const getItemHierarchy = React.useCallback((item: any) => {
+    if (!item) return { productId: '', productName: 'غير معروف', categoryId: '', categoryName: 'غير محدد', subcategoryId: '', subcategoryName: 'غير محدد', pageId: '', pageName: 'غير محدد' };
+    
+    let prod = null;
+    if (item.productId) {
+      prod = products.find(p => p.id === item.productId);
+    }
+    if (!prod && item.productName) {
+      const cleanName = item.productName.trim().toLowerCase();
+      prod = products.find(p => p.name && p.name.trim().toLowerCase() === cleanName);
+    }
+
+    const categoryId = prod ? (prod.categoryId || '') : '';
+    const subcategoryId = prod ? (prod.subcategoryId || '') : '';
+    const cat = categoriesDb.find(c => c.id === categoryId);
+    const categoryName = cat ? cat.name : 'أخرى / غير محدد';
+    const pageId = cat ? (cat.pageId || '') : '';
+    const page = pagesDb.find(pg => pg.id === pageId);
+    const pageName = page ? page.name : 'عام / غير محدد';
+    const subCatObj = cat?.subcategories?.find((s: any) => s.id === subcategoryId);
+    const subcategoryName = subCatObj ? subCatObj.name : 'غير محدد';
+
+    return {
+      productId: prod ? prod.id : (item.productId || ''),
+      productName: prod ? prod.name : (item.productName || 'غير معروف'),
+      categoryId,
+      categoryName,
+      subcategoryId,
+      subcategoryName,
+      pageId,
+      pageName
+    };
+  }, [products, categoriesDb, pagesDb]);
+
+  const matchOrderSearchAndColumns = React.useCallback((order: any) => {
     const displayId = order.id.slice(-6).toLowerCase();
     const idStr = order.id.toLowerCase();
     const custName = (order.customerName || '').toLowerCase();
@@ -773,7 +815,6 @@ export default function OrdersListPage() {
     const empName = (order.employeeName || '').toLowerCase();
     const shipComp = (order.shippingCompany || '').toLowerCase();
 
-    // Column Filters
     const matchesColumn = (
       (displayId.includes(columnFilters.id.toLowerCase()) || idStr.includes(columnFilters.id.toLowerCase())) &&
       custName.includes(columnFilters.customerName.toLowerCase()) &&
@@ -788,11 +829,9 @@ export default function OrdersListPage() {
       shipComp.includes((columnFilters.shippingCompany || '').toLowerCase())
     );
 
-    // Global Filter
     const searchLower = globalSearch.toLowerCase().trim();
     const normalizeStr = (str: string) => (str || '').toLowerCase().replace(/\s+/g, ' ').trim();
     
-    // Gather all item names if any, to search within cart products as well
     const productNames = (order.items || []).map((item: any) => normalizeStr(item.productName));
     
     const allFields = [
@@ -814,7 +853,294 @@ export default function OrdersListPage() {
     }
 
     return matchesColumn && matchesGlobal;
-  });
+  }, [columnFilters, globalSearch, statusMap]);
+
+  const matchHierarchyFilters = React.useCallback((order: any) => {
+    if (filterByProduct) {
+      const matchProd = (order.items || []).some((it: any) => {
+        const h = getItemHierarchy(it);
+        return h.productId === filterByProduct || h.productName === filterByProduct;
+      });
+      if (!matchProd) return false;
+    }
+    if (filterByPage) {
+      const matchPage = (order.items || []).some((it: any) => {
+        const h = getItemHierarchy(it);
+        return h.pageId === filterByPage || h.pageName === filterByPage;
+      });
+      if (!matchPage) return false;
+    }
+    if (filterByMainCat) {
+      const matchMain = (order.items || []).some((it: any) => {
+        const h = getItemHierarchy(it);
+        return h.categoryId === filterByMainCat || h.categoryName === filterByMainCat;
+      });
+      if (!matchMain) return false;
+    }
+    if (filterBySubCat) {
+      const matchSub = (order.items || []).some((it: any) => {
+        const h = getItemHierarchy(it);
+        return h.subcategoryId === filterBySubCat || h.subcategoryName === filterBySubCat;
+      });
+      if (!matchSub) return false;
+    }
+    return true;
+  }, [filterByProduct, filterByPage, filterByMainCat, filterBySubCat, getItemHierarchy]);
+
+  const matchDateFilter = React.useCallback((order: any) => {
+    if (!dateFilter || dateFilter === 'الكل') return true;
+    
+    let d = null;
+    if (order.date) {
+      d = (order.date.toDate && typeof order.date.toDate === 'function') ? order.date.toDate() : new Date(order.date);
+    }
+    if (!d || isNaN(d.getTime())) return true;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dateFilter === 'اليوم') {
+      return d >= today;
+    }
+    if (dateFilter === 'أمس') {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return d >= yesterday && d < today;
+    }
+    if (dateFilter === 'آخر 7 أيام') {
+      const past7 = new Date(today);
+      past7.setDate(past7.getDate() - 7);
+      return d >= past7;
+    }
+    if (dateFilter === 'آخر 14 يومًا') {
+      const past14 = new Date(today);
+      past14.setDate(past14.getDate() - 14);
+      return d >= past14;
+    }
+    if (dateFilter === 'هذا الشهر') {
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      return d >= startOfMonth;
+    }
+    
+    if (dateFilter.includes('-')) {
+      const [startStr, endStr] = dateFilter.split('-').map((s: string) => s.trim());
+      if (startStr && endStr) {
+        const parseGB = (str: string) => {
+          const [dd, mm, yyyy] = str.split('/');
+          return new Date(Number(yyyy), Number(mm)-1, Number(dd));
+        };
+        const sDate = parseGB(startStr);
+        sDate.setHours(0, 0, 0, 0);
+        const eDate = parseGB(endStr);
+        eDate.setHours(23, 59, 59, 999);
+        return d >= sDate && d <= eDate;
+      }
+    }
+    
+    return true;
+  }, [dateFilter]);
+
+  const baseFilteredOrders = React.useMemo(() => {
+    return (showOnlySelected 
+      ? orders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || getStatusKey(o) === selectedStatus)
+      : baseListAfterStatus)
+      .filter(matchDateFilter)
+      .filter(matchOrderSearchAndColumns);
+  }, [showOnlySelected, orders, selectedOrderIds, selectedStatus, baseListAfterStatus, matchOrderSearchAndColumns, matchDateFilter]);
+
+  const filteredOrders = React.useMemo(() => {
+    return baseFilteredOrders.filter(matchHierarchyFilters);
+  }, [baseFilteredOrders, matchHierarchyFilters]);
+
+  const statsFilteredOrders = React.useMemo(() => {
+    const startList = showOnlySelected 
+      ? orders.filter(o => selectedOrderIds.includes(o.id))
+      : orders;
+    const afterStatus = selectedStatus === 'all' 
+      ? startList 
+      : startList.filter(o => getStatusKey(o) === selectedStatus);
+    return afterStatus.filter(matchDateFilter).filter(matchOrderSearchAndColumns).filter(matchHierarchyFilters);
+  }, [orders, showOnlySelected, selectedOrderIds, selectedStatus, matchOrderSearchAndColumns, matchHierarchyFilters, matchDateFilter]);
+
+  const statsData = React.useMemo(() => {
+    const prodMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; amount: number }> = {};
+    const pageMap: Record<string, { id: string; name: string; orderCount: number; quantity: number }> = {};
+    const mainCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number }> = {};
+    const subCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number }> = {};
+
+    let totalOrdersCount = statsFilteredOrders.length;
+    let totalItemsQuantity = 0;
+
+    let deliveredCount = 0;
+    let deliveredAmount = 0;
+    let deliveredQty = 0;
+
+    let returnedCount = 0;
+    let returnedAmount = 0;
+    let returnedQty = 0;
+
+    let inProgressCount = 0;
+    let inProgressAmount = 0;
+    let inProgressQty = 0;
+
+    let cancelledCount = 0;
+    let cancelledAmount = 0;
+    let cancelledQty = 0;
+
+    statsFilteredOrders.forEach(order => {
+      const items = order.items || [];
+      const seenProdInOrder = new Set<string>();
+      const seenPageInOrder = new Set<string>();
+      const seenMainInOrder = new Set<string>();
+      const seenSubInOrder = new Set<string>();
+
+      const statusKey = getStatusKey(order);
+      const orderTotalAmount = Number(order.totalAmount || order.price || 0);
+      const orderTotalQty = items.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0);
+
+      totalItemsQuantity += orderTotalQty;
+
+      items.forEach((it: any) => {
+        const h = getItemHierarchy(it);
+        const qty = Number(it.quantity) || 1;
+        const itemPrice = (Number(it.price) || 0) * qty;
+
+        const pKey = h.productId || h.productName || 'unknown';
+        if (!prodMap[pKey]) {
+          prodMap[pKey] = { id: h.productId, name: h.productName, orderCount: 0, quantity: 0, amount: 0 };
+        }
+        prodMap[pKey].quantity += qty;
+        prodMap[pKey].amount += itemPrice;
+        if (!seenProdInOrder.has(pKey)) {
+          prodMap[pKey].orderCount += 1;
+          seenProdInOrder.add(pKey);
+        }
+
+        const pgKey = h.pageId || h.pageName || 'unknown_page';
+        if (!pageMap[pgKey]) {
+          pageMap[pgKey] = { id: h.pageId, name: h.pageName, orderCount: 0, quantity: 0 };
+        }
+        pageMap[pgKey].quantity += qty;
+        if (!seenPageInOrder.has(pgKey)) {
+          pageMap[pgKey].orderCount += 1;
+          seenPageInOrder.add(pgKey);
+        }
+
+        const mKey = h.categoryId || h.categoryName || 'unknown_cat';
+        if (!mainCatMap[mKey]) {
+          mainCatMap[mKey] = { id: h.categoryId, name: h.categoryName, orderCount: 0, quantity: 0 };
+        }
+        mainCatMap[mKey].quantity += qty;
+        if (!seenMainInOrder.has(mKey)) {
+          mainCatMap[mKey].orderCount += 1;
+          seenMainInOrder.add(mKey);
+        }
+
+        const sKey = h.subcategoryId || h.subcategoryName || 'unknown_subcat';
+        if (!subCatMap[sKey]) {
+          subCatMap[sKey] = { id: h.subcategoryId, name: h.subcategoryName, orderCount: 0, quantity: 0 };
+        }
+        subCatMap[sKey].quantity += qty;
+        if (!seenSubInOrder.has(sKey)) {
+          subCatMap[sKey].orderCount += 1;
+          seenSubInOrder.add(sKey);
+        }
+      });
+
+      if (statusKey === 'delivered' || statusKey === 'delivered_settled' || statusKey === 'partial' || statusKey === 'partial_settled') {
+        deliveredCount += 1;
+        deliveredAmount += orderTotalAmount;
+        deliveredQty += orderTotalQty;
+      } else if (statusKey === 'returned_agent' || statusKey === 'returned_warehouse' || statusKey === 'returned') {
+        returnedCount += 1;
+        returnedAmount += orderTotalAmount;
+        returnedQty += orderTotalQty;
+      } else if (statusKey === 'cancelled') {
+        cancelledCount += 1;
+        cancelledAmount += orderTotalAmount;
+        cancelledQty += orderTotalQty;
+      } else {
+        inProgressCount += 1;
+        inProgressAmount += orderTotalAmount;
+        inProgressQty += orderTotalQty;
+      }
+    });
+
+    const deliveredPct = totalOrdersCount > 0 ? ((deliveredCount / totalOrdersCount) * 100).toFixed(1) : '0';
+    const returnedPct = totalOrdersCount > 0 ? ((returnedCount / totalOrdersCount) * 100).toFixed(1) : '0';
+    const inProgressPct = totalOrdersCount > 0 ? ((inProgressCount / totalOrdersCount) * 100).toFixed(1) : '0';
+    const cancelledPct = totalOrdersCount > 0 ? ((cancelledCount / totalOrdersCount) * 100).toFixed(1) : '0';
+
+    const productsList = Object.values(prodMap).sort((a, b) => b.orderCount - a.orderCount);
+    const pagesList = Object.values(pageMap).sort((a, b) => b.orderCount - a.orderCount);
+    const mainCatList = Object.values(mainCatMap).sort((a, b) => b.orderCount - a.orderCount);
+    const subCatList = Object.values(subCatMap).sort((a, b) => b.orderCount - a.orderCount);
+
+    return {
+      productsList,
+      pagesList,
+      mainCatList,
+      subCatList,
+      totalOrdersCount,
+      totalItemsQuantity,
+      deliveredCount, deliveredAmount, deliveredQty, deliveredPct,
+      returnedCount, returnedAmount, returnedQty, returnedPct,
+      inProgressCount, inProgressAmount, inProgressQty, inProgressPct,
+      cancelledCount, cancelledAmount, cancelledQty, cancelledPct
+    };
+  }, [statsFilteredOrders, getItemHierarchy]);
+
+  const exportStatsToExcel = () => {
+    let dataToExport: any[] = [];
+    let sheetName = 'تقرير الإحصائيات';
+
+    if (statsActiveTab === 'kpis') {
+      sheetName = 'نسب التوصيل والراجع';
+      dataToExport = [
+        { 'الحالة': 'الواصل والمكتمل 🟢', 'عدد الطلبات': statsData.deliveredCount, 'النسبة المئوية': `${statsData.deliveredPct}%`, 'عدد القطع': statsData.deliveredQty, 'إجمالي المبلغ (دينار)': statsData.deliveredAmount },
+        { 'الحالة': 'الراجعات 🟠', 'عدد الطلبات': statsData.returnedCount, 'النسبة المئوية': `${statsData.returnedPct}%`, 'عدد القطع': statsData.returnedQty, 'إجمالي المبلغ (دينار)': statsData.returnedAmount },
+        { 'الحالة': 'قيد التوصيل والتجهيز ⏳', 'عدد الطلبات': statsData.inProgressCount, 'النسبة المئوية': `${statsData.inProgressPct}%`, 'عدد القطع': statsData.inProgressQty, 'إجمالي المبلغ (دينار)': statsData.inProgressAmount },
+        { 'الحالة': 'الطلبات الملغاة 🔴', 'عدد الطلبات': statsData.cancelledCount, 'النسبة المئوية': `${statsData.cancelledPct}%`, 'عدد القطع': statsData.cancelledQty, 'إجمالي المبلغ (دينار)': statsData.cancelledAmount },
+        { 'الحالة': 'الإجمالي الكلي', 'عدد الطلبات': statsData.totalOrdersCount, 'النسبة المئوية': '100%', 'عدد القطع': statsData.totalItemsQuantity, 'إجمالي المبلغ (دينار)': statsData.deliveredAmount + statsData.returnedAmount + statsData.inProgressAmount + statsData.cancelledAmount }
+      ];
+    } else if (statsActiveTab === 'products') {
+      sheetName = 'إحصائيات الأصناف';
+      dataToExport = statsData.productsList.map(p => ({
+        'اسم الصنف': p.name,
+        'عدد الطلبات': p.orderCount,
+        'إجمالي القطع المطلوبة': p.quantity,
+        'إجمالي المبلغ': p.amount
+      }));
+    } else if (statsActiveTab === 'pages') {
+      sheetName = 'إحصائيات البيجات';
+      dataToExport = statsData.pagesList.map(pg => ({
+        'اسم البيج / المتجر': pg.name,
+        'عدد الطلبات': pg.orderCount,
+        'إجمالي القطع المطلوبة': pg.quantity,
+        'النسبة من إجمالي الطلبات': statsData.totalOrdersCount > 0 ? `${((pg.orderCount / statsData.totalOrdersCount) * 100).toFixed(1)}%` : '0%'
+      }));
+    } else if (statsActiveTab === 'mainCat') {
+      sheetName = 'إحصائيات الفئات الرئيسية';
+      dataToExport = statsData.mainCatList.map(m => ({
+        'الفئة الرئيسية': m.name,
+        'عدد الطلبات': m.orderCount,
+        'إجمالي القطع المطلوبة': m.quantity,
+        'النسبة من إجمالي الطلبات': statsData.totalOrdersCount > 0 ? `${((m.orderCount / statsData.totalOrdersCount) * 100).toFixed(1)}%` : '0%'
+      }));
+    } else if (statsActiveTab === 'subCat') {
+      sheetName = 'إحصائيات الفئات الفرعية';
+      dataToExport = statsData.subCatList.map(s => ({
+        'الفئة الفرعية': s.name,
+        'عدد الطلبات': s.orderCount,
+        'إجمالي القطع المطلوبة': s.quantity
+      }));
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    XLSX.writeFile(workbook, `${sheetName}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / itemsPerPage));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -2392,7 +2718,14 @@ export default function OrdersListPage() {
         <div className={styles.headerActions}>
           <DateRangePicker 
             initialPreset={dateFilter} 
-            onApply={(val: string) => setDateFilter(val)} 
+            onApply={(val: string) => {
+              setDateFilter(val);
+              setShowArchivedInFilter(false);
+            }} 
+            onApplyWithArchived={(val: string) => {
+              setDateFilter(val);
+              setShowArchivedInFilter(true);
+            }}
           />
           
           
@@ -2520,11 +2853,86 @@ export default function OrdersListPage() {
             </div>
           )}
 
+          <button
+            onClick={() => setShowStatsModal(true)}
+            style={{
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.6rem',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}
+          >
+            <span>📊 إحصائيات وتجهيز الطلبات</span>
+          </button>
+
           <Link href="/orders/entry" className={styles.addButton}>
             <span>إضافة طلب</span>
             <span style={{ fontSize: '1rem' }}>➕</span>
           </Link>
         </div>
+      </div>
+
+      {/* Permanent Concise Delivery & Return KPI Bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: '10px',
+        padding: '0.8rem 1.2rem',
+        marginBottom: '1rem',
+        flexWrap: 'wrap',
+        gap: '0.8rem',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.95rem' }}>
+            <span>📦 إجمالي الطلبات:</span>
+            <span style={{ color: '#fff', backgroundColor: '#2a2d3d', padding: '0.1rem 0.6rem', borderRadius: '4px' }}>{statsData.totalOrdersCount}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.95rem' }}>
+            <span>🟢 الواصل والمكتمل:</span>
+            <span style={{ color: '#10b981' }}>{statsData.deliveredCount}</span>
+            <span style={{ fontSize: '0.8rem', color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '0.1rem 0.5rem', borderRadius: '4px' }}>({statsData.deliveredPct}%)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.95rem' }}>
+            <span>🟠 الراجعات:</span>
+            <span style={{ color: '#f97316' }}>{statsData.returnedCount}</span>
+            <span style={{ fontSize: '0.8rem', color: '#f97316', backgroundColor: 'rgba(249, 115, 22, 0.15)', padding: '0.1rem 0.5rem', borderRadius: '4px' }}>({statsData.returnedPct}%)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.95rem' }}>
+            <span>⏳ قيد التوصيل / التجهيز:</span>
+            <span style={{ color: '#60a5fa' }}>{statsData.inProgressCount}</span>
+            <span style={{ fontSize: '0.8rem', color: '#60a5fa', backgroundColor: 'rgba(59, 130, 246, 0.15)', padding: '0.1rem 0.5rem', borderRadius: '4px' }}>({statsData.inProgressPct}%)</span>
+          </div>
+        </div>
+        <button
+          onClick={() => { setStatsActiveTab('kpis'); setShowStatsModal(true); }}
+          style={{
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+            color: '#3b82f6',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            padding: '0.4rem 0.8rem',
+            borderRadius: '6px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem'
+          }}
+        >
+          <span>📊 تفاصيل النسب والتوصيل</span>
+        </button>
       </div>
 
       {/* Tabs Section */}
@@ -2706,6 +3114,73 @@ export default function OrdersListPage() {
         </div>
       )}
 
+      {/* Category / Page / Product Active Filter Banner */}
+      {(filterByProduct || filterByPage || filterByMainCat || filterBySubCat) && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: 'rgba(59, 130, 246, 0.15)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          color: '#60a5fa',
+          padding: '0.6rem 1rem',
+          borderRadius: '8px',
+          margin: '0.5rem 0 1rem 0',
+          fontWeight: 'bold',
+          fontSize: '0.95rem',
+          flexWrap: 'wrap',
+          gap: '0.5rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <span>🔍 تصفية نشطة حسب: </span>
+            {filterByProduct && (
+              <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#fff' }}>
+                📦 الصنف: {products.find(p => p.id === filterByProduct || p.name === filterByProduct)?.name || filterByProduct}
+                <button onClick={() => setFilterByProduct('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
+              </span>
+            )}
+            {filterByPage && (
+              <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#fff' }}>
+                🌐 البيج: {pagesDb.find(pg => pg.id === filterByPage || pg.name === filterByPage)?.name || filterByPage}
+                <button onClick={() => setFilterByPage('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
+              </span>
+            )}
+            {filterByMainCat && (
+              <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#fff' }}>
+                📁 الفئة الرئيسية: {categoriesDb.find(c => c.id === filterByMainCat || c.name === filterByMainCat)?.name || filterByMainCat}
+                <button onClick={() => setFilterByMainCat('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
+              </span>
+            )}
+            {filterBySubCat && (
+              <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#fff' }}>
+                📂 الفئة الفرعية: {categoriesDb.flatMap(c => c.subcategories || []).find(s => s.id === filterBySubCat || s.name === filterBySubCat)?.name || filterBySubCat}
+                <button onClick={() => setFilterBySubCat('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
+              </span>
+            )}
+          </div>
+          <button 
+            onClick={() => {
+              setFilterByProduct('');
+              setFilterByPage('');
+              setFilterByMainCat('');
+              setFilterBySubCat('');
+            }}
+            style={{
+              backgroundColor: '#ef4444',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '0.35rem 0.85rem',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontFamily: 'inherit'
+            }}
+          >
+            إلغاء كافة فلاتر التصفية ✖
+          </button>
+        </div>
+      )}
+
       {/* Table Top Controls */}
       <div className={styles.tableControls}>
         <div className={styles.controlsLeft}>
@@ -2867,6 +3342,9 @@ export default function OrdersListPage() {
           <button className={styles.controlButton} onClick={handlePrintLabels}>طباعة ملصق 100x150</button>
           <button className={styles.controlButton} onClick={handleExportZitaExcel}>تصدير Excel (زيطة)</button>
           <button className={styles.controlButton} onClick={handleExportExcel}>تصدير Excel</button>
+          <Link href="/orders/entry" className={styles.controlButton} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', fontWeight: 'bold', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>📥 استيراد Excel / إدخال طلبات</span>
+          </Link>
           <div style={{ position: 'relative' }} ref={columnVisibilityRef}>
             <button 
               className={styles.controlButton} 
@@ -4467,6 +4945,448 @@ export default function OrdersListPage() {
               <button className={styles.submitButton} style={{ backgroundColor: '#ef4444', color: '#fff' }} onClick={handleBulkSelectInverse}>تحديد غير المطابق</button>
               <button className={styles.submitButton} style={{ backgroundColor: '#10b981', color: '#fff' }} onClick={handleBulkSelectAndShow}>إظهار الطلبات المحددة</button>
               <button className={styles.saveButton} onClick={handleBulkSelectSubmit}>تحديد الطلبات</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Statistics and Preparation Modal */}
+      {showStatsModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowStatsModal(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '850px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+            <div className={styles.modalHeader} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>📊</span>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.3rem' }}>إحصائيات وتجهيز الطلبات (حسب الصنف، البيج، والفئة)</h2>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    إجمالي الطلبات المعروضة حالياً: <strong>{statsData.totalOrdersCount}</strong> طلب | إجمالي القطع المطلوبة: <strong>{statsData.totalItemsQuantity}</strong> قطعة
+                  </span>
+                </div>
+              </div>
+              <button className={styles.closeButton} onClick={() => setShowStatsModal(false)}>×</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', padding: '1rem 1.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.08)', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setStatsActiveTab('kpis')}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: '8px 8px 0 0',
+                  border: 'none',
+                  backgroundColor: statsActiveTab === 'kpis' ? '#10b981' : 'rgba(255,255,255,0.05)',
+                  color: statsActiveTab === 'kpis' ? '#fff' : 'var(--text-muted)',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.95rem'
+                }}
+              >
+                <span>📈</span>
+                <span>نسب التوصيل والراجع</span>
+              </button>
+              <button
+                onClick={() => setStatsActiveTab('products')}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: '8px 8px 0 0',
+                  border: 'none',
+                  backgroundColor: statsActiveTab === 'products' ? '#3b82f6' : 'rgba(255,255,255,0.05)',
+                  color: statsActiveTab === 'products' ? '#fff' : 'var(--text-muted)',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.95rem'
+                }}
+              >
+                <span>📦</span>
+                <span>الأصناف ({statsData.productsList.length})</span>
+              </button>
+              <button
+                onClick={() => setStatsActiveTab('pages')}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: '8px 8px 0 0',
+                  border: 'none',
+                  backgroundColor: statsActiveTab === 'pages' ? '#3b82f6' : 'rgba(255,255,255,0.05)',
+                  color: statsActiveTab === 'pages' ? '#fff' : 'var(--text-muted)',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.95rem'
+                }}
+              >
+                <span>🌐</span>
+                <span>البيجات / المتاجر ({statsData.pagesList.length})</span>
+              </button>
+              <button
+                onClick={() => setStatsActiveTab('mainCat')}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: '8px 8px 0 0',
+                  border: 'none',
+                  backgroundColor: statsActiveTab === 'mainCat' ? '#3b82f6' : 'rgba(255,255,255,0.05)',
+                  color: statsActiveTab === 'mainCat' ? '#fff' : 'var(--text-muted)',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.95rem'
+                }}
+              >
+                <span>📁</span>
+                <span>الفئات الرئيسية ({statsData.mainCatList.length})</span>
+              </button>
+              <button
+                onClick={() => setStatsActiveTab('subCat')}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: '8px 8px 0 0',
+                  border: 'none',
+                  backgroundColor: statsActiveTab === 'subCat' ? '#3b82f6' : 'rgba(255,255,255,0.05)',
+                  color: statsActiveTab === 'subCat' ? '#fff' : 'var(--text-muted)',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.95rem'
+                }}
+              >
+                <span>📂</span>
+                <span>الفئات الفرعية ({statsData.subCatList.length})</span>
+              </button>
+            </div>
+
+            <div className={styles.modalBody} style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+              <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '0.8rem 1rem', borderRadius: '8px', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span style={{ color: '#60a5fa', fontSize: '0.9rem' }}>
+                  💡 <strong>ملاحظة:</strong> اضغط على زر <strong>[تصفية وعرض الطلبات 🔍]</strong> أمام أي عنصر لفلترة جدول الطلبات الرئيسي وعرض طلبات هذا العنصر فقط!
+                </span>
+                <button
+                  onClick={exportStatsToExcel}
+                  style={{
+                    backgroundColor: '#10b981',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '0.4rem 0.8rem',
+                    borderRadius: '6px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  <span>📥</span>
+                  <span>تصدير هذا التبويب (Excel)</span>
+                </button>
+              </div>
+
+              {statsActiveTab === 'kpis' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                  {/* Progress Bar */}
+                  <div style={{ backgroundColor: 'var(--surface)', padding: '1.2rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1.1rem', color: '#fff', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>📊 التوزيع النسبي لحالات الطلبات</span>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>إجمالي: {statsData.totalOrdersCount} طلب</span>
+                    </h3>
+                    <div style={{ width: '100%', height: '24px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', display: 'flex', margin: '0.8rem 0' }}>
+                      {Number(statsData.deliveredPct) > 0 && (
+                        <div style={{ width: `${statsData.deliveredPct}%`, backgroundColor: '#10b981', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`الواصل: ${statsData.deliveredPct}%`}>
+                          {Number(statsData.deliveredPct) >= 8 ? `${statsData.deliveredPct}%` : ''}
+                        </div>
+                      )}
+                      {Number(statsData.inProgressPct) > 0 && (
+                        <div style={{ width: `${statsData.inProgressPct}%`, backgroundColor: '#3b82f6', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`قيد التوصيل: ${statsData.inProgressPct}%`}>
+                          {Number(statsData.inProgressPct) >= 8 ? `${statsData.inProgressPct}%` : ''}
+                        </div>
+                      )}
+                      {Number(statsData.returnedPct) > 0 && (
+                        <div style={{ width: `${statsData.returnedPct}%`, backgroundColor: '#f97316', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`الراجع: ${statsData.returnedPct}%`}>
+                          {Number(statsData.returnedPct) >= 8 ? `${statsData.returnedPct}%` : ''}
+                        </div>
+                      )}
+                      {Number(statsData.cancelledPct) > 0 && (
+                        <div style={{ width: `${statsData.cancelledPct}%`, backgroundColor: '#ef4444', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`الملغي: ${statsData.cancelledPct}%`}>
+                          {Number(statsData.cancelledPct) >= 8 ? `${statsData.cancelledPct}%` : ''}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '0.5rem', marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#10b981', display: 'inline-block' }}></span> واصل ومكتمل ({statsData.deliveredPct}%)</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#3b82f6', display: 'inline-block' }}></span> قيد التوصيل / التجهيز ({statsData.inProgressPct}%)</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#f97316', display: 'inline-block' }}></span> راجعات ({statsData.returnedPct}%)</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#ef4444', display: 'inline-block' }}></span> ملغي ({statsData.cancelledPct}%)</span>
+                    </div>
+                  </div>
+
+                  {/* KPI Cards Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+                    {/* Delivered Card */}
+                    <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1.2rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.05rem' }}>🟢 الطلبات الواصلة والمكتملة</span>
+                        <span style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.deliveredPct}%</span>
+                      </div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#fff', margin: '0.4rem 0' }}>{statsData.deliveredCount} <span style={{ fontSize: '1rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>طلب</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(16, 185, 129, 0.2)', paddingTop: '0.6rem' }}>
+                        <span>عدد القطع: <strong>{statsData.deliveredQty}</strong></span>
+                        <span>المبلغ: <strong style={{ color: '#10b981' }}>{statsData.deliveredAmount.toLocaleString()} دينار</strong></span>
+                      </div>
+                    </div>
+
+                    {/* Returned Card */}
+                    <div style={{ backgroundColor: 'rgba(249, 115, 22, 0.1)', border: '1px solid rgba(249, 115, 22, 0.3)', padding: '1.2rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '1.05rem' }}>🟠 الطلبات الراجعة</span>
+                        <span style={{ backgroundColor: '#f97316', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.returnedPct}%</span>
+                      </div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#fff', margin: '0.4rem 0' }}>{statsData.returnedCount} <span style={{ fontSize: '1rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>طلب</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(249, 115, 22, 0.2)', paddingTop: '0.6rem' }}>
+                        <span>عدد القطع: <strong>{statsData.returnedQty}</strong></span>
+                        <span>المبلغ: <strong style={{ color: '#f97316' }}>{statsData.returnedAmount.toLocaleString()} دينار</strong></span>
+                      </div>
+                    </div>
+
+                    {/* In Progress Card */}
+                    <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '1.2rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '1.05rem' }}>⏳ قيد التوصيل والتجهيز</span>
+                        <span style={{ backgroundColor: '#3b82f6', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.inProgressPct}%</span>
+                      </div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#fff', margin: '0.4rem 0' }}>{statsData.inProgressCount} <span style={{ fontSize: '1rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>طلب</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(59, 130, 246, 0.2)', paddingTop: '0.6rem' }}>
+                        <span>عدد القطع: <strong>{statsData.inProgressQty}</strong></span>
+                        <span>المبلغ: <strong style={{ color: '#60a5fa' }}>{statsData.inProgressAmount.toLocaleString()} دينار</strong></span>
+                      </div>
+                    </div>
+
+                    {/* Cancelled Card */}
+                    <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '1.2rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.05rem' }}>🔴 الطلبات الملغاة</span>
+                        <span style={{ backgroundColor: '#ef4444', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.cancelledPct}%</span>
+                      </div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#fff', margin: '0.4rem 0' }}>{statsData.cancelledCount} <span style={{ fontSize: '1rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>طلب</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(239, 68, 68, 0.2)', paddingTop: '0.6rem' }}>
+                        <span>عدد القطع: <strong>{statsData.cancelledQty}</strong></span>
+                        <span>المبلغ: <strong style={{ color: '#ef4444' }}>{statsData.cancelledAmount.toLocaleString()} دينار</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {statsActiveTab === 'products' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {statsData.productsList.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد أصناف في الطلبات المعروضة حالياً.</p>
+                  ) : (
+                    statsData.productsList.map((prod, idx) => {
+                      const isFiltered = filterByProduct === prod.id || filterByProduct === prod.name;
+                      return (
+                        <div key={idx} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '0.8rem 1rem', backgroundColor: isFiltered ? 'rgba(59, 130, 246, 0.2)' : 'var(--surface)',
+                          border: isFiltered ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.05)', borderRadius: '8px',
+                          flexWrap: 'wrap', gap: '0.8rem'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                            <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#2a2d3d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>{idx + 1}</span>
+                            <div>
+                              <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>{prod.name}</div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>موجود في <strong>{prod.orderCount}</strong> طلب</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+                            <div style={{ textAlign: 'left' }}>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#10b981' }}>{prod.quantity} <span style={{ fontSize: '0.8rem' }}>قطعة</span></div>
+                              {prod.amount > 0 && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{prod.amount.toLocaleString()} دينار</div>}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setFilterByProduct(isFiltered ? '' : (prod.id || prod.name));
+                                setFilterByPage('');
+                                setFilterByMainCat('');
+                                setFilterBySubCat('');
+                                setShowStatsModal(false);
+                              }}
+                              style={{
+                                backgroundColor: isFiltered ? '#ef4444' : '#3b82f6', color: '#fff', border: 'none',
+                                padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem'
+                              }}
+                            >
+                              {isFiltered ? 'إلغاء التصفية ✖' : 'تصفية وعرض الطلبات 🔍'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {statsActiveTab === 'pages' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {statsData.pagesList.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد بيانات بيجات في الطلبات المعروضة حالياً.</p>
+                  ) : (
+                    statsData.pagesList.map((pg, idx) => {
+                      const isFiltered = filterByPage === pg.id || filterByPage === pg.name;
+                      const pct = statsData.totalOrdersCount > 0 ? ((pg.orderCount / statsData.totalOrdersCount) * 100).toFixed(1) : '0';
+                      return (
+                        <div key={idx} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '0.8rem 1rem', backgroundColor: isFiltered ? 'rgba(59, 130, 246, 0.2)' : 'var(--surface)',
+                          border: isFiltered ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.05)', borderRadius: '8px',
+                          flexWrap: 'wrap', gap: '0.8rem'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                            <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#2a2d3d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>{idx + 1}</span>
+                            <div>
+                              <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>🌐 {pg.name}</div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>النسبة من إجمالي الطلبات: <strong style={{ color: '#60a5fa' }}>{pct}%</strong></div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+                            <div style={{ textAlign: 'left' }}>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f59e0b' }}>{pg.orderCount} <span style={{ fontSize: '0.8rem' }}>طلب</span></div>
+                              <div style={{ fontSize: '0.85rem', color: '#10b981' }}>{pg.quantity} قطعة</div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setFilterByPage(isFiltered ? '' : (pg.id || pg.name));
+                                setFilterByProduct('');
+                                setFilterByMainCat('');
+                                setFilterBySubCat('');
+                                setShowStatsModal(false);
+                              }}
+                              style={{
+                                backgroundColor: isFiltered ? '#ef4444' : '#3b82f6', color: '#fff', border: 'none',
+                                padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem'
+                              }}
+                            >
+                              {isFiltered ? 'إلغاء التصفية ✖' : 'تصفية وعرض الطلبات 🔍'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {statsActiveTab === 'mainCat' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {statsData.mainCatList.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد فئات رئيسية في الطلبات المعروضة حالياً.</p>
+                  ) : (
+                    statsData.mainCatList.map((mCat, idx) => {
+                      const isFiltered = filterByMainCat === mCat.id || filterByMainCat === mCat.name;
+                      const pct = statsData.totalOrdersCount > 0 ? ((mCat.orderCount / statsData.totalOrdersCount) * 100).toFixed(1) : '0';
+                      return (
+                        <div key={idx} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '0.8rem 1rem', backgroundColor: isFiltered ? 'rgba(59, 130, 246, 0.2)' : 'var(--surface)',
+                          border: isFiltered ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.05)', borderRadius: '8px',
+                          flexWrap: 'wrap', gap: '0.8rem'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                            <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#2a2d3d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>{idx + 1}</span>
+                            <div>
+                              <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>📁 {mCat.name}</div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>النسبة من إجمالي الطلبات: <strong style={{ color: '#60a5fa' }}>{pct}%</strong></div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+                            <div style={{ textAlign: 'left' }}>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f59e0b' }}>{mCat.orderCount} <span style={{ fontSize: '0.8rem' }}>طلب</span></div>
+                              <div style={{ fontSize: '0.85rem', color: '#10b981' }}>{mCat.quantity} قطعة</div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setFilterByMainCat(isFiltered ? '' : (mCat.id || mCat.name));
+                                setFilterByProduct('');
+                                setFilterByPage('');
+                                setFilterBySubCat('');
+                                setShowStatsModal(false);
+                              }}
+                              style={{
+                                backgroundColor: isFiltered ? '#ef4444' : '#3b82f6', color: '#fff', border: 'none',
+                                padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem'
+                              }}
+                            >
+                              {isFiltered ? 'إلغاء التصفية ✖' : 'تصفية وعرض الطلبات 🔍'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {statsActiveTab === 'subCat' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {statsData.subCatList.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد فئات فرعية في الطلبات المعروضة حالياً.</p>
+                  ) : (
+                    statsData.subCatList.map((sCat, idx) => {
+                      const isFiltered = filterBySubCat === sCat.id || filterBySubCat === sCat.name;
+                      return (
+                        <div key={idx} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '0.8rem 1rem', backgroundColor: isFiltered ? 'rgba(59, 130, 246, 0.2)' : 'var(--surface)',
+                          border: isFiltered ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.05)', borderRadius: '8px',
+                          flexWrap: 'wrap', gap: '0.8rem'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                            <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#2a2d3d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>{idx + 1}</span>
+                            <div>
+                              <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>📂 {sCat.name}</div>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>موجود في <strong>{sCat.orderCount}</strong> طلب</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+                            <div style={{ textAlign: 'left' }}>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#10b981' }}>{sCat.quantity} <span style={{ fontSize: '0.8rem' }}>قطعة</span></div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setFilterBySubCat(isFiltered ? '' : (sCat.id || sCat.name));
+                                setFilterByProduct('');
+                                setFilterByPage('');
+                                setFilterByMainCat('');
+                                setShowStatsModal(false);
+                              }}
+                              style={{
+                                backgroundColor: isFiltered ? '#ef4444' : '#3b82f6', color: '#fff', border: 'none',
+                                padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem'
+                              }}
+                            >
+                              {isFiltered ? 'إلغاء التصفية ✖' : 'تصفية وعرض الطلبات 🔍'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className={styles.modalFooter} style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>يمكنك الضغط خارج النافذة لإغلاقها والعودة لجدول الطلبات</span>
+              <button className={styles.cancelButton} onClick={() => setShowStatsModal(false)}>إغلاق النافذة</button>
             </div>
           </div>
         </div>

@@ -390,7 +390,7 @@ export default function Dashboard() {
       empStats.total += 1;
       if (order.status === 'delivered' || order.status === 'partial') {
         empStats.delivered += 1;
-      } else if (order.status === 'returned') {
+      } else if (order.status === 'returned' || order.status === 'returned_agent' || order.status === 'returned_warehouse' || order.returnStatus === 'in_warehouse') {
         empStats.returned += 1;
       } else if (order.status !== 'cancelled') {
         empStats.pending += 1;
