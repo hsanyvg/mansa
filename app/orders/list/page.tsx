@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Barcode from 'react-barcode';
+import QRCode from 'react-qr-code';
 import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
 import { db, auth } from "../../../lib/firebase";
@@ -72,6 +72,11 @@ export default function OrdersListPage() {
   const [filterByMainCat, setFilterByMainCat] = useState<string>('');
   const [filterBySubCat, setFilterBySubCat] = useState<string>('');
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showReturnsModal, setShowReturnsModal] = useState(false);
+  const [returnsScannerInput, setReturnsScannerInput] = useState('');
+  const returnsScannerInputRef = React.useRef<HTMLInputElement>(null);
+  const [recentlyReceivedReturns, setRecentlyReceivedReturns] = useState<any[]>([]);
+  const [isReceivingReturn, setIsReceivingReturn] = useState(false);
   const [statsActiveTab, setStatsActiveTab] = useState<'kpis' | 'products' | 'mainCat' | 'subCat' | 'pages'>('kpis');
   
   // Pagination state
@@ -953,14 +958,14 @@ export default function OrdersListPage() {
   }, [baseFilteredOrders, matchHierarchyFilters]);
 
   const statsFilteredOrders = React.useMemo(() => {
-    const startList = showOnlySelected 
-      ? orders.filter(o => selectedOrderIds.includes(o.id))
-      : orders;
+    if (selectedOrderIds.length > 0) {
+      return orders.filter(o => selectedOrderIds.includes(o.id));
+    }
     const afterStatus = selectedStatus === 'all' 
-      ? startList 
-      : startList.filter(o => getStatusKey(o) === selectedStatus);
+      ? orders 
+      : orders.filter(o => getStatusKey(o) === selectedStatus);
     return afterStatus.filter(matchDateFilter).filter(matchOrderSearchAndColumns).filter(matchHierarchyFilters);
-  }, [orders, showOnlySelected, selectedOrderIds, selectedStatus, matchOrderSearchAndColumns, matchHierarchyFilters, matchDateFilter]);
+  }, [orders, selectedOrderIds, selectedStatus, matchOrderSearchAndColumns, matchHierarchyFilters, matchDateFilter]);
 
   const statsData = React.useMemo(() => {
     const prodMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; amount: number }> = {};
@@ -1066,10 +1071,11 @@ export default function OrdersListPage() {
       }
     });
 
-    const deliveredPct = totalOrdersCount > 0 ? ((deliveredCount / totalOrdersCount) * 100).toFixed(1) : '0';
-    const returnedPct = totalOrdersCount > 0 ? ((returnedCount / totalOrdersCount) * 100).toFixed(1) : '0';
-    const inProgressPct = totalOrdersCount > 0 ? ((inProgressCount / totalOrdersCount) * 100).toFixed(1) : '0';
-    const cancelledPct = totalOrdersCount > 0 ? ((cancelledCount / totalOrdersCount) * 100).toFixed(1) : '0';
+    const baseCountForPct = Math.max(0, totalOrdersCount - inProgressCount);
+    const deliveredPct = baseCountForPct > 0 ? ((deliveredCount / baseCountForPct) * 100).toFixed(1) : '0';
+    const returnedPct = baseCountForPct > 0 ? ((returnedCount / baseCountForPct) * 100).toFixed(1) : '0';
+    const inProgressPct = '0';
+    const cancelledPct = baseCountForPct > 0 ? ((cancelledCount / baseCountForPct) * 100).toFixed(1) : '0';
 
     const productsList = Object.values(prodMap).sort((a, b) => b.orderCount - a.orderCount);
     const pagesList = Object.values(pageMap).sort((a, b) => b.orderCount - a.orderCount);
@@ -1487,13 +1493,13 @@ export default function OrdersListPage() {
   };
 
   const [showBulkStatusModal, setShowBulkStatusModal] = useState(false);
-  const [bulkStatusValue, setBulkStatusValue] = useState('pending');
+  const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [deliveryCompany, setDeliveryCompany] = useState('');
   const [customDeliveryCompany, setCustomDeliveryCompany] = useState('');
 
   const getStockState = (status: string) => {
-    if (['shipped', 'delivered', 'partial'].includes(status)) return 'HARD_DEDUCTED';
-    if (['cancelled', 'returned', 'returned_agent', 'returned_warehouse'].includes(status)) return 'FREE';
+    if (['shipped', 'delivered', 'partial', 'returned_agent'].includes(status)) return 'HARD_DEDUCTED';
+    if (['cancelled', 'returned', 'returned_warehouse'].includes(status)) return 'FREE';
     return 'SOFT_ALLOCATED'; // pending, processing, backordered, new
   };
 
@@ -1591,6 +1597,67 @@ export default function OrdersListPage() {
       }
     }
   };
+
+  const handleReturnScan = async (scanned: string) => {
+    if (isReceivingReturn || !scanned.trim()) return;
+    setIsReceivingReturn(true);
+    try {
+      const found = orders.find(o => 
+        o.id.toLowerCase() === scanned.toLowerCase() || 
+        o.id.slice(-6).toLowerCase() === scanned.toLowerCase()
+      );
+
+      if (!found) {
+        alert("لم يتم العثور على الطلب");
+        return;
+      }
+
+      if (found.status === 'returned_warehouse') {
+        alert("هذا الطلب تم استلامه في المخزن مسبقاً.");
+        return;
+      }
+
+      await confirmBulkStatusChange([found.id], 'returned_warehouse', true);
+      
+      setRecentlyReceivedReturns(prev => [found, ...prev].slice(0, 50));
+      setReturnsScannerInput('');
+      if (returnsScannerInputRef.current) returnsScannerInputRef.current.focus();
+
+      const audio = new Audio('/success-beep.mp3');
+      audio.play().catch(e => console.log('Audio play failed', e));
+
+    } catch (e: any) {
+      alert(`حدث خطأ: ${e.message}`);
+    } finally {
+      setIsReceivingReturn(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showReturnsModal) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement === returnsScannerInputRef.current) {
+        if (e.key === 'Enter') {
+          handleReturnScan(returnsScannerInput);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        const scanned = barcodeBufferRef.current.trim();
+        if (scanned) {
+          handleReturnScan(scanned);
+        }
+        barcodeBufferRef.current = '';
+      } else if (e.key.length === 1) {
+        barcodeBufferRef.current += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showReturnsModal, orders, returnsScannerInput, isReceivingReturn]);
 
   const aggregateProductQuantities = (items: any[]) => {
     const productMap: Record<string, number> = {};
@@ -1792,7 +1859,7 @@ export default function OrdersListPage() {
     }
   };
 
-  const confirmBulkStatusChange = async (overrideOrderIds?: string[], overrideStatus?: string) => {
+  const confirmBulkStatusChange = async (overrideOrderIds?: string[], overrideStatus?: string, skipNotification: boolean = false) => {
     const targetOrderIds = overrideOrderIds || selectedOrderIds;
     if (targetOrderIds.length === 0) return;
 
@@ -1834,6 +1901,7 @@ export default function OrdersListPage() {
       if (validOrders.length === 0) {
         setNotificationModal({ show: true, message: 'لم يتم تحديث أي طلب (جميع الطلبات المحددة مقفلة أو بنفس الحالة).' });
         setShowBulkStatusModal(false);
+        setBulkStatusValue('');
         setIsUpdating(false);
         return;
       }
@@ -1909,11 +1977,16 @@ export default function OrdersListPage() {
           }
         }
         
-        if (newStatus === 'returned' || newStatus === 'returned_agent') {
+        if (newStatus === 'returned' || newStatus === 'returned_agent' || newStatus === 'pending') {
           updateData.deliveryCost = 0;
           if (order.deliveryCost > 0) {
             const currentTotal = order.totalAmount || order.price || 0;
             updateData.totalAmount = currentTotal + order.deliveryCost;
+          }
+          if (newStatus === 'pending') {
+            updateData.shippingCompany = '';
+            updateData.shipmentCompany = '';
+            updateData.jenniShipmentId = '';
           }
         }
         
@@ -1959,8 +2032,11 @@ export default function OrdersListPage() {
 
       await batch.commit();
       
-      setNotificationModal({ show: true, message: `تم تحديث حالة ${updatedCount} طلبات بنجاح.` });
+      if (!skipNotification) {
+        setNotificationModal({ show: true, message: `تم تحديث حالة ${updatedCount} طلبات بنجاح.` });
+      }
       setShowBulkStatusModal(false);
+      setBulkStatusValue('');
       setSelectedOrderIds([]);
       setDeliveryCompany('');
       setCustomDeliveryCompany('');
@@ -2751,6 +2827,25 @@ export default function OrdersListPage() {
                   );
                 })}
               </select>
+              <button 
+                onClick={() => setSelectedOrderIds([])}
+                style={{
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  color: '#ef4444',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                title="إلغاء تحديد كل الطلبات المحددة"
+              >
+                <span>✕</span> إلغاء التحديد
+              </button>
             </div>
           )}
 
@@ -2852,6 +2947,30 @@ export default function OrdersListPage() {
               )}
             </div>
           )}
+
+          <button 
+            onClick={() => {
+              setShowReturnsModal(true);
+              setRecentlyReceivedReturns([]);
+              setTimeout(() => { if (returnsScannerInputRef.current) returnsScannerInputRef.current.focus(); }, 100);
+            }}
+            style={{
+              backgroundColor: '#f59e0b',
+              color: 'white',
+              border: 'none',
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.6rem',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}
+          >
+            <span>📦 استلام الراجع</span>
+          </button>
 
           <button
             onClick={() => setShowStatsModal(true)}
@@ -3459,6 +3578,7 @@ export default function OrdersListPage() {
                 <th style={{ width: columnWidths.deliveryCost || 130, position: 'relative' }}>
                   <div className={styles.thContent}>
                     <span>أجرة التوصيل</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.deliveryCost} onChange={(e) => handleFilterChange('deliveryCost', e.target.value)} />
                   </div>
                   <div onMouseDown={(e) => handleResizeStart(e, 'deliveryCost')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'deliveryCost' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
@@ -3467,6 +3587,7 @@ export default function OrdersListPage() {
                 <th style={{ width: columnWidths.netAmount || 130, position: 'relative' }}>
                   <div className={styles.thContent}>
                     <span>المبلغ الصافي</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.netAmount} onChange={(e) => handleFilterChange('netAmount', e.target.value)} />
                   </div>
                   <div onMouseDown={(e) => handleResizeStart(e, 'netAmount')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'netAmount' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
@@ -3612,8 +3733,11 @@ export default function OrdersListPage() {
                   {visibleColumns.id && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
-                        <div style={{ display: 'inline-block', background: '#fff', padding: '2px', borderRadius: '4px', overflow: 'hidden' }}>
-                          <Barcode value={order.id.slice(-6).toUpperCase()} width={1.2} height={25} displayValue={true} fontSize={11} margin={0} background="#ffffff" lineColor="#000000" />
+                        <div style={{ display: 'inline-block', background: '#fff', padding: '4px', borderRadius: '4px', overflow: 'hidden' }}>
+                          <QRCode value={order.id.slice(-6).toUpperCase()} size={40} />
+                          <div style={{ textAlign: 'center', fontSize: '10px', color: '#000', fontWeight: 'bold', marginTop: '2px' }}>
+                            {order.id.slice(-6).toUpperCase()}
+                          </div>
                         </div>
                         {order.isArchived && (
                           <span style={{ backgroundColor: '#475569', color: '#f8fafc', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
@@ -4579,13 +4703,97 @@ export default function OrdersListPage() {
           </div>
         </div>
       )}
+      {/* Returns Receiver Modal */}
+      {showReturnsModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowReturnsModal(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', width: '90%' }}>
+            <div className={styles.modalHeader}>
+              <h2>📦 استلام الراجع (المخزن)</h2>
+              <button className={styles.closeButton} onClick={() => setShowReturnsModal(false)}>×</button>
+            </div>
+            <div className={styles.modalBody} style={{ padding: '1.5rem' }}>
+              <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <p style={{ color: '#94a3b8', marginBottom: '1rem' }}>
+                  قم بمسح الباركود باستخدام القارئ أو إدخال رقم الطلب يدوياً. سيتم تسجيل الطلب كـ "راجع مستلم بالمخزن" وستعود البضاعة للمخزون فوراً.
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
+                  <input
+                    ref={returnsScannerInputRef}
+                    type="text"
+                    placeholder="امسح الباركود هنا أو اكتب المعرف..."
+                    value={returnsScannerInput}
+                    onChange={(e) => setReturnsScannerInput(e.target.value)}
+                    disabled={isReceivingReturn}
+                    style={{
+                      padding: '0.8rem',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      color: 'white',
+                      width: '70%',
+                      fontSize: '1.1rem',
+                      textAlign: 'center'
+                    }}
+                  />
+                  <button
+                    onClick={() => handleReturnScan(returnsScannerInput)}
+                    disabled={isReceivingReturn || !returnsScannerInput.trim()}
+                    style={{
+                      padding: '0.8rem 1.5rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      cursor: isReceivingReturn || !returnsScannerInput.trim() ? 'not-allowed' : 'pointer',
+                      opacity: isReceivingReturn || !returnsScannerInput.trim() ? 0.5 : 1
+                    }}
+                  >
+                    {isReceivingReturn ? 'جاري...' : 'استلام'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Recently scanned returns list */}
+              {recentlyReceivedReturns.length > 0 && (
+                <div style={{ marginTop: '2rem' }}>
+                  <h3 style={{ fontSize: '1.1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+                    ✅ المرتجعات المستلمة للتو ({recentlyReceivedReturns.length}):
+                  </h3>
+                  <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    <table className={styles.table} style={{ fontSize: '0.9rem' }}>
+                      <thead>
+                        <tr>
+                          <th>رقم الطلب</th>
+                          <th>اسم الزبون</th>
+                          <th>المبلغ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentlyReceivedReturns.map(o => (
+                          <tr key={o.id} style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)' }}>
+                            <td style={{ fontWeight: 'bold' }}>{o.id.slice(-6).toUpperCase()}</td>
+                            <td>{o.customerName}</td>
+                            <td>{o.totalAmount.toLocaleString()} دينار</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk Status Update Modal */}
       {showBulkStatusModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowBulkStatusModal(false)}>
+        <div className={styles.modalOverlay} onClick={() => { setShowBulkStatusModal(false); setBulkStatusValue(''); }}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h2>🔄 تأكيد التحديث الجماعي للحالة</h2>
-              <button className={styles.closeButton} onClick={() => setShowBulkStatusModal(false)}>×</button>
+              <button className={styles.closeButton} onClick={() => { setShowBulkStatusModal(false); setBulkStatusValue(''); }}>×</button>
             </div>
             <div className={styles.modalBody} style={{ padding: '2rem', textAlign: 'center' }}>
               <p style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
@@ -4652,7 +4860,7 @@ export default function OrdersListPage() {
               </button>
               <button 
                 className={styles.cancelButton} 
-                onClick={() => setShowBulkStatusModal(false)}
+                onClick={() => { setShowBulkStatusModal(false); setBulkStatusValue(''); }}
                 disabled={isUpdating}
                 style={{ flex: 1 }}
               >
