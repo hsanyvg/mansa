@@ -476,10 +476,14 @@ export default function OrdersListPage() {
     const lastTerm = terms[terms.length - 1];
     
     if (lastTerm && lastTerm.length >= 4) {
-      const found = orders.find(o => 
-        o.id.toLowerCase() === lastTerm || 
-        o.id.slice(-6).toLowerCase() === lastTerm
-      );
+      const stripZero = (s: string) => s.replace(/^0+/, '');
+      const sLast = stripZero(lastTerm);
+      const found = orders.find(o => {
+        const oIdStr = o.id.toLowerCase();
+        const oIdShortStr = o.id.slice(-6).toLowerCase();
+        const oNumStr = String(o.orderNumber || '').toLowerCase();
+        return stripZero(oIdStr) === sLast || stripZero(oIdShortStr) === sLast || (oNumStr && stripZero(oNumStr) === sLast);
+      });
       
       if (found) {
         setSelectedOrderIds(prev => {
@@ -521,10 +525,14 @@ export default function OrdersListPage() {
   }, [isBarcodeMode, orders, activeTab]);
 
   const handleBarcodeScan = (scanned: string) => {
-    const found = orders.find(o => 
-      o.id.toLowerCase() === scanned.toLowerCase() || 
-      o.id.slice(-6).toLowerCase() === scanned.toLowerCase()
-    );
+    const stripZero = (s: string) => s.replace(/^0+/, '');
+    const sScanned = stripZero(scanned.toLowerCase());
+    const found = orders.find(o => {
+        const oIdStr = o.id.toLowerCase();
+        const oIdShortStr = o.id.slice(-6).toLowerCase();
+        const oNumStr = String(o.orderNumber || '').toLowerCase();
+        return stripZero(oIdStr) === sScanned || stripZero(oIdShortStr) === sScanned || (oNumStr && stripZero(oNumStr) === sScanned);
+    });
 
     if (found) {
       setGlobalSearch(prev => {
