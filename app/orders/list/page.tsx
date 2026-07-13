@@ -571,11 +571,12 @@ export default function OrdersListPage() {
       const orderIdStr = String(order.id).toLowerCase();
       const orderNumberStr = String(order.orderNumber || '').toLowerCase();
       const orderIdShortStr = String(order.id.slice(-6)).toLowerCase();
-      return searchIds.some(searchId => 
-        orderIdStr.includes(searchId) || 
-        orderIdShortStr === searchId ||
-        (orderNumberStr && orderNumberStr.includes(searchId))
-      );
+      return searchIds.some(searchId => {
+        const sId = searchId.replace(/^0+/, '');
+        return orderIdStr.replace(/^0+/, '').includes(sId) || 
+        orderIdShortStr.replace(/^0+/, '') === sId ||
+        (orderNumberStr && orderNumberStr.replace(/^0+/, '').includes(sId))
+      });
     });
 
     const matchedIds = matchedOrders.map(o => o.id);
@@ -615,15 +616,16 @@ export default function OrdersListPage() {
         const shipmentNumberStr = String(order.shipmentNumber || '').toLowerCase();
         const phoneStr = String(order.customerPhone || order.phone || '').toLowerCase();
 
-        return searchIds.some(searchId => 
-          orderIdStr.includes(searchId) || 
-          orderIdShortStr === searchId ||
-          (orderNumberStr && orderNumberStr.includes(searchId)) ||
-          (shipmentIdStr && shipmentIdStr.includes(searchId)) ||
-          (jenniShipmentIdStr && jenniShipmentIdStr.includes(searchId)) ||
-          (shipmentNumberStr && shipmentNumberStr.includes(searchId)) ||
-          (phoneStr && phoneStr.includes(searchId))
-        );
+        return searchIds.some(searchId => {
+          const sId = searchId.replace(/^0+/, '');
+          return orderIdStr.replace(/^0+/, '').includes(sId) || 
+          orderIdShortStr.replace(/^0+/, '') === sId ||
+          (orderNumberStr && orderNumberStr.replace(/^0+/, '').includes(sId)) ||
+          (shipmentIdStr && shipmentIdStr.replace(/^0+/, '').includes(sId)) ||
+          (jenniShipmentIdStr && jenniShipmentIdStr.replace(/^0+/, '').includes(sId)) ||
+          (shipmentNumberStr && shipmentNumberStr.replace(/^0+/, '').includes(sId)) ||
+          (phoneStr && phoneStr.replace(/^0+/, '').includes(sId))
+        });
       }).map(o => o.id)
     );
 
@@ -662,15 +664,16 @@ export default function OrdersListPage() {
       const shipmentNumberStr = String(order.shipmentNumber || '').toLowerCase();
       const phoneStr = String(order.customerPhone || order.phone || '').toLowerCase();
 
-      return searchIds.some(searchId => 
-        orderIdStr === searchId || 
-        orderIdShortStr === searchId ||
-        (orderNumberStr && orderNumberStr === searchId) ||
-        (shipmentIdStr && shipmentIdStr === searchId) ||
-        (jenniShipmentIdStr && jenniShipmentIdStr === searchId) ||
-        (shipmentNumberStr && shipmentNumberStr === searchId) ||
-        (phoneStr && (phoneStr === searchId || (searchId.length >= 10 && phoneStr.includes(searchId))))
-      );
+      return searchIds.some(searchId => {
+        const sId = searchId.replace(/^0+/, '');
+        return orderIdStr.replace(/^0+/, '') === sId || 
+        orderIdShortStr.replace(/^0+/, '') === sId ||
+        (orderNumberStr && orderNumberStr.replace(/^0+/, '') === sId) ||
+        (shipmentIdStr && shipmentIdStr.replace(/^0+/, '') === sId) ||
+        (jenniShipmentIdStr && jenniShipmentIdStr.replace(/^0+/, '') === sId) ||
+        (shipmentNumberStr && shipmentNumberStr.replace(/^0+/, '') === sId) ||
+        (phoneStr && (phoneStr.replace(/^0+/, '') === sId || (sId.length >= 10 && phoneStr.replace(/^0+/, '').includes(sId))))
+      });
     });
 
     const matchedIds = matchedOrders.map(o => o.id);
@@ -846,14 +849,17 @@ export default function OrdersListPage() {
 
     let matchesGlobal = true;
     if (searchLower) {
+      const stripZero = (s: string) => s.replace(/^0+/, '');
       if (searchLower.includes(',')) {
         const terms = searchLower.split(',').map(t => t.trim()).filter(Boolean);
-        matchesGlobal = terms.length === 0 || terms.some(term => 
-          allFields.some(field => field.includes(term))
-        );
+        matchesGlobal = terms.length === 0 || terms.some(term => {
+          const sTerm = stripZero(term);
+          return allFields.some(field => field.includes(term) || (sTerm && stripZero(field).includes(sTerm)));
+        });
       } else {
         const normalizedSearch = searchLower.replace(/\s+/g, ' ');
-        matchesGlobal = allFields.some(field => field.includes(normalizedSearch));
+        const sNormalized = stripZero(normalizedSearch);
+        matchesGlobal = allFields.some(field => field.includes(normalizedSearch) || (sNormalized && stripZero(field).includes(sNormalized)));
       }
     }
 
