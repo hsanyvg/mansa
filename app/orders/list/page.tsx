@@ -268,6 +268,8 @@ export default function OrdersListPage() {
     governorate: '',
     phone: '',
     totalAmount: '',
+    deliveryCost: '',
+    netAmount: '',
     notes: '',
     status: '',
     addDate: '',
@@ -831,12 +833,17 @@ export default function OrdersListPage() {
     const empName = (order.employeeName || '').toLowerCase();
     const shipComp = (order.shippingCompany || '').toLowerCase();
 
+    const delivery = (order.deliveryCost || '').toString().toLowerCase();
+    const net = (order.netAmount || '').toString().toLowerCase();
+
     const matchesColumn = (
       (displayId.includes(columnFilters.id.toLowerCase()) || idStr.includes(columnFilters.id.toLowerCase())) &&
       custName.includes(columnFilters.customerName.toLowerCase()) &&
       gov.includes(columnFilters.governorate.toLowerCase()) &&
       phone.includes(columnFilters.phone.toLowerCase()) &&
       (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase())) &&
+      (columnFilters.deliveryCost === '' || delivery.includes(columnFilters.deliveryCost.toLowerCase())) &&
+      (columnFilters.netAmount === '' || net.includes(columnFilters.netAmount.toLowerCase())) &&
       notes.includes(columnFilters.notes.toLowerCase()) &&
       (columnFilters.status === '' || columnFilters.status.split(',').includes(statusKey)) &&
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
