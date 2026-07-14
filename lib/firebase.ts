@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 
 const getFirebaseApiKey = () => {
   return "slzZztf6qSAMfosH578vOB3tDrywIfndBySazIA".split("").reverse().join("");
@@ -22,5 +22,11 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const storage = getStorage(app);
 const auth = getAuth(app);
+
+if (typeof window !== "undefined") {
+  setPersistence(auth, browserLocalPersistence).catch((error) => {
+    console.error("Auth persistence error:", error);
+  });
+}
 
 export { app, db, storage, auth };

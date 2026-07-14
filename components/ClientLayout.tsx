@@ -31,30 +31,35 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
-    const isMobile = currentPath.startsWith('/mobile') || currentPath === '/mobile-download' || currentPath === '/download';
-    
-    const unsubscribe = onAuthStateChanged(auth, async (usr) => {
-      if (usr) {
-        try {
-           const mappingRef = doc(db, 'employee_mappings', usr.uid);
-           const mappingSnap = await getDoc(mappingRef);
-           if (mappingSnap.exists()) {
-             if (!isMobile) {
-               setErrorMsg('هذا الحساب مخصص لتسجيل الدخول من تطبيق الجوال فقط.');
-               await signOut(auth);
-               setUser(null);
-               setAuthLoading(false);
-               return;
-             }
-           }
-        } catch(err) {}
-      }
+    const unsubscribe = onAuthStateChanged(auth, (usr) => {
       setUser(usr);
       setAuthLoading(false);
     });
     return () => unsubscribe();
-  }, [pathname]);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+    const isMobile = currentPath.startsWith('/mobile') || currentPath === '/mobile-download' || currentPath === '/download';
+    
+    const checkRole = async () => {
+      try {
+        const mappingRef = doc(db, 'employee_mappings', user.uid);
+        const mappingSnap = await getDoc(mappingRef);
+        if (mappingSnap.exists()) {
+          if (!isMobile) {
+            setErrorMsg('هذا الحساب مخصص لتسجيل الدخول من تطبيق الجوال فقط.');
+            await signOut(auth);
+            setUser(null);
+          }
+        }
+      } catch(err) {}
+    };
+    
+    checkRole();
+  }, [pathname, user]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
