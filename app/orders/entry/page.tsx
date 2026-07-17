@@ -909,27 +909,30 @@ export default function OrderEntryPage() {
       // Commit Batch
       await batch.commit();
 
-      // --- Trigger Meta CAPI Webhook for each product ---
+      // --- Trigger Meta CAPI Webhook for the entire order ---
       try {
         const orderId = newOrderRef.id;
-        for (const item of cart) {
-          fetch('/api/webhooks/meta-purchase', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              productId: item.id,
-              value: item.quantity * item.unitPrice,
-              currency: 'IQD',
-              phone: formData.customerPhone,
-              firstName: formData.customerName.split(' ')[0] || formData.customerName,
-              state: formData.governorate,
-              externalId: orderId,
-              fb_login_id: formData.fbLoginId
-            })
-          }).catch(err => console.error("Webhook trigger error:", err));
-        }
-      } catch (webhookErr) {
-        console.error("Failed to trigger webhook:", webhookErr);
+        const contents = cart.map(item => ({
+          id: item.id,
+          quantity: item.quantity,
+          item_price: item.unitPrice
+        }));
+
+        fetch('/api/pixel/purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: auth.currentUser?.uid || 'anonymous',
+            eventId: `ord_${orderId}_${Date.now()}`,
+            phone: formData.customerPhone,
+            city: formData.governorate,
+            totalAmount: totalAmount,
+            contents: contents,
+            orderId: orderId
+          })
+        }).catch(err => console.error("Meta CAPI API trigger error:", err));
+      } catch (capiErr) {
+        console.error("Failed to trigger Meta CAPI:", capiErr);
       }
 
       setNotificationModal({ show: true, message: 'تم حفظ الطلب وتحديث المخزون بنجاح!' });

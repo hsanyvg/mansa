@@ -50,6 +50,8 @@ export default function TreasuryPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [settledOrders, setSettledOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [modalOrderIdSearch, setModalOrderIdSearch] = useState('');
+  const [modalPhoneSearch, setModalPhoneSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
@@ -688,17 +690,45 @@ export default function TreasuryPage() {
                       <thead>
                         <tr>
                           <th>#</th>
-                          <th>رقم الطلب</th>
+                          <th>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              رقم الطلب
+                              <input 
+                                type="text" 
+                                placeholder="بحث..." 
+                                value={modalOrderIdSearch}
+                                onChange={e => setModalOrderIdSearch(e.target.value)}
+                                style={{ width: '100%', padding: '2px 4px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #475569', background: '#1e293b', color: '#fff' }}
+                              />
+                            </div>
+                          </th>
                           <th>اسم الزبون</th>
-                          <th>رقم الهاتف</th>
+                          <th>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              رقم الهاتف
+                              <input 
+                                type="text" 
+                                placeholder="بحث..." 
+                                value={modalPhoneSearch}
+                                onChange={e => setModalPhoneSearch(e.target.value)}
+                                style={{ width: '100%', padding: '2px 4px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #475569', background: '#1e293b', color: '#fff' }}
+                              />
+                            </div>
+                          </th>
                           <th>المحافظة والمنطقة</th>
                           <th>المبلغ</th>
                           <th style={{ width: '60px', textAlign: 'center' }}>التفاصيل</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {settledOrders.length > 0 ? (
-                          settledOrders.map((order, idx) => (
+                        {(() => {
+                          const filteredSettledOrders = settledOrders.filter(order => {
+                            const matchId = !modalOrderIdSearch || String(order.id).toLowerCase().includes(modalOrderIdSearch.toLowerCase());
+                            const matchPhone = !modalPhoneSearch || String(order.customerPhone || order.phone || '').toLowerCase().includes(modalPhoneSearch.toLowerCase());
+                            return matchId && matchPhone;
+                          });
+                          return filteredSettledOrders.length > 0 ? (
+                            filteredSettledOrders.map((order, idx) => (
                             <tr key={order.id}>
                               <td>{idx + 1}</td>
                               <td style={{ fontWeight: 'bold' }}>{order.id}</td>
@@ -727,10 +757,11 @@ export default function TreasuryPage() {
                         ) : (
                           <tr>
                             <td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8' }}>
-                              تعذر تحميل تفاصيل الطلبات أو تم حذفها.
+                              لا يوجد نتائج مطابقة للبحث أو تعذر التحميل.
                             </td>
                           </tr>
-                        )}
+                        );
+                        })()}
                       </tbody>
                     </table>
                   )}

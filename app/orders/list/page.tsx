@@ -6,7 +6,7 @@ import QRCode from 'react-qr-code';
 import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
 import { db, auth } from "../../../lib/firebase";
-import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { createJenniShipment } from '../../../lib/jenni-api';
 import * as XLSX from 'xlsx';
@@ -45,6 +45,56 @@ export default function OrdersListPage() {
   
   // Details Modal State
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [orderLogs, setOrderLogs] = useState<any[]>([]);
+  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
+
+  useEffect(() => {
+    if (selectedOrder) {
+      setIsFetchingLogs(true);
+      const uid = auth.currentUser?.uid || 'anonymous';
+      const logsRef = collection(db, 'users', uid, 'orders', selectedOrder.id, 'logs');
+      const q = query(logsRef, orderBy('timestamp', 'desc'));
+      
+      const unsub = onSnapshot(q, (snapshot) => {
+        const fetchedLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setOrderLogs(fetchedLogs);
+        setIsFetchingLogs(false);
+      }, (error) => {
+        console.error("Error fetching logs:", error);
+        setIsFetchingLogs(false);
+      });
+      return () => unsub();
+    } else {
+      setOrderLogs([]);
+    }
+  }, [selectedOrder]);
+
+  const logOrderAction = async (orderId: string, actionType: string, details: string) => {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      const logsRef = collection(db, 'users', uid, 'orders', orderId, 'logs');
+      await addDoc(logsRef, {
+        action: actionType,
+        details: details,
+        employeeName: auth.currentUser?.displayName || auth.currentUser?.email || 'الموظف',
+        timestamp: serverTimestamp()
+      });
+    } catch (e) {
+      console.error('Failed to log order action:', e);
+    }
+  };
+
+  const addLogToBatch = (batch: any, orderId: string, actionType: string, details: string) => {
+    const uid = auth.currentUser?.uid || 'anonymous';
+    const logsRef = collection(db, 'users', uid, 'orders', orderId, 'logs');
+    batch.set(doc(logsRef), {
+      action: actionType,
+      details: details,
+      employeeName: auth.currentUser?.displayName || auth.currentUser?.email || 'الموظف',
+      timestamp: serverTimestamp()
+    });
+  };
   
   // Edit Modal State
   const [editingOrder, setEditingOrder] = useState<any | null>(null);
@@ -78,6 +128,9 @@ export default function OrdersListPage() {
   const [recentlyReceivedReturns, setRecentlyReceivedReturns] = useState<any[]>([]);
   const [isReceivingReturn, setIsReceivingReturn] = useState(false);
   const [statsActiveTab, setStatsActiveTab] = useState<'kpis' | 'products' | 'mainCat' | 'subCat' | 'pages'>('kpis');
+  const [showSingleReceiveModal, setShowSingleReceiveModal] = useState(false);
+  const [singleReceiveOrderId, setSingleReceiveOrderId] = useState<string | null>(null);
+  const [singleReceiveEmployee, setSingleReceiveEmployee] = useState('');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -101,6 +154,11 @@ export default function OrdersListPage() {
 
   const [showStatusFilterDropdown, setShowStatusFilterDropdown] = useState(false);
   const statusFilterRef = React.useRef<HTMLDivElement>(null);
+  const [showPrintDropdown, setShowPrintDropdown] = useState(false);
+  const printDropdownRef = React.useRef<HTMLDivElement>(null);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const exportDropdownRef = React.useRef<HTMLDivElement>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Column Visibility State
   const defaultVisibleColumns = {
@@ -245,6 +303,12 @@ export default function OrdersListPage() {
       if (statusFilterRef.current && !statusFilterRef.current.contains(event.target as Node)) {
         setShowStatusFilterDropdown(false);
       }
+      if (printDropdownRef.current && !printDropdownRef.current.contains(event.target as Node)) {
+        setShowPrintDropdown(false);
+      }
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setShowExportDropdown(false);
+      }
       if (columnVisibilityRef.current && !columnVisibilityRef.current.contains(event.target as Node)) {
         setShowColumnVisibilityDropdown(false);
       }
@@ -300,7 +364,7 @@ export default function OrdersListPage() {
     'partial_settled': { label: 'واصل جزئي (تم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
     'cancelled': { label: 'ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
     'returned_agent': { label: 'راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
-    'returned_warehouse': { label: 'راجع تم استلامه في المخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
+    'returned_warehouse': { label: 'راجع مخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
     'postponed': { label: 'مؤجل', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' }
   };
 
@@ -361,7 +425,7 @@ export default function OrdersListPage() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [refreshKey]);
 
   // Fetch products from Firestore
   useEffect(() => {
@@ -734,6 +798,29 @@ export default function OrdersListPage() {
     setColumnFilters(prev => ({ ...prev, [column]: value }));
   };
 
+  const confirmSingleReturnReceipt = async () => {
+    if (!singleReceiveOrderId || !singleReceiveEmployee) return;
+    setIsUpdating(true);
+    try {
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', singleReceiveOrderId);
+      await updateDoc(orderRef, { 
+        status: 'returned_warehouse',
+        returnStatus: 'in_warehouse',
+        receivedByEmployee: singleReceiveEmployee,
+        receivedAt: new Date().toISOString()
+      });
+      setShowSingleReceiveModal(false);
+      setSingleReceiveOrderId(null);
+      setSingleReceiveEmployee('');
+      setNotificationModal({ show: true, message: 'تم استلام الطلب وتحديث حالته بنجاح!' });
+    } catch (error) {
+      console.error("Error receiving return:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء تحديث الاستلام.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const activeOrders = orders.filter(o => !o.isArchived);
   const archivedOrdersList = orders.filter(o => o.isArchived);
 
@@ -755,11 +842,13 @@ export default function OrdersListPage() {
   });
 
   const returnedOrdersList = sourceOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent');
+  const returnedWarehouseList = sourceOrders.filter(o => o.status === 'returned_warehouse');
   const discrepancyOrdersList = sourceOrders.filter(o => o.has_discrepancy);
 
   const baseList = activeTab === 'archived' ? archivedOrdersList 
                  : activeTab === 'duplicates' ? duplicateOrdersList 
                  : activeTab === 'returned' ? returnedOrdersList
+                 : activeTab === 'returned_warehouse' ? returnedWarehouseList
                  : activeTab === 'discrepancies' ? discrepancyOrdersList
                  : sourceOrders;
 
@@ -1218,6 +1307,8 @@ export default function OrdersListPage() {
              jenniShipmentId: shipmentId,
              updatedAt: serverTimestamp()
           });
+          
+          addLogToBatch(batch, orderData.id, 'إرسال لشركة التوصيل', `تم إنشاء بوليصة شحن وتحديث الحالة إلى مشحون عبر ${companyName}`);
 
           await syncStockForStatusChange(orderData.items || [], orderData.status, 'shipped', batch);
           await batch.commit();
@@ -1869,6 +1960,8 @@ export default function OrdersListPage() {
       });
 
       await syncStockForStatusChange(order.items || [], order.status || 'pending', 'cancelled', batch);
+      
+      addLogToBatch(batch, order.id, 'إلغاء طلب', 'تم إلغاء الطلب بالكامل');
 
       await batch.commit();
       setNotificationModal({ show: true, message: '✅ تم إلغاء الطلب وإرجاع المنتجات للمخزن بنجاح' });
@@ -2036,6 +2129,8 @@ export default function OrdersListPage() {
             }
           }
         }
+        
+        addLogToBatch(batch, order.id, 'تغيير حالة', `تم تغيير الحالة من ${oldStatus} إلى ${newStatus}`);
       }
 
       // 4. Update dirty products in batch
@@ -2227,6 +2322,8 @@ export default function OrdersListPage() {
         editingOrder.status,
         batch
       );
+      
+      addLogToBatch(batch, editingOrder.id, 'تعديل طلب', 'تم حفظ التعديلات على تفاصيل الطلب أو منتجاته');
 
       await batch.commit();
       setNotificationModal({ show: true, message: 'تم تحديث بيانات الطلب والمخزون بنجاح' });
@@ -2452,7 +2549,7 @@ export default function OrdersListPage() {
     }
   };
 
-  const handlePrintLabels = () => {
+  const handlePrintLabels = (size = '100x150') => {
     const ordersToPrint = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
     
     if (ordersToPrint.length === 0) {
@@ -2465,104 +2562,202 @@ export default function OrdersListPage() {
       <head>
         <title>طباعة وصولات</title>
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap');
-          @page { size: 100mm 150mm portrait; margin: 0; }
+          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&display=swap');
+          @page { size: ${size === '80x120' ? '80mm 120mm' : size === '100x100' ? '100mm 100mm' : '100mm 150mm'}; margin: 0; }
           body { 
             font-family: 'Cairo', sans-serif; 
             margin: 0; 
             padding: 0; 
             background: #fff;
             color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            -webkit-print-color-adjust: exact;
           }
           .receipt { 
             width: 100mm; 
-            height: 150mm;
+            height: ${size === '100x100' ? '98mm' : '148mm'};
             page-break-after: always; 
-            padding: 8mm 5mm; 
+            padding: ${size === '100x100' ? '2mm' : '5mm'}; 
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            background-color: #fff;
             overflow: hidden;
+            position: relative;
+            ${size === '80x120' ? 'zoom: 0.8;' : ''}
           }
-          .header { text-align: center; margin-bottom: 5mm; }
-          .header h3 { margin: 0; font-size: 14pt; font-weight: 800; color: #1a1a1a; display: flex; align-items: center; justify-content: center; gap: 5px;}
-          .header-title { font-size: 20pt; font-weight: 800; margin-top: 5px; letter-spacing: 1px;}
-          
-          .content { display: flex; flex-grow: 1; align-items: flex-start; justify-content: space-between;}
-          
-          .right-side { width: 68%; font-size: 11pt; font-weight: 700; }
-          .right-side table { width: 100%; border-collapse: collapse; }
-          .right-side td { padding: 4px 0; vertical-align: top; border: none; }
-          .right-side td:nth-child(1) { width: 30%; text-align: right; font-weight: 800; }
-          .right-side td:nth-child(2) { width: 5%; text-align: center; font-weight: 800;}
-          .right-side td:nth-child(3) { width: 65%; text-align: right; }
-          
-          .left-side { width: 30%; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 10px; }
-          .big-gov { font-size: 18pt; font-weight: 800; margin: 0; line-height: 1.2; }
-          .region { font-size: 11pt; font-weight: 800; margin: 5px 0 2px 0; }
-          .price { font-size: 12pt; font-weight: 800; margin: 0 0 15px 0; direction: ltr; }
-          .qr-code { width: 90px; height: 90px; margin-bottom: 5px; }
-          .order-id { font-size: 10pt; font-weight: 800; margin-top: 5px; }
-          
-          .footer { text-align: center; margin-top: auto; font-size: 10pt; font-weight: 800; }
-          .footer p { margin: 3px 0; }
-          .footer-en { font-size: 9pt; font-weight: 600; font-family: sans-serif; }
-          
           .receipt:last-child { page-break-after: auto; }
+          ${size === '100x100' ? `
+            .receipt > div { margin-top: 4px !important; margin-bottom: 4px !important; }
+            .middle-box { min-height: 150px !important; }
+            .middle-box-right .qr-code { width: 55px !important; height: 55px !important; }
+            .bottom-barcode-row svg { height: 35px !important; }
+            .notes-box { min-height: 30px !important; }
+            table td { padding: 1px 0 !important; font-size: 8pt !important; }
+          ` : ''}
         </style>
+        <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
       </head>
       <body>
         ${ordersToPrint.map((order, index) => {
           const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
-          const productNames = (order.items || []).map((item: any) => item.productName).join(' + ');
+          const productNames = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join(' + ');
           let dateObj = new Date();
           if (order.date) {
             dateObj = order.date.toDate ? order.date.toDate() : (order.date.seconds ? new Date(order.date.seconds * 1000) : new Date(order.date));
           }
           const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}-${(dateObj.getMonth() + 1).toString().padStart(2, '0')}-${dateObj.getFullYear()}`;
+          const formattedTime = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
           const orderId = order.orderNumber || order.id.slice(-10).toUpperCase();
+
+          let phoneStr = order.customerPhone || order.phone || '';
+          let waPhone = phoneStr.replace(/\D/g, '');
+          if (waPhone.startsWith('07')) {
+             waPhone = '964' + waPhone.substring(1);
+          }
 
           return `
             <div class="receipt">
-              <div class="header">
-                <h3>سستم تاجر برو 🛍️</h3>
-                <div class="header-title">وصل الكتروني</div>
-              </div>
-              
-              <div class="content">
-                <div class="right-side">
-                  <table>
-                    <tr><td>المرسل</td><td>:</td><td>مارشميلو</td></tr>
-                    <tr><td>رقم الطلب</td><td>:</td><td>${orderId}</td></tr>
-                    <tr><td>الاسم</td><td>:</td><td>${order.customerName || ''}</td></tr>
-                    <tr><td>المحافظة</td><td>:</td><td>${order.governorate || ''}</td></tr>
-                    <tr><td>العنوان</td><td>:</td><td>${order.region || ''}</td></tr>
-                    <tr><td>الهاتف</td><td>:</td><td dir="ltr" style="text-align: right;">${order.customerPhone || order.phone || ''}</td></tr>
-                    <tr><td>العدد</td><td>:</td><td>${totalQuantity}</td></tr>
-                    <tr><td>المبلغ الكلي</td><td>:</td><td dir="ltr" style="text-align: right;">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع</td></tr>
-                    <tr><td>تاريخ الطلب</td><td>:</td><td>${formattedDate}</td></tr>
-                    <tr><td>الملاحظات</td><td>:</td><td>${order.notes || productNames}</td></tr>
-                  </table>
+              <!-- Top Date Row -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-size: 11pt; font-weight: 900; display: flex; align-items: center; gap: 5px;">
+                  سستم تاجر برو <span style="font-size: 12pt;">🛍️</span>
                 </div>
-                
-                <div class="left-side">
-                  <p class="big-gov">${order.governorate || ''}</p>
-                  <p class="region">${order.region || ''}</p>
-                  <p class="price">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع</p>
-                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${orderId}" class="qr-code" />
-                  <p class="order-id">${orderId}</p>
+                <div style="font-size: 9pt; font-weight: bold; direction: rtl; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1;">
+                  <div>تاريخ انشاء الشحنة <span style="font-weight: 900; margin-right: 5px; direction: ltr; display: inline-block;">${formattedDate}</span></div>
+                  <div style="font-weight: 900; direction: ltr; color: #555; font-size: 8pt; margin-top: 2px;">${formattedTime}</div>
                 </div>
               </div>
-              
-              <div class="footer">
-                <p>يرجى عدم اعطاء أي مبلغ للمندوب عدى المبلغ المذكور في الوصل</p>
-                <p>page ${index + 1}</p>
-                <p class="footer-en">This system is developed by Tajer Pro, www.tajerpro.com</p>
+
+              <!-- Row 1: Top Banner Arrow -->
+              <div style="display: flex; border: 1px solid #000; min-height: 55px; position: relative; align-items: stretch;">
+                <div style="width: 140px; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11pt; font-weight: bold; clip-path: polygon(25px 0, 100% 0, 100% 100%, 25px 100%, 0 50%); margin-left: -1px;">
+                  من المركز
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 4px 5px;">
+                  <div style="font-size: 11pt; font-weight: bold; line-height: 1.1; text-align: center;">الى <span style="font-size: 14pt; font-weight: 900;">${order.governorate || ''}</span></div>
+                  <div style="font-size: 9pt; font-weight: bold; line-height: 1.1; text-align: center; margin-top: 2px;">${order.region || ''}</div>
+                </div>
+              </div>
+
+              <!-- Row 2: Store Info -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div style="font-size: 11pt; font-weight: bold;">
+                  اسم المتجر: <span style="font-weight: 900;">حساني</span>
+                </div>
+                <div style="text-align: center;">
+                  <canvas class="qr-code" data-value="${orderId}" style="width: 32px; height: 32px;"></canvas>
+                  <div style="font-size: 6pt; color: #666; font-weight: bold;">رقم الوصل</div>
+                  <div style="font-weight: bold; font-size: 8pt;">${orderId}</div>
+                </div>
+                <div style="width: 90px; height: 35px;"></div>
+              </div>
+
+              <!-- Row 3: Middle Box -->
+              <div class="middle-box" style="border: 1px solid #000; display: flex; margin-top: 10px; min-height: 205px; box-sizing: border-box;">
+                <div style="width: 65%; padding: 10px; box-sizing: border-box; position: relative; display: flex; flex-direction: column;">
+                   <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                      <div style="font-weight: 900; font-size: 10pt; display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+                         معلومات الزبون <span style="font-size: 12pt;">👤</span>
+                      </div>
+                      <div style="background: #000; color: #fff; padding: 4px 15px 4px 5px; font-weight: bold; font-size: 10pt; clip-path: polygon(0 0, 100% 0, 85% 50%, 100% 100%, 0 100%); width: 110px; text-align: center; margin-left: -10px;">
+                         ${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع
+                      </div>
+                   </div>
+                   
+                   <table style="width: 100%; font-size: 8pt; font-weight: bold; border-collapse: separate; border-spacing: 0 4px;">
+                      <tr><td style="color: #000; width: 65px; text-align: right;">اسم الزبون:</td><td style="text-align: right; font-size: 9pt;">${order.customerName || ''}</td></tr>
+                      <tr><td style="color: #000; text-align: right; vertical-align: middle;">هاتف:</td><td style="text-align: right; direction: ltr;">
+                         <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px;">
+                           <span style="font-size: 9pt;">${phoneStr}</span>
+                           ${waPhone ? `<canvas class="phone-qr" data-value="https://wa.me/${waPhone}" style="width: 32px; height: 32px;"></canvas>` : ''}
+                         </div>
+                      </td></tr>
+                      ${size === '100x100' ? `
+                      <tr><td style="color: #000; text-align: right;">العنوان:</td><td style="text-align: right; font-size: 9pt;">${order.governorate || ''} / ${order.region || ''}</td></tr>
+                      ` : `
+                      <tr><td style="color: #000; text-align: right;">المحافظة:</td><td style="text-align: right; font-size: 9pt;">${order.governorate || ''}</td></tr>
+                      <tr><td style="color: #000; text-align: right;">المنطقة:</td><td style="text-align: right; font-size: 9pt;">${order.region || ''}</td></tr>
+                      `}
+                      <tr><td style="color: #000; text-align: right;">العدد:</td><td style="text-align: right; font-size: 9pt;">${totalQuantity}</td></tr>
+                   </table>
+                </div>
+                <div style="width: 35%; border-right: 1px solid #000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; box-sizing: border-box;">
+                   <canvas class="qr-code" data-value="${orderId}" style="width: 80px; height: 80px;"></canvas>
+                   <div style="font-size: 7pt; margin-top: 10px; color: #666; font-weight: bold;">رقم الوصل</div>
+                   <div style="font-weight: bold; font-size: 10pt;">${orderId}</div>
+                </div>
+              </div>
+
+              <!-- Row 3.5: Notes Box -->
+              <div class="notes-box" style="border: 1px solid #000; display: flex; margin-top: 10px; min-height: 40px; box-sizing: border-box; align-items: stretch;">
+                <div style="width: 80px; flex-shrink: 0; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10pt; font-weight: bold; margin-right: -1px;">
+                  الملاحظات
+                </div>
+                <div style="flex: 1; padding: 5px 10px; font-size: 9pt; font-weight: bold; display: flex; align-items: center; text-align: right; line-height: 1.2;">
+                  ${productNames}${order.notes ? ' | ملاحظة: ' + order.notes : ''}
+                </div>
+              </div>
+
+              <!-- Row 4: Bottom Barcode -->
+              <div class="bottom-barcode-row" style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; padding-top: 5px;">
+                <div style="text-align: center;">
+                  <svg class="linear-barcode" data-value="${orderId}" style="width: 130px; height: 45px;"></svg>
+                </div>
+                <div style="font-weight: bold; font-size: 14pt;">${index + 1}</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div style="text-align: right; font-weight: bold; font-size: 8pt; line-height: 1.2;">قابل للكسر<br>تعامل بعناية</div>
+                  <div style="width: 2px; height: 25px; background-color: #000;"></div>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 22h8"></path>
+                    <path d="M12 15v7"></path>
+                    <path d="M8 3h8"></path>
+                    <path d="M8 3v4c0 3 4 8 4 8s4-5 4-8V3"></path>
+                    <path d="M11 3l-1 3 2 1-1 2"></path>
+                  </svg>
+                </div>
               </div>
             </div>
           `;
         }).join('')}
         <script>
+          // Render QR Codes
+          document.querySelectorAll('.qr-code').forEach(canvas => {
+            new QRious({
+              element: canvas,
+              value: canvas.getAttribute('data-value'),
+              size: 250,
+              level: 'H'
+            });
+          });
+          // Render Phone QR Codes
+          document.querySelectorAll('.phone-qr').forEach(canvas => {
+            const val = canvas.getAttribute('data-value');
+            if (val && val.trim() !== '') {
+              new QRious({
+                element: canvas,
+                value: val,
+                size: 150,
+                level: 'L'
+              });
+            }
+          });
+          // Render Linear Barcodes
+          document.querySelectorAll('.linear-barcode').forEach(svg => {
+            JsBarcode(svg, svg.getAttribute('data-value'), {
+              format: "CODE128",
+              displayValue: true,
+              fontSize: 14,
+              textMargin: 2,
+              margin: 0,
+              width: 2,
+              height: 40
+            });
+          });
+
           setTimeout(() => {
             window.print();
             window.close();
@@ -2597,7 +2792,7 @@ export default function OrdersListPage() {
         <title>كشف الطلبات (A4)</title>
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&display=swap');
-          @page { size: A4 portrait; margin: 10mm; }
+          @page { size: A4 landscape; margin: 10mm; }
           body { 
             font-family: 'Cairo', sans-serif; 
             margin: 0; 
@@ -2670,12 +2865,12 @@ export default function OrdersListPage() {
           }
           table.manifest-table th, table.manifest-table td {
             border: 2px solid #000;
-            padding: 8px 4px;
+            padding: 2px;
             vertical-align: middle;
           }
           table.manifest-table th {
             background-color: #f2f2f2;
-            font-size: 12pt;
+            font-size: 11pt;
           }
           .barcode-img {
             width: 120px;
@@ -2713,14 +2908,14 @@ export default function OrdersListPage() {
           <thead>
             <tr>
               <th style="width: 3%;">#</th>
-              <th style="width: 13%;">الوصل</th>
+              <th style="width: 10%;">الوصل</th>
               <th style="width: 10%;">الهاتف</th>
-              <th style="width: 15%;">الملاحظات</th>
-              <th style="width: 10%;">المنطقة</th>
-              <th style="width: 19%;">الأصناف</th>
+              <th style="width: 20%;">الملاحظات</th>
+              <th style="width: 15%;">المنطقة</th>
+              <th style="width: 22%;">الأصناف</th>
               <th style="width: 10%;">الموظفين</th>
-              <th style="width: 10%;">المبلغ</th>
-              <th style="width: 10%;">الحالة</th>
+              <th style="width: 5%;">المبلغ</th>
+              <th style="width: 5%;">الحالة</th>
             </tr>
           </thead>
           <tbody>
@@ -2735,16 +2930,16 @@ export default function OrdersListPage() {
               <tr>
                 <td>${idx + 1}</td>
                 <td>
-                  <img src="https://barcode.tec-it.com/barcode.ashx?data=${orderId}&code=Code128&dpi=96" class="barcode-img" alt="${orderId}" style="width:100px;height:35px;"/>
-                  <br>${orderId}
+                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${orderId}" alt="${orderId}" style="width:45px;height:45px; display:block; margin: 0 auto 2px auto;"/>
+                  <span style="font-size: 10pt;">${orderId}</span>
                 </td>
                 <td style="direction: ltr; font-size: 11pt;">${order.customerPhone || order.phone || ''}</td>
                 <td style="font-size: 10pt;">${order.notes || '---'}</td>
                 <td style="font-size: 10pt;">${order.governorate || ''}<br>${order.region || ''}</td>
                 <td style="font-size: 10pt; padding-right: 5px;">${itemsList}</td>
-                <td style="font-size: 9pt;">
-                  <div>المدخل: <br/>${order.employeeName || '---'}</div>
-                  <div style="margin-top:4px;">النازل: <br/>${order.deliveryAgent || '---'}</div>
+                <td style="font-size: 10pt;">
+                  <div>المدخل: ${order.employeeName || '---'}</div>
+                  <div>النازل: ${order.deliveryAgent || '---'}</div>
                 </td>
                 <td style="direction: ltr; font-size: 11pt;">${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)}</td>
                 <td style="font-size: 11pt; font-weight: bold;">${statusLabel}</td>
@@ -3106,6 +3301,15 @@ export default function OrdersListPage() {
           )}
         </button>
         <button 
+          className={`${styles.tabButton} ${activeTab === 'returned_warehouse' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('returned_warehouse')}
+        >
+          📥 راجع مخزن
+          {returnedWarehouseList.length > 0 && (
+            <span className={styles.badge} style={{ backgroundColor: '#10b981' }}>{returnedWarehouseList.length}</span>
+          )}
+        </button>
+        <button 
           className={`${styles.tabButton} ${activeTab === 'duplicates' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('duplicates')}
         >
@@ -3406,6 +3610,29 @@ export default function OrdersListPage() {
         <div className={styles.controlsRight}>
           <button 
             className={styles.controlButton} 
+            onClick={() => {
+              setRefreshKey(prev => prev + 1);
+              setSelectedOrderIds([]);
+              setGlobalSearch('');
+              setDateFilter('الكل');
+              setSelectedStatus('all');
+              setShowOnlySelected(false);
+              setFilterByProduct('');
+              setFilterByPage('');
+              setFilterByMainCat('');
+              setFilterBySubCat('');
+              setCurrentPage(1);
+              setColumnFilters({
+                id: '', customerName: '', governorate: '', phone: '', totalAmount: '',
+                deliveryCost: '', netAmount: '', notes: '', status: '', addDate: '',
+                addTime: '', employeeName: '', shippingCompany: ''
+              });
+            }}
+          >
+            تحديث 🔄
+          </button>
+          <button 
+            className={styles.controlButton} 
             onClick={async () => {
               try {
                 // Filter active orders from the local state
@@ -3458,6 +3685,11 @@ export default function OrdersListPage() {
                           jenniShipmentId: update.jenniShipmentId,
                           updatedAt: new Date()
                         });
+                        
+                        let syncLogMsg = 'تمت مزامنة الطلب مع شركة التوصيل';
+                        if (statusChanged) syncLogMsg += ` (تم تحديث الحالة إلى ${targetStatus})`;
+                        addLogToBatch(batch, localOrder.id, 'مزامنة', syncLogMsg);
+                        
                         updatedCount++;
                       }
                     }
@@ -3479,9 +3711,46 @@ export default function OrdersListPage() {
             مزامنة الحالات 🔄
           </button>
           <button className={styles.controlButton} onClick={handlePrintManifest}>طباعة كشف (قائمة)</button>
-          <button className={styles.controlButton} onClick={handlePrintLabels}>طباعة ملصق 100x150</button>
-          <button className={styles.controlButton} onClick={handleExportZitaExcel}>تصدير Excel (زيطة)</button>
-          <button className={styles.controlButton} onClick={handleExportExcel}>تصدير Excel</button>
+          <div style={{ position: 'relative' }} ref={printDropdownRef}>
+            <button 
+              className={styles.controlButton} 
+              onClick={() => setShowPrintDropdown(!showPrintDropdown)}
+            >
+              طباعة ملصق 🖨️ ▾
+            </button>
+            {showPrintDropdown && (
+              <div style={{ 
+                position: 'absolute', top: '100%', right: 0, zIndex: 60, minWidth: '150px',
+                backgroundColor: 'var(--background)', border: '1px solid var(--border)', 
+                borderRadius: '8px', padding: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                display: 'flex', flexDirection: 'column', gap: '5px'
+              }}>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right' }} onClick={() => { handlePrintLabels('100x150'); setShowPrintDropdown(false); }}>🖨️ قياس 100x150</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right', backgroundColor: '#475569' }} onClick={() => { handlePrintLabels('80x120'); setShowPrintDropdown(false); }}>🖨️ قياس 80x120</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right', backgroundColor: '#64748b' }} onClick={() => { handlePrintLabels('100x100'); setShowPrintDropdown(false); }}>🖨️ قياس 100x100</button>
+              </div>
+            )}
+          </div>
+          <div style={{ position: 'relative' }} ref={exportDropdownRef}>
+            <button 
+              className={styles.controlButton} 
+              style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#c4b5fd', border: '1px solid #8b5cf6' }}
+              onClick={() => setShowExportDropdown(!showExportDropdown)}
+            >
+              تصدير Excel 📊 ▾
+            </button>
+            {showExportDropdown && (
+              <div style={{ 
+                position: 'absolute', top: '100%', right: 0, zIndex: 60, minWidth: '160px',
+                backgroundColor: 'var(--background)', border: '1px solid var(--border)', 
+                borderRadius: '8px', padding: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                display: 'flex', flexDirection: 'column', gap: '5px'
+              }}>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#8b5cf6', color: '#fff', border: 'none' }} onClick={() => { handleExportExcel(); setShowExportDropdown(false); }}>اكسل النظام</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#7c3aed', color: '#fff', border: 'none' }} onClick={() => { handleExportZitaExcel(); setShowExportDropdown(false); }}>اكسل نظام (زيطة)</button>
+              </div>
+            )}
+          </div>
           <Link href="/orders/entry" className={styles.controlButton} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', fontWeight: 'bold', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span>📥 استيراد Excel / إدخال طلبات</span>
           </Link>
@@ -3711,7 +3980,7 @@ export default function OrdersListPage() {
                   <div onMouseDown={(e) => handleResizeStart(e, 'shippingCompany')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'shippingCompany' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
               )}
-              {activeTab === 'returned' && visibleColumns.goodsPosition && (
+              {(activeTab === 'returned' || activeTab === 'returned_warehouse') && visibleColumns.goodsPosition && (
                 <th style={{ width: columnWidths.goodsPosition || 180, position: 'relative' }}>
                   <div className={styles.thContent}>
                     <span>موقف البضاعة</span>
@@ -3810,7 +4079,7 @@ export default function OrdersListPage() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         {Object.entries(statusMap).map(([key, info]) => {
-                          if (key === 'returned_warehouse' || key === 'delivered_settled' || key === 'partial_settled') return null;
+                          if ((key === 'returned_warehouse' && order.status !== 'returned_warehouse') || key === 'delivered_settled' || key === 'partial_settled') return null;
                           return (
                             <option key={key} value={key} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
                               {info.label} ({key})
@@ -3877,24 +4146,43 @@ export default function OrdersListPage() {
                     </td>
                   )}
                   {visibleColumns.shippingCompany && <td>{order.shippingCompany || '---'}</td>}
-                  {activeTab === 'returned' && visibleColumns.goodsPosition && (
+                  {(activeTab === 'returned' || activeTab === 'returned_warehouse') && visibleColumns.goodsPosition && (
                     <td onClick={(e) => e.stopPropagation()}>
-                      <button 
-                        onClick={() => handleReturnStatusToggle(order.id, order.returnStatus)}
-                        style={{
+                      {order.status === 'returned_warehouse' ? (
+                        <div style={{
                           padding: '0.4rem 0.8rem',
                           borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
                           fontWeight: 'bold',
                           fontSize: '0.85rem',
-                          backgroundColor: order.returnStatus === 'in_warehouse' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(249, 115, 22, 0.15)',
-                          color: order.returnStatus === 'in_warehouse' ? '#10b981' : '#f97316',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {order.returnStatus === 'in_warehouse' ? '✅ تم الاستلام بالمخزن' : '🚚 بذمة المندوب'}
-                      </button>
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          color: '#10b981',
+                          whiteSpace: 'nowrap',
+                          textAlign: 'center'
+                        }}>
+                          ✅ تم الاستلام بالمخزن
+                          {order.receivedByEmployee && <div style={{fontSize: '0.75rem', marginTop: '4px'}}>المستلم: {order.receivedByEmployee}</div>}
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => {
+                            setSingleReceiveOrderId(order.id);
+                            setShowSingleReceiveModal(true);
+                          }}
+                          style={{
+                            padding: '0.4rem 0.8rem',
+                            borderRadius: '6px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            fontSize: '0.85rem',
+                            backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                            color: '#f97316',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          🚚 بذمة المندوب
+                        </button>
+                      )}
                     </td>
                   )}
                   <td>
@@ -4216,6 +4504,46 @@ export default function OrdersListPage() {
                   </tbody>
                 </table>
               </div>
+              
+              {/* Operations Log Timeline */}
+              <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span>🕒</span> سجل عمليات الطلب
+                </h3>
+                {isFetchingLogs ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center' }}>جاري تحميل السجل...</p>
+                ) : orderLogs.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    {orderLogs.map((log: any) => {
+                      const dateObj = log.timestamp && typeof log.timestamp.toDate === 'function' ? log.timestamp.toDate() : new Date();
+                      const dateStr = dateObj.toLocaleDateString('en-GB');
+                      const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+                      return (
+                        <div key={log.id} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '80px', marginTop: '0.2rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{timeStr}</span>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{dateStr}</span>
+                          </div>
+                          <div style={{ width: '2px', backgroundColor: 'var(--border)', alignSelf: 'stretch', margin: '0 0.5rem', position: 'relative' }}>
+                             <div style={{ position: 'absolute', top: '0.5rem', left: '-4px', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'var(--primary)' }}></div>
+                          </div>
+                          <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '0.5rem', flexGrow: 1, border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <strong style={{ fontSize: '0.9rem', color: 'var(--text)' }}>{log.action}</strong>
+                              <span style={{ fontSize: '0.8rem', color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '0.1rem 0.5rem', borderRadius: '1rem' }}>👤 {log.employeeName}</span>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>{log.details}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)' }}>
+                    لا توجد حركات مسجلة لهذا الطلب حتى الآن.
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className={styles.modalFooter}>
@@ -4396,8 +4724,8 @@ export default function OrdersListPage() {
                         المجموع: 
                         <input 
                           type="number" 
-                          value={editingOrder.totalAmount || 0} 
-                          onChange={(e) => setEditingOrder({...editingOrder, totalAmount: Number(e.target.value)})} 
+                          value={(editingOrder.totalAmount || 0) + (editingOrder.deliveryCost || 0)} 
+                          onChange={(e) => setEditingOrder({...editingOrder, totalAmount: Number(e.target.value) - (editingOrder.deliveryCost || 0)})} 
                           style={{width: '90px', background: 'transparent', border: 'none', borderBottom: '1px dashed rgba(16,185,129,0.5)', color: '#10b981', outline: 'none', padding: '0.1rem', textAlign: 'center', fontWeight: 'bold', fontSize: '1.1rem'}}
                         /> 
                         د.ع
@@ -5616,6 +5944,43 @@ export default function OrdersListPage() {
             <div className={styles.modalFooter} style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>يمكنك الضغط خارج النافذة لإغلاقها والعودة لجدول الطلبات</span>
               <button className={styles.cancelButton} onClick={() => setShowStatsModal(false)}>إغلاق النافذة</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSingleReceiveModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowSingleReceiveModal(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className={styles.modalHeader}>
+              <h2>استلام راجع في المخزن</h2>
+              <button className={styles.closeButton} onClick={() => setShowSingleReceiveModal(false)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>اسم الموظف المستلم <span style={{color: '#ef4444'}}>*</span></label>
+                <select 
+                  className={styles.input} 
+                  value={singleReceiveEmployee}
+                  onChange={(e) => setSingleReceiveEmployee(e.target.value)}
+                  required
+                >
+                  <option value="">اختر الموظف...</option>
+                  {employeesList.map((emp, idx) => (
+                    <option key={idx} value={emp}>{emp}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.cancelButton} onClick={() => setShowSingleReceiveModal(false)}>إلغاء</button>
+              <button 
+                className={styles.saveButton} 
+                onClick={confirmSingleReturnReceipt}
+                disabled={!singleReceiveEmployee || isUpdating}
+              >
+                {isUpdating ? 'جاري التأكيد...' : 'تأكيد الاستلام ✅'}
+              </button>
             </div>
           </div>
         </div>
