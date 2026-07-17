@@ -9,6 +9,7 @@ interface Connection {
   id: string;
   name: string;
   pixelId: string;
+  accessToken?: string;
   testEventCode: string;
   linkedProducts?: string[];
 }
@@ -26,6 +27,7 @@ export default function IntegrationsPage() {
   // Form State
   const [connectionName, setConnectionName] = useState('');
   const [pixelId, setPixelId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
   const [testEventCode, setTestEventCode] = useState('');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [productsList, setProductsList] = useState<Product[]>([]);
@@ -66,6 +68,7 @@ export default function IntegrationsPage() {
   const resetForm = () => {
     setConnectionName('');
     setPixelId('');
+    setAccessToken('');
     setTestEventCode('');
     setSelectedProducts([]);
     setEditingId(null);
@@ -74,6 +77,7 @@ export default function IntegrationsPage() {
   const handleEditClick = (conn: Connection) => {
     setConnectionName(conn.name || '');
     setPixelId(conn.pixelId || '');
+    setAccessToken(conn.accessToken || '');
     setTestEventCode(conn.testEventCode || '');
     setSelectedProducts(conn.linkedProducts || []);
     setEditingId(conn.id);
@@ -114,6 +118,7 @@ export default function IntegrationsPage() {
       const dataToSave = {
         name: connectionName,
         pixelId,
+        accessToken,
         testEventCode,
         linkedProducts: selectedProducts,
         updatedAt: new Date()
@@ -211,6 +216,17 @@ export default function IntegrationsPage() {
                 value={pixelId}
                 onChange={(e) => setPixelId(e.target.value)}
                 placeholder="أدخل رقم البيكسل"
+              />
+            </div>
+
+            <div className={styles.formGroup}>
+              <label className={styles.label}>رمز الوصول (Access Token) - للـ CAPI</label>
+              <textarea 
+                className={styles.input} 
+                style={{ minHeight: '80px', direction: 'ltr', resize: 'vertical' }}
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                placeholder="أدخل رمز الوصول (Access Token) الخاص بالبيكسل"
               />
             </div>
 
