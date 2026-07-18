@@ -1,6 +1,7 @@
 // lib/meta-capi.ts
 import crypto from 'crypto';
-import { adminDb } from './firebaseAdmin';
+import { db } from './firebase';
+import { collection, query, where, getDocs, doc } from 'firebase/firestore';
 
 /**
  * دالة مساعدة لتشفير البيانات بـ SHA-256 (مطلوب من فيسبوك)
@@ -48,15 +49,17 @@ export const sendMetaEvent = async (event: MetaEvent) => {
   const configs: PixelConfig[] = [];
 
   // جلب البيانات من قاعدة البيانات إذا تم تمرير userId
-  if (event.userId && adminDb && (!event.pixelId || !event.accessToken)) {
+  if (event.userId && (!event.pixelId || !event.accessToken)) {
     try {
-      const connectionsRef = adminDb.collection('users').doc(event.userId).collection('integrations').doc('meta').collection('connections');
-      const querySnapshot = event.connectionName 
-        ? await connectionsRef.where('name', '==', event.connectionName).get()
-        : await connectionsRef.get(); // Fetch all connections
+      const connectionsRef = collection(db, 'users', event.userId, 'integrations', 'meta', 'connections');
+      const q = event.connectionName 
+        ? query(connectionsRef, where('name', '==', event.connectionName))
+        : connectionsRef; // Fetch all connections
 
-      querySnapshot.forEach(doc => {
-        const data = doc.data();
+      const querySnapshot = await getDocs(q);
+
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data();
         if (data.pixelId && data.accessToken) {
           configs.push({
             pixelId: data.pixelId,
