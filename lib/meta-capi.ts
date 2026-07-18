@@ -38,37 +38,51 @@ export interface MetaEvent {
  * دالة لإرسال الأحداث إلى فيسبوك Conversions API
  */
 export const sendMetaEvent = async (event: MetaEvent) => {
-  let PIXEL_ID = event.pixelId || process.env.META_PIXEL_ID || process.env.NEXT_PUBLIC_META_PIXEL_ID;
-  let ACCESS_TOKEN = event.accessToken || process.env.META_ACCESS_TOKEN || process.env.NEXT_PUBLIC_META_ACCESS_TOKEN;
+  interface PixelConfig {
+    pixelId: string;
+    accessToken: string;
+    testEventCode?: string;
+    linkedProducts?: string[];
+  }
+
+  const configs: PixelConfig[] = [];
 
   // جلب البيانات من قاعدة البيانات إذا تم تمرير userId
   if (event.userId && adminDb && (!event.pixelId || !event.accessToken)) {
     try {
       const connectionsRef = adminDb.collection('users').doc(event.userId).collection('integrations').doc('meta').collection('connections');
-      let querySnapshot;
-      
-      if (event.connectionName) {
-        querySnapshot = await connectionsRef.where('name', '==', event.connectionName).get();
-      } else {
-        querySnapshot = await connectionsRef.limit(1).get(); // سحب أول ربط متوفر إذا لم يحدد الاسم
-      }
+      const querySnapshot = event.connectionName 
+        ? await connectionsRef.where('name', '==', event.connectionName).get()
+        : await connectionsRef.get(); // Fetch all connections
 
-      if (!querySnapshot.empty) {
-        const docData = querySnapshot.docs[0].data();
-        if (docData.pixelId) PIXEL_ID = docData.pixelId;
-        if (docData.accessToken) ACCESS_TOKEN = docData.accessToken;
-      }
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.pixelId && data.accessToken) {
+          configs.push({
+            pixelId: data.pixelId,
+            accessToken: data.accessToken,
+            testEventCode: data.testEventCode,
+            linkedProducts: data.linkedProducts || []
+          });
+        }
+      });
     } catch (error) {
       console.error('Meta CAPI: Error fetching credentials from Firestore', error);
     }
+  } else if (event.pixelId && event.accessToken) {
+    // If passed directly
+    configs.push({
+      pixelId: event.pixelId,
+      accessToken: event.accessToken
+    });
   }
 
-  if (!PIXEL_ID || !ACCESS_TOKEN) {
-    console.error(`Meta CAPI: Missing Pixel ID or Access Token. Event '${event.eventName}' not sent.`);
+  if (configs.length === 0) {
+    console.log(`Meta CAPI: No Pixel configurations found for event '${event.eventName}'.`);
     return;
   }
 
-  // تجهيز بيانات العميل المشفرة
+  // تجهيز بيانات العميل المشفرة المشتركة
   const user_data: any = {
     client_ip_address: event.userData.clientIpAddress,
     client_user_agent: event.userData.clientUserAgent,
@@ -78,35 +92,65 @@ export const sendMetaEvent = async (event: MetaEvent) => {
   if (event.userData.city) user_data.ct = [hashData(event.userData.city)];
   if (event.userData.country) user_data.country = [hashData(event.userData.country)];
 
-  const payload = {
-    data: [
-      {
-        event_name: event.eventName,
-        event_time: event.eventTime || Math.floor(Date.now() / 1000),
-        action_source: 'website',
-        event_id: event.eventId,
-        user_data,
-        custom_data: event.customData,
-      },
-    ],
-  };
+  const originalContents = event.customData?.contents || [];
 
-  try {
-    const response = await fetch(`https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+  // Loop through each configured pixel and send the event if applicable
+  for (const config of configs) {
+    let filteredContents = originalContents;
+    let filteredValue = event.customData?.value || 0;
 
-    const result = await response.json();
-    if (response.ok) {
-      console.log(`Meta CAPI: Event '${event.eventName}' sent successfully to Pixel ${PIXEL_ID}.`);
-    } else {
-      console.error(`Meta CAPI Error sending '${event.eventName}':`, result);
+    // Filter contents if this pixel has specific linked products
+    if (config.linkedProducts && config.linkedProducts.length > 0 && originalContents.length > 0) {
+      filteredContents = originalContents.filter(item => config.linkedProducts!.includes(item.id));
+      
+      // If none of the order items match the pixel's linked products, skip this pixel completely
+      if (filteredContents.length === 0) {
+        console.log(`Meta CAPI: Skipping Pixel ${config.pixelId} because no order items matched its linked products.`);
+        continue;
+      }
+
+      // Recalculate the value based ONLY on the matching products
+      filteredValue = filteredContents.reduce((sum, item) => sum + (item.quantity * (item.item_price || 0)), 0);
     }
-  } catch (error) {
-    console.error('Meta CAPI Request Failed:', error);
+
+    const payload: any = {
+      data: [
+        {
+          event_name: event.eventName,
+          event_time: event.eventTime || Math.floor(Date.now() / 1000),
+          action_source: 'website',
+          event_id: `${event.eventId}_${config.pixelId}`, // Ensure unique event_id per pixel
+          user_data,
+          custom_data: {
+            ...event.customData,
+            value: filteredValue,
+            contents: filteredContents
+          },
+        },
+      ],
+    };
+
+    if (config.testEventCode) {
+      payload.test_event_code = config.testEventCode;
+    }
+
+    try {
+      const response = await fetch(`https://graph.facebook.com/v19.0/${config.pixelId}/events?access_token=${config.accessToken}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      if (response.ok) {
+        console.log(`Meta CAPI: Event '${event.eventName}' sent successfully to Pixel ${config.pixelId} with value ${filteredValue}.`);
+      } else {
+        console.error(`Meta CAPI Error sending '${event.eventName}' to Pixel ${config.pixelId}:`, result);
+      }
+    } catch (error) {
+      console.error(`Meta CAPI Request Failed for Pixel ${config.pixelId}:`, error);
+    }
   }
 };
