@@ -38,13 +38,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `No pixel found linked to product '${productId}'.` }, { status: 404, headers: corsHeaders });
     }
 
-    const docData = querySnapshot.docs[0].data();
-    const { pixelId, accessToken, testEventCode } = docData;
-
-    if (!pixelId || !accessToken) {
-      return NextResponse.json({ error: "Missing pixelId or accessToken in database." }, { status: 400, headers: corsHeaders });
-    }
-
     // 2. تجهيز بيانات المستخدم وتشفيرها
     const userData: any = {};
     
@@ -74,52 +67,63 @@ export async function POST(request: Request) {
     }
 
     if (fb_login_id) {
-      // fb_login_id is sent unhashed
       userData.fb_login_id = fb_login_id;
     }
 
-    // 3. بناء هيكل الطلب (Payload) الموجه إلى Meta API
-    const metaPayload: any = {
-      data: [
-        {
-          event_name: 'Purchase',
-          event_time: Math.floor(Date.now() / 1000), // الوقت الحالي بصيغة Unix Timestamp (بالثواني)
-          action_source: 'website',
-          user_data: userData,
-          custom_data: {
-            value: value ? Number(value) : 0,
-            currency: currency || 'USD',
+    const eventTime = Math.floor(Date.now() / 1000);
+
+    // 3. Loop through all matching pixels and send events
+    const promises = querySnapshot.docs.map(async (doc) => {
+      const { pixelId, accessToken, testEventCode } = doc.data();
+
+      if (!pixelId || !accessToken) return { status: 'rejected', reason: 'Missing credentials' };
+
+      const metaPayload: any = {
+        data: [
+          {
+            event_name: 'Purchase',
+            event_time: eventTime,
+            action_source: 'website',
+            user_data: userData,
+            custom_data: {
+              value: value ? Number(value) : 0,
+              currency: currency || 'USD',
+            }
           }
-        }
-      ],
-      // إرسال التوكن لتوثيق الطلب
-      access_token: accessToken
-    };
+        ],
+        access_token: accessToken
+      };
 
-    // إضافة كود الاختبار إذا كان موجوداً لتجربة وصول الأحداث
-    if (testEventCode && testEventCode.trim() !== '') {
-      metaPayload.test_event_code = testEventCode.trim();
-    }
+      if (testEventCode && testEventCode.trim() !== '') {
+        metaPayload.test_event_code = testEventCode.trim();
+      }
 
-    // 4. إرسال الطلب (Server-to-Server) إلى خوادم ميتا
-    const metaUrl = `https://graph.facebook.com/v19.0/${pixelId}/events`;
-    
-    const metaResponse = await fetch(metaUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(metaPayload)
+      const metaUrl = `https://graph.facebook.com/v19.0/${pixelId}/events`;
+      
+      const metaResponse = await fetch(metaUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(metaPayload)
+      });
+
+      const metaResponseData = await metaResponse.json();
+
+      if (!metaResponse.ok) {
+        console.error(`Meta CAPI Error for Pixel ${pixelId}:`, metaResponseData);
+        throw new Error(JSON.stringify(metaResponseData));
+      }
+
+      return { pixelId, metaResponseData };
     });
 
-    const metaResponseData = await metaResponse.json();
+    const results = await Promise.allSettled(promises);
 
-    if (!metaResponse.ok) {
-      console.error("Meta CAPI Error:", metaResponseData);
-      return NextResponse.json({ error: "Meta API returned an error", details: metaResponseData }, { status: metaResponse.status, headers: corsHeaders });
+    const failures = results.filter(r => r.status === 'rejected');
+    if (failures.length === results.length) {
+      return NextResponse.json({ error: "All Meta API calls failed", details: failures }, { status: 500, headers: corsHeaders });
     }
 
-    return NextResponse.json({ success: true, message: "Purchase event sent successfully via CAPI", metaResponse: metaResponseData }, { status: 200, headers: corsHeaders });
+    return NextResponse.json({ success: true, message: `Purchase event sent to ${results.length} pixels successfully.`, results }, { status: 200, headers: corsHeaders });
 
   } catch (error) {
     console.error("Webhook Error:", error);

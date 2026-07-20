@@ -685,12 +685,15 @@ export default function Dashboard() {
   const gaugeStats = React.useMemo(() => {
     const activeOrders = gaugeFilteredOrders.filter(o => o.status !== 'cancelled');
     const total = activeOrders.length;
-    if (total === 0) return { activeOrdersCount: 0, deliveryRate: 0 };
+    if (total === 0) return { activeOrdersCount: 0, deliveryRate: 0, returnRate: 0 };
     const delivered = gaugeFilteredOrders.filter(o => o.status === 'delivered' || o.status === 'partial').length;
-    const rate = Math.round((delivered / total) * 100);
+    const returned = gaugeFilteredOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse' || o.returnStatus === 'in_warehouse').length;
+    const delRate = Math.round((delivered / total) * 100);
+    const retRate = Math.round((returned / total) * 100);
     return {
       activeOrdersCount: total,
-      deliveryRate: rate
+      deliveryRate: delRate,
+      returnRate: retRate
     };
   }, [gaugeFilteredOrders]);
 
@@ -999,15 +1002,19 @@ export default function Dashboard() {
   const [animatedRate, setAnimatedRate] = useState(0);
 
 
+  const [animatedReturnRate, setAnimatedReturnRate] = useState(0);
+
   useEffect(() => {
     if (!loading) {
       setAnimatedRate(0);
+      setAnimatedReturnRate(0);
       const timer = setTimeout(() => {
         setAnimatedRate(gaugeStats.deliveryRate);
+        setAnimatedReturnRate(gaugeStats.returnRate);
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [gaugeStats.deliveryRate, loading]);
+  }, [gaugeStats.deliveryRate, gaugeStats.returnRate, loading]);
 
   if (loading) {
     return (
@@ -1350,6 +1357,80 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Card 2.5: Return Rate Gauge */}
+          <div className={`${styles.card} ${styles.gaugeCard}`}>
+            <div className={`${styles.cardHeader} ${styles.gaugeCardHeader}`}>
+              <span>نسبة الراجع</span>
+            </div>
+            
+            <div className={styles.gaugeContainer} style={{ marginTop: 'auto' }}>
+              <svg viewBox="0 0 200 130" className={styles.gaugeSvg}>
+                <defs>
+                  <linearGradient id="redGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#fee2e2" />
+                    <stop offset="50%" stopColor="#ef4444" />
+                    <stop offset="100%" stopColor="#991b1b" />
+                  </linearGradient>
+                  
+                  <filter id="glow-soft-red" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                  
+                  <filter id="glow-strong-red" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="6" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                </defs>
+
+                {/* Track path */}
+                <path d="M 25 100 A 75 75 0 0 1 175 100" 
+                      fill="none" stroke="#2a2a35" strokeWidth="16" strokeLinecap="butt" />
+
+                {/* Active progress path */}
+                <path 
+                  className={styles.progressBar} 
+                  d="M 25 100 A 75 75 0 0 1 175 100" 
+                  fill="none" 
+                  stroke="url(#redGradient)" 
+                  strokeWidth="16" 
+                  strokeLinecap="butt" 
+                  strokeDasharray="235.62" 
+                  strokeDashoffset={235.62 - (235.62 * animatedReturnRate) / 100} 
+                  filter="url(#glow-soft-red)" 
+                />
+
+                {/* Concentric rings */}
+                <circle cx="100" cy="100" r="40" fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.3" />
+                <circle cx="100" cy="100" r="30" fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.5" />
+                <circle cx="100" cy="100" r="20" fill="none" stroke="#ef4444" strokeWidth="1.5" opacity="0.8" />
+
+                {/* Needle group */}
+                <g 
+                  className={styles.needleGroup} 
+                  style={{ 
+                    transform: `translate(100px, 100px) rotate(${(animatedReturnRate / 100) * 180 - 90}deg)`
+                  }}
+                >
+                  <polygon points="-9,0 9,0 0,-83" 
+                           fill="rgba(239, 68, 68, 0.4)" 
+                           stroke="#fee2e2" strokeWidth="1.5" 
+                           filter="drop-shadow(0 0 5px rgba(239, 68, 68, 0.9))" />
+                </g>
+
+                {/* Pivot center */}
+                <circle cx="100" cy="100" r="12" fill="#7f1d1d" stroke="#fca5a5" strokeWidth="3" filter="url(#glow-strong-red)" />
+                <circle cx="100" cy="100" r="4" fill="#ffffff" filter="url(#glow-strong-red)" />
+              </svg>
+            </div>
+
+            <div className={styles.gaugeValue}>{animatedReturnRate}%</div>
+
+            <div className={styles.gaugeDescription}>
+              📦 {gaugeStats.activeOrdersCount} طلب نشط {getGaugeDescriptionLabel()}
+            </div>
+          </div>
+
           {/* Card 3 */}
           <div className={styles.card}>
             <div className={styles.cardHeader}>
@@ -1362,7 +1443,7 @@ export default function Dashboard() {
           </div>
 
           {/* Team Performance */}
-          <div className={`${styles.card} ${styles.colSpan2} ${styles.rowSpan2} ${isTeamCalOpen ? styles.elevatedCard : ''}`}>
+          <div className={`${styles.card} ${styles.colSpan3} ${styles.rowSpan2} ${isTeamCalOpen ? styles.elevatedCard : ''}`}>
             <div className={styles.cardHeader}>
               <span>أداء الفريق ({teamStats.length} موظف نشط)</span>
               
@@ -1571,7 +1652,7 @@ export default function Dashboard() {
           </div>
 
           {/* Card 4: Product Profit & Loss Analysis */}
-          <div className={`${styles.card} ${styles.colSpan4}`} style={{ marginTop: '1rem' }}>
+          <div className={`${styles.card} ${styles.colSpan5}`} style={{ marginTop: '1rem' }}>
             <div className={styles.cardHeader}>
               <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>📊 شجرة تحليل الأرباح والخسائر والأداء (البيج ⬅️ الفئة ⬅️ الصنف)</span>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>صافي الربح = الإيرادات من الكشوفات - المصاريف المباشرة</span>
@@ -1614,10 +1695,14 @@ export default function Dashboard() {
                           <span className={styles.nodeName}>🏢 {page.name}</span>
                         </div>
                         <div className={styles.nodeAmount}>
-                          <span className={styles.revenueText}>مبيعات: {page.revenue.toLocaleString()} د.ع</span>
-                          <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {page.expenses.toLocaleString()} د.ع</span>
+                          <span className={styles.revenueText}>
+                            مبيعات: <span dir="ltr">{page.revenue.toLocaleString()}</span> د.ع
+                          </span>
+                          <span className={styles.expensesText} style={{ color: '#c084fc' }}>
+                            مصاريف: <span dir="ltr">{page.expenses.toLocaleString()}</span> د.ع
+                          </span>
                           <span className={page.netProfit >= 0 ? styles.profitText : styles.lossText}>
-                            الصافي: {page.netProfit >= 0 ? '+' : ''}{page.netProfit.toLocaleString()} د.ع
+                            الصافي: <span dir="ltr">{page.netProfit >= 0 ? '+' : ''}{page.netProfit.toLocaleString()}</span> د.ع
                           </span>
                         </div>
                       </div>
@@ -1641,10 +1726,14 @@ export default function Dashboard() {
                                     <span className={styles.nodeName}>🌿 {branch.name}</span>
                                   </div>
                                   <div className={styles.nodeAmount}>
-                                    <span className={styles.revenueText}>مبيعات: {branch.revenue.toLocaleString()} د.ع</span>
-                                    <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {branch.expenses.toLocaleString()} د.ع</span>
+                                    <span className={styles.revenueText}>
+                                      مبيعات: <span dir="ltr">{branch.revenue.toLocaleString()}</span> د.ع
+                                    </span>
+                                    <span className={styles.expensesText} style={{ color: '#c084fc' }}>
+                                      مصاريف: <span dir="ltr">{branch.expenses.toLocaleString()}</span> د.ع
+                                    </span>
                                     <span className={branch.netProfit >= 0 ? styles.profitText : styles.lossText}>
-                                      الصافي: {branch.netProfit >= 0 ? '+' : ''}{branch.netProfit.toLocaleString()} د.ع
+                                      الصافي: <span dir="ltr">{branch.netProfit >= 0 ? '+' : ''}{branch.netProfit.toLocaleString()}</span> د.ع
                                     </span>
                                   </div>
                                 </div>
@@ -1668,10 +1757,14 @@ export default function Dashboard() {
                                               <span className={styles.nodeName}>🍂 {subcat.name}</span>
                                             </div>
                                             <div className={styles.nodeAmount}>
-                                              <span className={styles.revenueText}>مبيعات: {subcat.revenue.toLocaleString()} د.ع</span>
-                                              <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {subcat.expenses.toLocaleString()} د.ع</span>
+                                              <span className={styles.revenueText}>
+                                                مبيعات: <span dir="ltr">{subcat.revenue.toLocaleString()}</span> د.ع
+                                              </span>
+                                              <span className={styles.expensesText} style={{ color: '#c084fc' }}>
+                                                مصاريف: <span dir="ltr">{subcat.expenses.toLocaleString()}</span> د.ع
+                                              </span>
                                               <span className={subcat.netProfit >= 0 ? styles.profitText : styles.lossText}>
-                                                الصافي: {subcat.netProfit >= 0 ? '+' : ''}{subcat.netProfit.toLocaleString()} د.ع
+                                                الصافي: <span dir="ltr">{subcat.netProfit >= 0 ? '+' : ''}{subcat.netProfit.toLocaleString()}</span> د.ع
                                               </span>
                                             </div>
                                           </div>
@@ -1684,10 +1777,14 @@ export default function Dashboard() {
                                                     <span className={styles.nodeName}>🏷️ {item.name}</span>
                                                   </div>
                                                   <div className={styles.nodeAmount}>
-                                                    <span className={styles.revenueText}>مبيعات: {item.revenue.toLocaleString()} د.ع</span>
-                                                    <span className={styles.expensesText} style={{ color: '#c084fc' }}>مصاريف: {item.expenses.toLocaleString()} د.ع</span>
+                                                    <span className={styles.revenueText}>
+                                                      مبيعات: <span dir="ltr">{item.revenue.toLocaleString()}</span> د.ع
+                                                    </span>
+                                                    <span className={styles.expensesText} style={{ color: '#c084fc' }}>
+                                                      مصاريف: <span dir="ltr">{item.expenses.toLocaleString()}</span> د.ع
+                                                    </span>
                                                     <span className={item.netProfit >= 0 ? styles.profitText : styles.lossText}>
-                                                      الصافي: {item.netProfit >= 0 ? '+' : ''}{item.netProfit.toLocaleString()} د.ع
+                                                      الصافي: <span dir="ltr">{item.netProfit >= 0 ? '+' : ''}{item.netProfit.toLocaleString()}</span> د.ع
                                                     </span>
                                                   </div>
                                                 </div>
