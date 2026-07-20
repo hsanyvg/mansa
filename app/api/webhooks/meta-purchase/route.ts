@@ -39,7 +39,10 @@ export async function POST(request: Request) {
     }
 
     // 2. تجهيز بيانات المستخدم وتشفيرها
-    const userData: any = {};
+    const userData: any = {
+      client_ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '127.0.0.1',
+      client_user_agent: request.headers.get('user-agent') || 'Unknown',
+    };
     
     if (email) {
       const hashedEmail = hashData(email);
