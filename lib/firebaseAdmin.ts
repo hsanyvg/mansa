@@ -6,8 +6,13 @@ import fs from 'fs';
 
 if (!getApps().length) {
   try {
-    const serviceAccountPath = path.join(process.cwd(), 'serviceAccountKey.json');
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+    let serviceAccount;
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    } else {
+      const serviceAccountPath = path.join(process.cwd(), 'serviceAccountKey.json');
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+    }
     
     initializeApp({
       credential: cert(serviceAccount)
