@@ -2,29 +2,41 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, x-api-key, Authorization',
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function GET() {
   return NextResponse.json({
     status: 'active',
     message: 'Webhook is running. Please send a POST request with order data.',
-  });
+  }, { headers: corsHeaders });
 }
 
 export async function POST(request: Request) {
   try {
-    const incomingApiKey = request.headers.get('x-api-key');
+    const authHeader = request.headers.get('Authorization');
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    const incomingApiKey = request.headers.get('x-api-key') || bearerToken;
     const userId = process.env.USER_ID || 'guAXkcygceeBkpwtFdf1n8O3dRX2';
 
     if (!adminDb) {
       return NextResponse.json(
         { error: 'Internal Server Error: Database not initialized' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
     if (!incomingApiKey) {
       return NextResponse.json(
         { error: 'Unauthorized: Missing API Key' },
-        { status: 401 }
+        { status: 401, headers: corsHeaders }
       );
     }
 
@@ -73,30 +85,28 @@ export async function POST(request: Request) {
     if (!matchedLandingPage) {
       return NextResponse.json(
         { error: 'Unauthorized: Invalid API Key' },
-        { status: 401 }
+        { status: 401, headers: corsHeaders }
       );
     }
 
     if (!matchedLandingPage.isActive) {
       return NextResponse.json(
         { error: 'Forbidden: This landing page webhook is currently disabled' },
-        { status: 403 }
+        { status: 403, headers: corsHeaders }
       );
     }
 
     // 2. Parse request body
     const body = await request.json();
-    const { customerName, phoneNumber, governorate, productName, quantity, totalPrice } = body;
+    const { customerName, phoneNumber, governorate, productName, quantity, totalPrice, notes } = body;
 
     // 3. Basic validation of required fields
     if (!customerName || !phoneNumber || !governorate || !productName || !quantity || !totalPrice) {
       return NextResponse.json(
         { error: 'Bad Request: Missing required fields' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
-
-
 
     // 4. Prepare Order Object
     // Get the next sequential ID using a transaction
@@ -123,7 +133,7 @@ export async function POST(request: Request) {
       customerPhone2: '',
       governorate: governorate,
       region: '',
-      notes: 'طلب قادم من صفحة الهبوط أوتوماتيكياً',
+      notes: notes || 'طلب قادم من صفحة الهبوط أوتوماتيكياً',
       paymentMethod: 'كاش عند التوصيل',
       totalAmount: Number(totalPrice),
       items: [{
@@ -161,13 +171,13 @@ export async function POST(request: Request) {
         id: nextId.toString(),
         firebaseId: nextId.toString(),
       },
-      { status: 201 }
+      { status: 201, headers: corsHeaders }
     );
   } catch (error: any) {
     console.error('Webhook processing error:', error);
     return NextResponse.json(
       { error: 'Internal Server Error', details: error.message },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
