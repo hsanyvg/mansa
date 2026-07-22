@@ -1,26 +1,27 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { FieldValue } from 'firebase-admin/firestore';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, x-api-key, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, x-api-key, Authorization, X-Requested-With, Accept',
 };
 
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return NextResponse.json({ status: 'ok' }, { status: 200, headers: corsHeaders });
 }
 
 export async function GET() {
   return NextResponse.json({
     status: 'active',
     message: 'Webhook is running. Please send a POST request with order data.',
-  }, { headers: corsHeaders });
+  }, { status: 200, headers: corsHeaders });
 }
 
 export async function POST(request: Request) {
   try {
+    const { adminDb } = await import('@/lib/firebaseAdmin');
+    const { FieldValue } = await import('firebase-admin/firestore');
+
     const authHeader = request.headers.get('Authorization');
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
     const incomingApiKey = request.headers.get('x-api-key') || bearerToken;
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
 
     if (!adminDb) {
       return NextResponse.json(
-        { error: 'Internal Server Error: Database not initialized' },
+        { error: 'Internal Server Error: Database not initialized. Ensure FIREBASE_SERVICE_ACCOUNT_KEY env var is set.' },
         { status: 500, headers: corsHeaders }
       );
     }
