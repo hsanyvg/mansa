@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import path from 'path';
+import fs from 'fs';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,8 +21,27 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { adminDb } = await import('@/lib/firebaseAdmin');
-    const { FieldValue } = await import('firebase-admin/firestore');
+    const { getApps, initializeApp, cert } = await import('firebase-admin/app');
+    const { getFirestore, FieldValue } = await import('firebase-admin/firestore');
+
+    if (!getApps().length) {
+      try {
+        let serviceAccount;
+        if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+          serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+        } else {
+          const serviceAccountPath = path.join(process.cwd(), 'serviceAccountKey.json');
+          serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+        }
+        initializeApp({
+          credential: cert(serviceAccount)
+        });
+      } catch (e: any) {
+        console.error('Firebase app init error:', e);
+      }
+    }
+
+    const adminDb = getApps().length ? getFirestore() : null;
 
     const authHeader = request.headers.get('Authorization');
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
