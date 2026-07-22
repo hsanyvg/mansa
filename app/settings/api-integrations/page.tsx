@@ -39,6 +39,12 @@ export default function ApiIntegrationsPage() {
   const [isDeliveryLinked, setIsDeliveryLinked] = useState(false);
   const [isDeliveryManagerOpen, setIsDeliveryManagerOpen] = useState(false);
   
+  // Webhook Integration States
+  const [webhookApiKey, setWebhookApiKey] = useState('');
+  const [isWebhookActive, setIsWebhookActive] = useState(false);
+  const [isWebhookManagerOpen, setIsWebhookManagerOpen] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState('');
+
   // TODO: Update this when real Auth is implemented
   const currentUserId = 'default_tenant'; 
 
@@ -71,9 +77,24 @@ export default function ApiIntegrationsPage() {
       }
     });
 
+    // Webhook Integration listener
+    const webhookRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhook');
+    const unsubscribeWebhook = onSnapshot(webhookRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setWebhookApiKey(data.apiKey || '');
+        setIsWebhookActive(data.isActive !== false);
+      } else {
+        // If it doesn't exist, fallback to reading env if possible, but in UI we just show empty
+        setWebhookApiKey('');
+        setIsWebhookActive(false);
+      }
+    });
+
     return () => {
       unsubscribeMeta();
       unsubscribeDelivery();
+      unsubscribeWebhook();
     };
   }, []);
 
@@ -255,6 +276,26 @@ export default function ApiIntegrationsPage() {
     }
   };
 
+  const handleSaveWebhook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhook');
+      await setDoc(docRef, {
+        apiKey: webhookApiKey,
+        isActive: isWebhookActive,
+        updatedAt: new Date()
+      }, { merge: true });
+      alert('تم حفظ إعدادات الـ Webhook بنجاح!');
+      setIsWebhookManagerOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء الحفظ');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const activeAccountsCount = metaAccounts.filter(a => a.isActive).length;
 
   return (
@@ -340,25 +381,28 @@ export default function ApiIntegrationsPage() {
             </div>
           </div>
 
-          {/* TikTok Placeholder */}
-          <div className={styles.card} style={{ opacity: 0.5, pointerEvents: 'none' }}>
+          {/* Webhook Integration Card */}
+          <div className={styles.card}>
             <div className={styles.cardHeader}>
-              <div className={styles.cardIcon}>⚫</div>
-              <span className={`${styles.statusText} ${styles.statusInactive}`}>
-                قريباً
+              <div className={styles.cardIcon}>🌐</div>
+              <span className={`${styles.statusText} ${webhookApiKey && isWebhookActive ? styles.statusActive : styles.statusInactive}`}>
+                {webhookApiKey && isWebhookActive ? 'نشط ويستقبل الطلبات' : 'غير مفعل'}
               </span>
             </div>
             <div className={styles.cardBody}>
               <div className={styles.cardInfo}>
-                <h3>إعلانات تيك توك (TikTok Ads API)</h3>
+                <h3>صفحات الهبوط (Webhook API)</h3>
               </div>
               <p className={styles.cardDesc}>
-                مزامنة تلقائية للحملات وتتبع التكاليف على منصة تيك توك ومطابقة أكواد المنتجات.
+                توليد رابط مباشر (Endpoint) ومفتاح سري لاستقبال الطلبات من صفحات الهبوط الخارجية وإضافتها للنظام تلقائياً.
               </p>
             </div>
             <div className={styles.cardFooter}>
-              <button className={styles.btnConfig} disabled>
-                غير متاح
+              <button className={styles.btnConfig} onClick={() => {
+                setWebhookUrl(window.location.origin + '/api/webhook/orders');
+                setIsWebhookManagerOpen(true);
+              }}>
+                ⚙️ {webhookApiKey ? 'إدارة الربط' : 'إعداد الاتصال'}
               </button>
             </div>
           </div>
@@ -587,6 +631,83 @@ export default function ApiIntegrationsPage() {
                 )}
                 <button type="submit" className={styles.btnSave} disabled={isSaving} style={{ marginLeft: 'auto' }}>
                   {isSaving ? 'جاري الحفظ...' : '💾 حفظ وإغلاق'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Webhook Manager Modal */}
+      {isWebhookManagerOpen && (
+        <div className={styles.overlay} onClick={() => setIsWebhookManagerOpen(false)}>
+          <div className={styles.modal} style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalTitle}>🌐 إعدادات ربط صفحات الهبوط (Webhook)</div>
+              <button className={styles.closeBtn} onClick={() => setIsWebhookManagerOpen(false)}>&times;</button>
+            </div>
+            
+            <form onSubmit={handleSaveWebhook}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>رابط استقبال الطلبات (Webhook URL)</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input 
+                    type="text" 
+                    className={styles.input} 
+                    value={webhookUrl} 
+                    readOnly
+                    style={{ background: 'rgba(0,0,0,0.2)', color: '#10b981' }}
+                  />
+                  <button type="button" className={styles.btnConfig} onClick={() => {
+                    navigator.clipboard.writeText(webhookUrl);
+                    alert('تم نسخ الرابط');
+                  }}>
+                    📋 نسخ
+                  </button>
+                </div>
+                <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
+                  أعطِ هذا الرابط لمبرمج صفحة الهبوط ليرسل إليه بيانات الطلبات الجديدة عبر (POST).
+                </p>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label}>مفتاح التوثيق السري (API Key)</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input 
+                    type="text" 
+                    className={styles.input} 
+                    value={webhookApiKey} 
+                    onChange={(e) => setWebhookApiKey(e.target.value)} 
+                    placeholder="اضغط على توليد مفتاح جديد..."
+                    required
+                  />
+                  <button type="button" className={styles.btnTest} onClick={() => {
+                    const newKey = 'sk_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+                    setWebhookApiKey(newKey);
+                  }}>
+                    🔄 توليد
+                  </button>
+                </div>
+                <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
+                  يجب وضع هذا المفتاح كـ Header باسم x-api-key أو إرساله مع الطلب لضمان الحماية.
+                </p>
+              </div>
+
+              <div className={styles.toggleContainer} style={{ marginTop: '1.5rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px' }}>
+                <span className={styles.toggleLabel}>تفعيل استقبال الطلبات</span>
+                <label className={styles.toggleSwitch}>
+                  <input 
+                    type="checkbox" 
+                    checked={isWebhookActive} 
+                    onChange={(e) => setIsWebhookActive(e.target.checked)}
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div className={styles.actions}>
+                <button type="submit" className={styles.btnSave} disabled={isSaving} style={{ width: '100%' }}>
+                  {isSaving ? 'جاري الحفظ...' : '💾 حفظ التعديلات'}
                 </button>
               </div>
             </form>
