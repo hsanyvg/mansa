@@ -120,7 +120,7 @@ export async function POST(request: Request) {
 
     // 2. Parse request body
     const body = await request.json();
-    const { customerName, phoneNumber, governorate, productName, quantity, totalPrice, notes } = body;
+    const { customerName, phoneNumber, governorate, productName, quantity, totalPrice, notes, source } = body;
 
     // 3. Basic validation of required fields
     if (!customerName || !phoneNumber || !governorate || !productName || !quantity || !totalPrice) {
@@ -170,7 +170,7 @@ export async function POST(request: Request) {
       date: FieldValue.serverTimestamp(),
       status: 'pending', // VERY IMPORTANT: Use 'pending' so it shows in the dashboard
       is_settled: false,
-      source: matchedLandingPage.name || 'Landing Page Webhook',
+      source: source || matchedLandingPage.name || 'Landing Page Webhook',
       timestamp: new Date().getTime(),
     };
 
