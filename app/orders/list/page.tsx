@@ -844,12 +844,14 @@ export default function OrdersListPage() {
   const returnedOrdersList = sourceOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent');
   const returnedWarehouseList = sourceOrders.filter(o => o.status === 'returned_warehouse');
   const discrepancyOrdersList = sourceOrders.filter(o => o.has_discrepancy);
+  const landingPageOrdersList = sourceOrders.filter(o => o.notes?.includes('طلب قادم من صفحة الهبوط') || o.source?.toLowerCase().includes('landing page'));
 
   const baseList = activeTab === 'archived' ? archivedOrdersList 
                  : activeTab === 'duplicates' ? duplicateOrdersList 
                  : activeTab === 'returned' ? returnedOrdersList
                  : activeTab === 'returned_warehouse' ? returnedWarehouseList
                  : activeTab === 'discrepancies' ? discrepancyOrdersList
+                 : activeTab === 'landing_pages' ? landingPageOrdersList
                  : sourceOrders;
 
   const statusCounts = React.useMemo(() => {
@@ -3279,6 +3281,16 @@ export default function OrdersListPage() {
           📦 كافة الطلبات
           {activeOrders.length > 0 && (
             <span className={styles.badgeGreen}>{activeOrders.length}</span>
+          )}
+        </button>
+        <button 
+          className={`${styles.tabButton} ${activeTab === 'landing_pages' ? styles.tabButtonActive : ''}`}
+          onClick={() => setActiveTab('landing_pages')}
+          style={{ borderColor: activeTab === 'landing_pages' ? '#8b5cf6' : 'transparent', backgroundColor: activeTab === 'landing_pages' ? 'rgba(139, 92, 246, 0.15)' : 'transparent' }}
+        >
+          🌐 طلبات صفحات الهبوط
+          {landingPageOrdersList.length > 0 && (
+            <span className={styles.badge} style={{ backgroundColor: '#8b5cf6' }}>{landingPageOrdersList.length}</span>
           )}
         </button>
         <button 

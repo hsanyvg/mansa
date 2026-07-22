@@ -13,6 +13,14 @@ interface MetaAccount {
   isActive: boolean;
 }
 
+interface LandingPageWebhook {
+  id: string;
+  name: string;
+  apiKey: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 export default function ApiIntegrationsPage() {
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([]);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
@@ -40,9 +48,14 @@ export default function ApiIntegrationsPage() {
   const [isDeliveryManagerOpen, setIsDeliveryManagerOpen] = useState(false);
   
   // Webhook Integration States
-  const [webhookApiKey, setWebhookApiKey] = useState('');
-  const [isWebhookActive, setIsWebhookActive] = useState(false);
+  const [landingPages, setLandingPages] = useState<LandingPageWebhook[]>([]);
   const [isWebhookManagerOpen, setIsWebhookManagerOpen] = useState(false);
+  const [webhookActiveForm, setWebhookActiveForm] = useState<'list' | 'add' | 'edit'>('list');
+  const [selectedLandingPage, setSelectedLandingPage] = useState<LandingPageWebhook | null>(null);
+  
+  const [webhookName, setWebhookName] = useState('');
+  const [webhookApiKey, setWebhookApiKey] = useState('');
+  const [isWebhookActive, setIsWebhookActive] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState('');
 
   // TODO: Update this when real Auth is implemented
@@ -77,17 +90,14 @@ export default function ApiIntegrationsPage() {
       }
     });
 
-    // Webhook Integration listener
-    const webhookRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhook');
+    // Webhook Integration listener (Multiple Pages)
+    const webhookRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhooks');
     const unsubscribeWebhook = onSnapshot(webhookRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setWebhookApiKey(data.apiKey || '');
-        setIsWebhookActive(data.isActive !== false);
+        setLandingPages(data.landingPages || []);
       } else {
-        // If it doesn't exist, fallback to reading env if possible, but in UI we just show empty
-        setWebhookApiKey('');
-        setIsWebhookActive(false);
+        setLandingPages([]);
       }
     });
 
@@ -276,23 +286,94 @@ export default function ApiIntegrationsPage() {
     }
   };
 
+  const resetWebhookForm = () => {
+    setWebhookName('');
+    setWebhookApiKey('');
+    setIsWebhookActive(true);
+    setSelectedLandingPage(null);
+  };
+
+  const handleOpenWebhookAddForm = () => {
+    resetWebhookForm();
+    const newKey = 'sk_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+    setWebhookApiKey(newKey);
+    setWebhookActiveForm('add');
+  };
+
+  const handleOpenWebhookEditForm = (lp: LandingPageWebhook) => {
+    setSelectedLandingPage(lp);
+    setWebhookName(lp.name);
+    setWebhookApiKey(lp.apiKey);
+    setIsWebhookActive(lp.isActive);
+    setWebhookActiveForm('edit');
+  };
+
   const handleSaveWebhook = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!webhookName || !webhookApiKey) {
+      alert('الرجاء إدخال اسم الصفحة والمفتاح');
+      return;
+    }
+    
     setIsSaving(true);
     try {
-      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhook');
-      await setDoc(docRef, {
-        apiKey: webhookApiKey,
-        isActive: isWebhookActive,
-        updatedAt: new Date()
-      }, { merge: true });
-      alert('تم حفظ إعدادات الـ Webhook بنجاح!');
-      setIsWebhookManagerOpen(false);
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhooks');
+      let updatedPages = [...landingPages];
+
+      if (webhookActiveForm === 'edit' && selectedLandingPage) {
+        updatedPages = updatedPages.map(lp => 
+          lp.id === selectedLandingPage.id ? { ...lp, name: webhookName, apiKey: webhookApiKey, isActive: isWebhookActive } : lp
+        );
+      } else {
+        const newLp: LandingPageWebhook = {
+          id: 'lp_' + Date.now(),
+          name: webhookName,
+          apiKey: webhookApiKey,
+          isActive: isWebhookActive,
+          createdAt: new Date().toISOString()
+        };
+        updatedPages.push(newLp);
+      }
+
+      await setDoc(docRef, { landingPages: updatedPages }, { merge: true });
+      alert(webhookActiveForm === 'edit' ? 'تم التعديل بنجاح!' : 'تمت الإضافة بنجاح!');
+      setWebhookActiveForm('list');
+      resetWebhookForm();
     } catch (err) {
       console.error(err);
       alert('حدث خطأ أثناء الحفظ');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteWebhook = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('هل أنت متأكد من حذف نقطة الربط هذه؟ ستتوقف هذه الصفحة عن استقبال الطلبات نهائياً.')) return;
+    
+    try {
+      const updatedPages = landingPages.filter(lp => lp.id !== id);
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhooks');
+      await setDoc(docRef, { landingPages: updatedPages }, { merge: true });
+      alert('تم الحذف بنجاح.');
+      if (selectedLandingPage?.id === id) resetWebhookForm();
+      setWebhookActiveForm('list');
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء الحذف');
+    }
+  };
+
+  const handleToggleWebhookStatus = async (lp: LandingPageWebhook, e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const updatedPages = landingPages.map(item => 
+        item.id === lp.id ? { ...item, isActive: e.target.checked } : item
+      );
+      const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhooks');
+      await setDoc(docRef, { landingPages: updatedPages }, { merge: true });
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء تعديل الحالة.');
     }
   };
 
@@ -385,24 +466,41 @@ export default function ApiIntegrationsPage() {
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardIcon}>🌐</div>
-              <span className={`${styles.statusText} ${webhookApiKey && isWebhookActive ? styles.statusActive : styles.statusInactive}`}>
-                {webhookApiKey && isWebhookActive ? 'نشط ويستقبل الطلبات' : 'غير مفعل'}
+              <span className={`${styles.statusText} ${landingPages.some(lp => lp.isActive) ? styles.statusActive : styles.statusInactive}`}>
+                {landingPages.length > 0 ? `نشط (${landingPages.length} صفحات)` : 'غير متصل'}
               </span>
             </div>
             <div className={styles.cardBody}>
               <div className={styles.cardInfo}>
-                <h3>صفحات الهبوط (Webhook API)</h3>
+                <h3>صفحات الهبوط (Webhooks API)</h3>
               </div>
               <p className={styles.cardDesc}>
-                توليد رابط مباشر (Endpoint) ومفتاح سري لاستقبال الطلبات من صفحات الهبوط الخارجية وإضافتها للنظام تلقائياً.
+                توليد نقاط ربط ومفاتيح أمان مستقلة لكل صفحة هبوط لمعرفة مصدر الطلبات وإدارة الصفحات بسهولة.
               </p>
+
+              {landingPages.length > 0 && (
+                <div style={{ marginTop: '1rem', background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 'bold' }}>الصفحات المربوطة:</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {landingPages.map(lp => (
+                      <div key={lp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                        <span style={{ opacity: lp.isActive ? 1 : 0.5 }}>• {lp.name}</span>
+                        <span style={{ color: lp.isActive ? '#10b981' : '#ef4444', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                          {lp.isActive ? 'مفعل' : 'موقف'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className={styles.cardFooter}>
               <button className={styles.btnConfig} onClick={() => {
                 setWebhookUrl(window.location.origin + '/api/webhook/orders');
+                setWebhookActiveForm('list');
                 setIsWebhookManagerOpen(true);
               }}>
-                ⚙️ {webhookApiKey ? 'إدارة الربط' : 'إعداد الاتصال'}
+                ⚙️ {landingPages.length > 0 ? 'إدارة صفحات الهبوط' : 'إعداد الاتصال الأول'}
               </button>
             </div>
           </div>
@@ -638,79 +736,180 @@ export default function ApiIntegrationsPage() {
         </div>
       )}
 
-      {/* Webhook Manager Modal */}
+      {/* Webhooks Manager Modal */}
       {isWebhookManagerOpen && (
         <div className={styles.overlay} onClick={() => setIsWebhookManagerOpen(false)}>
-          <div className={styles.modal} style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.modal} style={{ maxWidth: webhookActiveForm === 'list' ? '680px' : '580px' }} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>🌐 إعدادات ربط صفحات الهبوط (Webhook)</div>
+              <div className={styles.modalTitle}>
+                🌐 {webhookActiveForm === 'list' ? 'إدارة صفحات الهبوط (Webhooks)' : webhookActiveForm === 'add' ? 'إضافة صفحة هبوط جديدة' : 'تعديل صفحة هبوط'}
+              </div>
               <button className={styles.closeBtn} onClick={() => setIsWebhookManagerOpen(false)}>&times;</button>
             </div>
             
-            <form onSubmit={handleSaveWebhook}>
-              <div className={styles.formGroup}>
-                <label className={styles.label}>رابط استقبال الطلبات (Webhook URL)</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input 
-                    type="text" 
-                    className={styles.input} 
-                    value={webhookUrl} 
-                    readOnly
-                    style={{ background: 'rgba(0,0,0,0.2)', color: '#10b981' }}
-                  />
-                  <button type="button" className={styles.btnConfig} onClick={() => {
-                    navigator.clipboard.writeText(webhookUrl);
-                    alert('تم نسخ الرابط');
-                  }}>
-                    📋 نسخ
+            {webhookActiveForm === 'list' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>قائمة نقاط الربط النشطة لصفحات الهبوط:</span>
+                  <button className={styles.btnSave} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }} onClick={handleOpenWebhookAddForm}>
+                    ➕ إضافة صفحة جديدة
                   </button>
                 </div>
-                <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
-                  أعطِ هذا الرابط لمبرمج صفحة الهبوط ليرسل إليه بيانات الطلبات الجديدة عبر (POST).
-                </p>
-              </div>
 
-              <div className={styles.formGroup}>
-                <label className={styles.label}>مفتاح التوثيق السري (API Key)</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {landingPages.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+                    لا توجد أي صفحات مربوطة بعد. اضغط على "إضافة صفحة جديدة" لتوليد مفتاحك الأول.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto', paddingLeft: '5px' }}>
+                    {landingPages.map(lp => (
+                      <div 
+                        key={lp.id} 
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                          borderRadius: '12px',
+                          padding: '1rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff', marginBottom: '0.2rem' }}>
+                            {lp.name}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            المفتاح: <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.3)', padding: '2px 4px', borderRadius: '4px' }}>{lp.apiKey.substring(0, 8)}...</span>
+                            <button 
+                              onClick={() => { navigator.clipboard.writeText(lp.apiKey); alert('تم نسخ المفتاح السري'); }}
+                              style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0 }}
+                            >
+                              📋
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.8rem', color: lp.isActive ? '#10b981' : 'var(--text-muted)' }}>
+                              {lp.isActive ? 'مفعل' : 'معطل'}
+                            </span>
+                            <label className={styles.toggleSwitch}>
+                              <input 
+                                type="checkbox" 
+                                checked={lp.isActive} 
+                                onChange={(e) => handleToggleWebhookStatus(lp, e)}
+                              />
+                              <span className={styles.slider}></span>
+                            </label>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button 
+                              className={styles.btnConfig} 
+                              style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }} 
+                              onClick={() => handleOpenWebhookEditForm(lp)}
+                            >
+                              ✏️
+                            </button>
+                            <button 
+                              className={styles.btnDelete} 
+                              style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }} 
+                              onClick={(e) => handleDeleteWebhook(lp.id, e)}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px' }}>
+                  <label className={styles.label}>رابط الـ Webhook العام للاستقبال (URL):</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="text" 
+                      className={styles.input} 
+                      value={webhookUrl} 
+                      readOnly
+                      style={{ color: '#10b981' }}
+                    />
+                    <button type="button" className={styles.btnConfig} onClick={() => {
+                      navigator.clipboard.writeText(webhookUrl);
+                      alert('تم نسخ الرابط');
+                    }}>
+                      📋 نسخ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(webhookActiveForm === 'add' || webhookActiveForm === 'edit') && (
+              <form onSubmit={handleSaveWebhook}>
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>اسم صفحة الهبوط أو المصدر</label>
                   <input 
                     type="text" 
                     className={styles.input} 
-                    value={webhookApiKey} 
-                    onChange={(e) => setWebhookApiKey(e.target.value)} 
-                    placeholder="اضغط على توليد مفتاح جديد..."
+                    value={webhookName} 
+                    onChange={(e) => setWebhookName(e.target.value)} 
+                    placeholder="مثال: صفحة خاتم العقيق الرئيسية"
                     required
                   />
-                  <button type="button" className={styles.btnTest} onClick={() => {
-                    const newKey = 'sk_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
-                    setWebhookApiKey(newKey);
-                  }}>
-                    🔄 توليد
+                  <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
+                    هذا الاسم سيظهر كمصدر (Source) في الطلبات القادمة من هذه الصفحة لتتمكن من تتبعها.
+                  </p>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>مفتاح التوثيق السري (API Key)</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="text" 
+                      className={styles.input} 
+                      value={webhookApiKey} 
+                      onChange={(e) => setWebhookApiKey(e.target.value)} 
+                      placeholder="اضغط على توليد مفتاح جديد..."
+                      required
+                    />
+                    <button type="button" className={styles.btnTest} onClick={() => {
+                      const newKey = 'sk_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+                      setWebhookApiKey(newKey);
+                    }}>
+                      🔄 توليد
+                    </button>
+                  </div>
+                  <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
+                    أعطِ هذا المفتاح لمبرمج الصفحة ليضعه في كود الإرسال.
+                  </p>
+                </div>
+
+                <div className={styles.toggleContainer} style={{ marginTop: '1.5rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px' }}>
+                  <span className={styles.toggleLabel}>تفعيل استقبال الطلبات من هذه الصفحة</span>
+                  <label className={styles.toggleSwitch}>
+                    <input 
+                      type="checkbox" 
+                      checked={isWebhookActive} 
+                      onChange={(e) => setIsWebhookActive(e.target.checked)}
+                    />
+                    <span className={styles.slider}></span>
+                  </label>
+                </div>
+
+                <div className={styles.actions}>
+                  <button type="button" className={styles.btnConfig} onClick={() => setWebhookActiveForm('list')} style={{ marginLeft: 'auto' }}>
+                    ⬅️ رجوع
+                  </button>
+                  <button type="submit" className={styles.btnSave} disabled={isSaving}>
+                    {isSaving ? 'جاري الحفظ...' : '💾 حفظ التعديلات'}
                   </button>
                 </div>
-                <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
-                  يجب وضع هذا المفتاح كـ Header باسم x-api-key أو إرساله مع الطلب لضمان الحماية.
-                </p>
-              </div>
-
-              <div className={styles.toggleContainer} style={{ marginTop: '1.5rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px' }}>
-                <span className={styles.toggleLabel}>تفعيل استقبال الطلبات</span>
-                <label className={styles.toggleSwitch}>
-                  <input 
-                    type="checkbox" 
-                    checked={isWebhookActive} 
-                    onChange={(e) => setIsWebhookActive(e.target.checked)}
-                  />
-                  <span className={styles.slider}></span>
-                </label>
-              </div>
-
-              <div className={styles.actions}>
-                <button type="submit" className={styles.btnSave} disabled={isSaving} style={{ width: '100%' }}>
-                  {isSaving ? 'جاري الحفظ...' : '💾 حفظ التعديلات'}
-                </button>
-              </div>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}

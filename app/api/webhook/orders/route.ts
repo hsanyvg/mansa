@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebaseAdmin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 export async function GET() {
   return NextResponse.json({
@@ -20,34 +21,66 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch integration config from Firestore
+    if (!incomingApiKey) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Missing API Key' },
+        { status: 401 }
+      );
+    }
+
+    // Fetch integration config from Firestore (Multiple Webhooks)
     const integrationDoc = await adminDb
       .collection('users')
       .doc(userId)
       .collection('integrations')
-      .doc('webhook')
+      .doc('webhooks')
       .get();
 
-    let validApiKey = process.env.API_KEY; // Fallback to env
-    let isWebhookActive = true;
+    let matchedLandingPage = null;
 
     if (integrationDoc.exists) {
       const data = integrationDoc.data();
-      if (data?.apiKey) validApiKey = data.apiKey;
-      if (data?.isActive === false) isWebhookActive = false;
+      const landingPages = data?.landingPages || [];
+      matchedLandingPage = landingPages.find((lp: any) => lp.apiKey === incomingApiKey);
     }
 
-    if (!isWebhookActive) {
-      return NextResponse.json(
-        { error: 'Forbidden: Webhook is currently disabled by the administrator' },
-        { status: 403 }
-      );
+    // Fallback logic for the old 'webhook' document or env if not found in new array
+    if (!matchedLandingPage) {
+      const oldIntegrationDoc = await adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('integrations')
+        .doc('webhook')
+        .get();
+        
+      let validApiKey = process.env.API_KEY;
+      let isWebhookActive = true;
+
+      if (oldIntegrationDoc.exists) {
+        const data = oldIntegrationDoc.data();
+        if (data?.apiKey) validApiKey = data.apiKey;
+        if (data?.isActive === false) isWebhookActive = false;
+      }
+
+      if (incomingApiKey === validApiKey) {
+        matchedLandingPage = {
+          name: 'Landing Page Webhook (Legacy)',
+          isActive: isWebhookActive
+        };
+      }
     }
 
-    if (!validApiKey || incomingApiKey !== validApiKey) {
+    if (!matchedLandingPage) {
       return NextResponse.json(
         { error: 'Unauthorized: Invalid API Key' },
         { status: 401 }
+      );
+    }
+
+    if (!matchedLandingPage.isActive) {
+      return NextResponse.json(
+        { error: 'Forbidden: This landing page webhook is currently disabled' },
+        { status: 403 }
       );
     }
 
@@ -66,42 +99,67 @@ export async function POST(request: Request) {
 
 
     // 4. Prepare Order Object
-    // Dashboard expects an 'id' field usually for the sequential number.
-    const randomSequentialId = Math.floor(100000 + Math.random() * 900000).toString();
+    // Get the next sequential ID using a transaction
+    const counterRef = adminDb.collection('users').doc(userId).collection('metadata').doc('orderCounter');
+    const nextId = await adminDb.runTransaction(async (transaction) => {
+      const counterSnap = await transaction.get(counterRef);
+      let currentId = 100000;
+      if (counterSnap.exists) {
+        currentId = counterSnap.data()?.lastId || 100000;
+      }
+      const newId = currentId + 1;
+      transaction.set(counterRef, { lastId: newId }, { merge: true });
+      return newId;
+    });
 
     const newOrder = {
-      id: randomSequentialId,
-      customerName,
-      phoneNumber,
-      governorate,
-      productName,
-      quantity: Number(quantity),
-      totalPrice: Number(totalPrice),
-      status: 'جديد', // Default status: New
-      createdAt: new Date().toISOString(),
-      source: 'Landing Page Webhook',
-      timestamp: new Date().getTime(), // Some dashboards use timestamp
-      systemUser: 'Landing Page', // Shows up as 'مستخدم النظام' in dashboard
+      id: nextId.toString(),
+      employeeId: 'landing_page_webhook',
+      employeeName: matchedLandingPage.name || 'Landing Page',
+      bookingEmployeeId: 'landing_page_webhook',
+      bookingEmployeeName: 'Landing Page',
+      customerName: customerName,
+      customerPhone: phoneNumber,
+      customerPhone2: '',
+      governorate: governorate,
+      region: '',
+      notes: 'طلب قادم من صفحة الهبوط أوتوماتيكياً',
+      paymentMethod: 'كاش عند التوصيل',
+      totalAmount: Number(totalPrice),
+      items: [{
+        productId: 'lp_product',
+        productName: productName,
+        quantity: Number(quantity),
+        unitPrice: Number(quantity) > 0 ? Number(totalPrice) / Number(quantity) : Number(totalPrice),
+        total: Number(totalPrice),
+        isComposite: false,
+        composition: null
+      }],
+      date: FieldValue.serverTimestamp(),
+      status: 'pending', // VERY IMPORTANT: Use 'pending' so it shows in the dashboard
+      is_settled: false,
+      source: matchedLandingPage.name || 'Landing Page Webhook',
+      timestamp: new Date().getTime(),
     };
 
     // 5. Save to Firebase Firestore under the specific user's orders
-    // userId is already defined above
-    
-    const docRef = await adminDb
+    const docRef = adminDb
       .collection('users')
       .doc(userId)
       .collection('orders')
-      .add(newOrder);
+      .doc(nextId.toString());
+      
+    await docRef.set(newOrder);
 
     // 6. Return success response
     return NextResponse.json(
       {
         success: true,
         message: 'Order created successfully',
-        orderId: randomSequentialId,
-        order_id: randomSequentialId,
-        id: randomSequentialId,
-        firebaseId: docRef.id,
+        orderId: nextId.toString(),
+        order_id: nextId.toString(),
+        id: nextId.toString(),
+        firebaseId: nextId.toString(),
       },
       { status: 201 }
     );
