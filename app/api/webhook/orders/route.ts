@@ -278,8 +278,41 @@ export async function POST(request: Request) {
       .doc(userId)
       .collection('orders')
       .doc(nextId.toString());
-      
     await docRef.set(newOrder);
+
+    // Trigger Meta and TikTok Pixels asynchronously
+    try {
+      const baseUrl = new URL(request.url).origin;
+      const pixelPayload = {
+        productId: actualProductId,
+        value: Number(totalPrice),
+        currency: 'IQD',
+        email: '',
+        phone: phoneNumber,
+        firstName: customerName,
+        state: governorate,
+        userId: userId,
+        client_ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '127.0.0.1',
+        user_agent: request.headers.get('user-agent') || 'Unknown',
+        event_source_url: request.url
+      };
+
+      // Fire Meta Pixel
+      fetch(`${baseUrl}/api/webhooks/meta-purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pixelPayload)
+      }).catch(err => console.error('Meta Pixel Trigger Error:', err));
+
+      // Fire TikTok Pixel
+      fetch(`${baseUrl}/api/webhooks/tiktok-purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pixelPayload)
+      }).catch(err => console.error('TikTok Pixel Trigger Error:', err));
+    } catch (pixelErr) {
+      console.error('Error triggering pixels:', pixelErr);
+    }
 
     // 6. Return success response
     return NextResponse.json(

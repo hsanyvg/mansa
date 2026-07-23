@@ -20,7 +20,10 @@ interface Product {
 }
 
 export default function IntegrationsPage() {
-  const [connectionsList, setConnectionsList] = useState<Connection[]>([]);
+  const [activeTab, setActiveTab] = useState<'meta' | 'tiktok'>('meta');
+  
+  const [metaConnections, setMetaConnections] = useState<Connection[]>([]);
+  const [tiktokConnections, setTiktokConnections] = useState<Connection[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -32,35 +35,28 @@ export default function IntegrationsPage() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [productsList, setProductsList] = useState<Product[]>([]);
 
-  // Fetch connections in real-time
+  // Fetch connections
   useEffect(() => {
-    const connectionsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections');
+    const metaRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections');
+    const tiktokRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'tiktok', 'connections');
     
-    const unsubscribe = onSnapshot(connectionsRef, (snapshot) => {
-      const connectionsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Connection[];
-      
-      setConnectionsList(connectionsData);
-      setIsLoading(false);
-    }, (error) => {
-      console.error("خطأ في جلب الروابط:", error);
+    const unsubMeta = onSnapshot(metaRef, (snapshot) => {
+      setMetaConnections(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Connection)));
+    });
+
+    const unsubTiktok = onSnapshot(tiktokRef, (snapshot) => {
+      setTiktokConnections(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Connection)));
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => { unsubMeta(); unsubTiktok(); };
   }, []);
 
   // Fetch products
   useEffect(() => {
     const productsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products');
     const unsubscribe = onSnapshot(productsRef, (snapshot) => {
-      const pData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().name
-      })) as Product[];
-      setProductsList(pData);
+      setProductsList(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as Product)));
     });
     return () => unsubscribe();
   }, []);
@@ -92,188 +88,174 @@ export default function IntegrationsPage() {
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering the card click
+    e.stopPropagation();
     if (!window.confirm('هل أنت متأكد من حذف هذا الربط؟')) return;
-    
     try {
-      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections', id));
-      if (editingId === id) {
-        resetForm();
-      }
+      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', activeTab, 'connections', id));
+      if (editingId === id) resetForm();
     } catch (error) {
-      console.error("خطأ في الحذف:", error);
-      alert("حدث خطأ أثناء الحذف");
+      console.error("Error deleting connection:", error);
+      alert('حدث خطأ أثناء الحذف');
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!connectionName.trim() || !pixelId.trim()) {
-      alert("يرجى إدخال اسم الربط ورقم البيكسل على الأقل");
+    if (!connectionName || !pixelId) {
+      alert('يرجى ملء اسم الربط ورقم البكسل (Pixel ID)');
       return;
     }
-
+    const connectionData = {
+      name: connectionName,
+      pixelId,
+      accessToken,
+      testEventCode,
+      linkedProducts: selectedProducts,
+      updatedAt: new Date().toISOString()
+    };
     try {
-      const connectionsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections');
-      const dataToSave = {
-        name: connectionName,
-        pixelId,
-        accessToken,
-        testEventCode,
-        linkedProducts: selectedProducts,
-        updatedAt: new Date()
-      };
-
       if (editingId) {
-        // Update existing
-        await updateDoc(doc(connectionsRef, editingId), dataToSave);
-        alert("تم تحديث الإعدادات بنجاح");
+        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', activeTab, 'connections', editingId), connectionData);
       } else {
-        // Add new
-        await addDoc(connectionsRef, {
-          ...dataToSave,
-          createdAt: new Date()
+        await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', activeTab, 'connections'), {
+          ...connectionData,
+          createdAt: new Date().toISOString()
         });
-        alert("تمت إضافة الربط الجديد بنجاح");
       }
-      
       resetForm();
     } catch (error) {
-      console.error("خطأ في حفظ الإعدادات:", error);
-      alert("حدث خطأ أثناء حفظ الإعدادات");
+      console.error("Error saving connection:", error);
+      alert('حدث خطأ أثناء الحفظ');
     }
   };
+
+  const currentConnections = activeTab === 'meta' ? metaConnections : tiktokConnections;
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>الربط والتتبع</h1>
+        <div className={styles.headerContent}>
+          <h1 className={styles.title}>بكسل المنصات</h1>
+          <p className={styles.subtitle}>أدر بكسلات التتبع الخاصة بك واربطها بالمنتجات بسهولة لتسجيل المبيعات</p>
+        </div>
       </header>
 
-      <div className={styles.contentWrapper}>
-        
-        {/* Sidebar List */}
-        <aside className={styles.listSidebar}>
+      <div className={styles.platformTabs}>
+        <button 
+          className={`${styles.tabBtn} ${activeTab === 'meta' ? styles.activeTab : ''}`}
+          onClick={() => { setActiveTab('meta'); resetForm(); }}
+        >
+          <span className={styles.tabIcon}>🔵</span> بكسل ميتا (فيسبوك)
+        </button>
+        <button 
+          className={`${styles.tabBtn} ${activeTab === 'tiktok' ? styles.activeTab : ''}`}
+          onClick={() => { setActiveTab('tiktok'); resetForm(); }}
+        >
+          <span className={styles.tabIcon}>🎵</span> بكسل تيك توك
+        </button>
+      </div>
+
+      <div className={styles.contentGrid}>
+        {/* Form Section */}
+        <div className={styles.formSection}>
+          <div className={styles.formCard}>
+            <h2 className={styles.formTitle}>
+              {editingId ? `تعديل ربط (${activeTab === 'meta' ? 'ميتا' : 'تيك توك'})` : `ربط جديد (${activeTab === 'meta' ? 'ميتا' : 'تيك توك'})`}
+            </h2>
+            <form onSubmit={handleSave} className={styles.form}>
+              <div className={styles.formGroup}>
+                <label>اسم الربط (لتمييز البكسل)</label>
+                <input type="text" value={connectionName} onChange={e => setConnectionName(e.target.value)} placeholder="مثال: بكسل المتجر الرئيسي" required />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Pixel ID (مطلوب)</label>
+                <input type="text" value={pixelId} onChange={e => setPixelId(e.target.value)} placeholder="مثال: 1234567890" required />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Access Token (Conversions API / Events API)</label>
+                <textarea value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="قم بلصق الرمز السري الطويل هنا" rows={4} />
+                <small>مطلوب لإرسال أحداث الشراء من السيرفر مباشرة لضمان الدقة العالية</small>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Test Event Code (اختياري)</label>
+                <input type="text" value={testEventCode} onChange={e => setTestEventCode(e.target.value)} placeholder="مثال: TEST12345" />
+                <small>استخدمه لتجربة الإرسال والتأكد من وصول الأحداث في منصة الاختبار</small>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.productsLabel}>
+                  <span>الأصناف المربوطة بهذا البكسل</span>
+                  <span className={styles.countBadge}>{selectedProducts.length}</span>
+                </label>
+                <div className={styles.productsScrollList}>
+                  {productsList.map(product => (
+                    <div key={product.id} className={`${styles.productCheckItem} ${selectedProducts.includes(product.id) ? styles.selected : ''}`} onClick={() => handleProductToggle(product.id)}>
+                      <div className={styles.checkCircle}>
+                        {selectedProducts.includes(product.id) && <span>✓</span>}
+                      </div>
+                      <span>{product.name}</span>
+                    </div>
+                  ))}
+                  {productsList.length === 0 && <p style={{textAlign: 'center', opacity: 0.5, padding: '1rem'}}>لا توجد أصناف مضافة بعد</p>}
+                </div>
+              </div>
+
+              <div className={styles.formActions}>
+                {editingId && <button type="button" className={styles.cancelBtn} onClick={resetForm}>إلغاء التعديل</button>}
+                <button type="submit" className={styles.submitBtn}>
+                  {editingId ? 'حفظ التغييرات' : 'إضافة البكسل'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* List Section */}
+        <div className={styles.listSection}>
           <div className={styles.listHeader}>
-            <h2 className={styles.listTitle}>الروابط المحفوظة</h2>
-            <button className={styles.addButton} onClick={resetForm}>
-              + إضافة جديد
-            </button>
+            <h2>البكسلات المربوطة ({currentConnections.length})</h2>
           </div>
           
-          <div className={styles.cardsContainer}>
+          <div className={styles.cardsGrid}>
             {isLoading ? (
-              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>جاري التحميل...</div>
-            ) : connectionsList.length === 0 ? (
-              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>لا توجد روابط محفوظة بعد.</div>
+              <p style={{textAlign: 'center', width: '100%', padding: '2rem'}}>جاري التحميل...</p>
+            ) : currentConnections.length === 0 ? (
+              <div className={styles.emptyState}>
+                <span className={styles.emptyIcon}>🔌</span>
+                <p>لا يوجد أي بكسل مربوط حالياً في هذه المنصة</p>
+              </div>
             ) : (
-              connectionsList.map((conn) => (
-                <div 
-                  key={conn.id} 
-                  className={`${styles.connectionCard} ${editingId === conn.id ? styles.active : ''}`}
-                  onClick={() => handleEditClick(conn)}
-                >
-                  <div className={styles.cardInfo}>
-                    <span className={styles.cardTitle}>{conn.name || 'بدون اسم'}</span>
-                    <span className={styles.cardSubtitle}>Pixel: {conn.pixelId}</span>
+              currentConnections.map(conn => (
+                <div key={conn.id} className={`${styles.pixelCard} ${editingId === conn.id ? styles.editingCard : ''}`} onClick={() => handleEditClick(conn)}>
+                  <div className={styles.cardHeader}>
+                    <div className={styles.cardTitleArea}>
+                      <span className={styles.platformBadge}>{activeTab === 'meta' ? 'Meta' : 'TikTok'}</span>
+                      <h3>{conn.name}</h3>
+                    </div>
+                    <button className={styles.deleteBtn} onClick={(e) => handleDelete(conn.id, e)} title="حذف">🗑️</button>
                   </div>
-                  <button 
-                    className={styles.deleteBtn} 
-                    onClick={(e) => handleDelete(conn.id, e)}
-                    title="حذف"
-                  >
-                    🗑️
-                  </button>
+                  <div className={styles.cardBody}>
+                    <div className={styles.infoRow}>
+                      <span className={styles.infoLabel}>ID:</span>
+                      <span className={styles.infoValue}>{conn.pixelId}</span>
+                    </div>
+                    <div className={styles.infoRow}>
+                      <span className={styles.infoLabel}>Token:</span>
+                      <span className={styles.infoValue}>{conn.accessToken ? '••••••••تمت الإضافة' : 'غير متوفر'}</span>
+                    </div>
+                    <div className={styles.infoRow}>
+                      <span className={styles.infoLabel}>الأصناف المربوطة:</span>
+                      <span className={styles.productsCount}>{conn.linkedProducts?.length || 0} أصناف</span>
+                    </div>
+                  </div>
                 </div>
               ))
             )}
           </div>
-        </aside>
-
-        {/* Main Form */}
-        <main className={styles.formMain}>
-          <div className={styles.formHeader}>
-            <h2>{editingId ? `تعديل: ${connectionName}` : 'إضافة ربط جديد'}</h2>
-          </div>
-          
-          <form onSubmit={handleSave}>
-            <div className={styles.formGroup}>
-              <label className={styles.label}>اسم الربط (Connection Name)</label>
-              <input 
-                type="text" 
-                className={styles.input} 
-                value={connectionName}
-                onChange={(e) => setConnectionName(e.target.value)}
-                placeholder="مثال: متجر الملابس، صفحة العروض..."
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label className={styles.label}>رقم البيكسل (Pixel ID)</label>
-              <input 
-                type="text" 
-                className={styles.input} 
-                value={pixelId}
-                onChange={(e) => setPixelId(e.target.value)}
-                placeholder="أدخل رقم البيكسل"
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label className={styles.label}>رمز الوصول (Access Token) - للـ CAPI</label>
-              <textarea 
-                className={styles.input} 
-                style={{ minHeight: '80px', direction: 'ltr', resize: 'vertical' }}
-                value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
-                placeholder="أدخل رمز الوصول (Access Token) الخاص بالبيكسل"
-              />
-            </div>
-
-
-            <div className={styles.formGroup}>
-              <label className={styles.label}>كود اختبار الحدث (Test Event Code)</label>
-              <input 
-                type="text" 
-                className={styles.input} 
-                value={testEventCode}
-                onChange={(e) => setTestEventCode(e.target.value)}
-                placeholder="أدخل كود اختبار الحدث"
-              />
-            </div>
-
-            <div className={styles.formGroup}>
-              <label className={styles.label}>المنتجات المرتبطة بهذا البكسل</label>
-              <div className={styles.productsListContainer}>
-                {productsList.map(product => (
-                  <label key={product.id} className={styles.checkboxLabel}>
-                    <input
-                      type="checkbox"
-                      checked={selectedProducts.includes(product.id)}
-                      onChange={() => handleProductToggle(product.id)}
-                    />
-                    <span className={styles.checkboxText}>{product.name}</span>
-                  </label>
-                ))}
-                {productsList.length === 0 && (
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>جاري تحميل المنتجات...</div>
-                )}
-              </div>
-            </div>
-
-            <div className={styles.buttonContainer}>
-              <button type="submit" className={styles.saveButton}>
-                {editingId ? 'حفظ التعديلات' : 'إضافة الربط'}
-              </button>
-              {editingId && (
-                <button type="button" className={styles.cancelButton} onClick={resetForm}>
-                  إلغاء التعديل
-                </button>
-              )}
-            </div>
-          </form>
-        </main>
-
+        </div>
       </div>
     </div>
   );

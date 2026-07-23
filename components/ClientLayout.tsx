@@ -29,6 +29,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [showFinance, setShowFinance] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showIntegrations, setShowIntegrations] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
@@ -598,10 +599,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span className={styles.submenuIcon}>🏦</span>
           </Link>
 
-          <Link href="/settings/api-integrations" className={`${styles.submenuItem} ${pathname === '/settings/api-integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>بوابة الربط (API)</span>
-            <span className={styles.submenuIcon}>🔌</span>
-          </Link>
           <div 
             className={styles.submenuItem} 
             onClick={() => signOut(auth).catch(err => console.error(err))}
@@ -611,13 +608,32 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span className={styles.submenuIcon}>🚪</span>
           </div>
         </div>
-        <Link href="/integrations" className={`${styles.menuItem} ${pathname === '/integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }} title="الربط والتتبع">
-          <span></span>
+        <div 
+          className={`${styles.menuItem} ${showIntegrations ? styles.active : ''}`} 
+          onClick={() => {
+            setShowIntegrations(!showIntegrations);
+            if (!isSidebarOpen) setIsSidebarOpen(true);
+          }} 
+          title="الربط والتتبع"
+        >
+          <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>{showIntegrations ? '▼' : '▶'}</span>
           <div className={styles.menuItemIcon}>
             <span>الربط والتتبع</span>
             <span className={styles.icon}>🔗</span>
           </div>
-        </Link>
+        </div>
+
+        {/* Submenu for Integrations */}
+        <div className={`${styles.submenu} ${showIntegrations ? styles.open : ''}`}>
+          <Link href="/settings/api-integrations" className={`${styles.submenuItem} ${pathname === '/settings/api-integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>بوابة الربط (API)</span>
+            <span className={styles.submenuIcon}>🔌</span>
+          </Link>
+          <Link href="/integrations" className={`${styles.submenuItem} ${pathname === '/integrations' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>بكسل المنصات</span>
+            <span className={styles.submenuIcon}>🎯</span>
+          </Link>
+        </div>
         <Link href="/mobile-download" className={`${styles.menuItem} ${pathname === '/mobile-download' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }} title="تحميل تطبيق الهاتف">
           <span></span>
           <div className={styles.menuItemIcon}>
