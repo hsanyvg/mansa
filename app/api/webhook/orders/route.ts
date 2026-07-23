@@ -298,19 +298,23 @@ export async function POST(request: Request) {
         event_source_url: request.url
       };
 
-      // Fire Meta Pixel
-      fetch(`${baseUrl}/api/webhooks/meta-purchase`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pixelPayload)
-      }).catch(err => console.error('Meta Pixel Trigger Error:', err));
-
-      // Fire TikTok Pixel
-      fetch(`${baseUrl}/api/webhooks/tiktok-purchase`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pixelPayload)
-      }).catch(err => console.error('TikTok Pixel Trigger Error:', err));
+      // Fire Meta and TikTok Pixels
+      await Promise.allSettled([
+        fetch(`${baseUrl}/api/webhooks/meta-purchase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pixelPayload)
+        }).then(async res => {
+           if(!res.ok) console.error('Meta Pixel Trigger Error:', await res.text());
+        }),
+        fetch(`${baseUrl}/api/webhooks/tiktok-purchase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pixelPayload)
+        }).then(async res => {
+           if(!res.ok) console.error('TikTok Pixel Trigger Error:', await res.text());
+        })
+      ]);
     } catch (pixelErr) {
       console.error('Error triggering pixels:', pixelErr);
     }
