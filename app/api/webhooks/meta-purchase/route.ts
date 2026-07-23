@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { adminDb } from '../../../../lib/firebaseAdmin';
 import crypto from 'crypto';
 
 // دالة مساعدة لتشفير البيانات بصيغة SHA256 كما تتطلب ميتا
@@ -29,10 +28,9 @@ export async function POST(request: Request) {
 
     // 1. Connection settings lookup scoped to user
     const connectionsRef = userId
-      ? collection(db, 'users', userId, 'integrations', 'meta', 'connections')
-      : collection(db, 'integrations', 'meta', 'connections');
-    const q = query(connectionsRef, where("linkedProducts", "array-contains", productId));
-    const querySnapshot = await getDocs(q);
+      ? adminDb.collection('users').doc(userId).collection('integrations').doc('meta').collection('connections')
+      : adminDb.collection('integrations').doc('meta').collection('connections');
+    const querySnapshot = await connectionsRef.where("linkedProducts", "array-contains", productId).get();
 
     if (querySnapshot.empty) {
       return NextResponse.json({ error: `No pixel found linked to product '${productId}'.` }, { status: 404, headers: corsHeaders });

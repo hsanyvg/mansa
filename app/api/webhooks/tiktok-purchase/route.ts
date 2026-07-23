@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { adminDb } from '../../../../lib/firebaseAdmin';
 import crypto from 'crypto';
 
 const hashData = (data: string | undefined | null) => {
@@ -25,10 +24,9 @@ export async function POST(request: Request) {
     }
 
     const connectionsRef = userId
-      ? collection(db, 'users', userId, 'integrations', 'tiktok', 'connections')
-      : collection(db, 'integrations', 'tiktok', 'connections');
-    const q = query(connectionsRef, where('linkedProducts', 'array-contains', productId));
-    const querySnapshot = await getDocs(q);
+      ? adminDb.collection('users').doc(userId).collection('integrations').doc('tiktok').collection('connections')
+      : adminDb.collection('integrations').doc('tiktok').collection('connections');
+    const querySnapshot = await connectionsRef.where('linkedProducts', 'array-contains', productId).get();
 
     if (querySnapshot.empty) {
       return NextResponse.json({ error: 'No TikTok pixel found linked to this product.' }, { status: 404, headers: corsHeaders });
