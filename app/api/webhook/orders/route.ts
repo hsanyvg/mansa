@@ -130,6 +130,104 @@ export async function POST(request: Request) {
       );
     }
 
+    // 3.5. Lookup actual Product and deduct stock
+    let productDoc: any = null;
+    
+    // First try by linkedProductId
+    if (matchedLandingPage?.linkedProductId) {
+      const pDoc = await adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('products')
+        .doc(matchedLandingPage.linkedProductId)
+        .get();
+      if (pDoc.exists) {
+        productDoc = pDoc;
+      }
+    }
+    
+    // Fallback to name search if not found or no linkedProductId
+    if (!productDoc) {
+      const productsSnapshot = await adminDb
+        .collection('users')
+        .doc(userId)
+        .collection('products')
+        .where('name', '==', productName)
+        .limit(1)
+        .get();
+        
+      if (!productsSnapshot.empty) {
+        productDoc = productsSnapshot.docs[0];
+      }
+    }
+      
+    let actualProductId = 'lp_product';
+    let isComposite = false;
+    let composition = null;
+    let dbProductRef = null;
+    let currentStock = null;
+    let productUnits = [];
+
+    if (productDoc) {
+      actualProductId = productDoc.id;
+      const productData = productDoc.data();
+      isComposite = productData.isComposite || false;
+      composition = productData.composition || null;
+      dbProductRef = productDoc.ref;
+      currentStock = productData.stock || {};
+      productUnits = productData.units || [];
+    }
+
+    // Deduct inventory if product found
+    if (dbProductRef) {
+      if (!isComposite) {
+        const firstStoreKey = Object.keys(currentStock)[0] || 'default_store';
+        if (!currentStock[firstStoreKey]) {
+           currentStock[firstStoreKey] = { quantity: 0, unit: productUnits[0]?.type || 'قطعة' };
+        }
+        currentStock[firstStoreKey].quantity -= Number(quantity);
+        
+        let newTotalBaseQuantity = 0;
+        Object.values(currentStock).forEach((s: any) => {
+          const uMul = productUnits.find((u: any) => u.type === s.unit)?.count || 1;
+          newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+        });
+
+        await dbProductRef.update({
+          stock: currentStock,
+          totalBaseQuantity: newTotalBaseQuantity
+        });
+      } else if (isComposite && composition) {
+        // Deduct from components
+        for (const comp of composition) {
+          const rawProdRef = adminDb.collection('users').doc(userId).collection('products').doc(comp.itemId);
+          const rawSnap = await rawProdRef.get();
+          if (rawSnap.exists) {
+            const rawData = rawSnap.data();
+            let stock = { ...rawData.stock };
+            let qtyToDeduct = comp.quantityNeeded * Number(quantity);
+            
+            const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+            if (!stock[firstStoreKey]) {
+              stock[firstStoreKey] = { quantity: 0, unit: rawData.units?.[0]?.type || 'قطعة' };
+            }
+            stock[firstStoreKey].quantity -= qtyToDeduct;
+            
+            let newTotalBaseQuantity = 0;
+            Object.values(stock).forEach((s: any) => {
+              const uMul = (rawData.units || []).find((u: any) => u.type === s.unit)?.count || 1;
+              newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+            });
+
+            await rawProdRef.update({
+              stock: stock,
+              totalBaseQuantity: newTotalBaseQuantity
+            });
+          }
+        }
+      }
+    }
+
     // 4. Prepare Order Object
     // Get the next sequential ID using a transaction
     const counterRef = adminDb.collection('users').doc(userId).collection('metadata').doc('orderCounter');
@@ -159,13 +257,13 @@ export async function POST(request: Request) {
       paymentMethod: 'كاش عند التوصيل',
       totalAmount: Number(totalPrice),
       items: [{
-        productId: 'lp_product',
+        productId: actualProductId,
         productName: productName,
         quantity: Number(quantity),
         unitPrice: Number(quantity) > 0 ? Number(totalPrice) / Number(quantity) : Number(totalPrice),
         total: Number(totalPrice),
-        isComposite: false,
-        composition: null
+        isComposite: isComposite,
+        composition: composition
       }],
       date: FieldValue.serverTimestamp(),
       status: 'pending', // VERY IMPORTANT: Use 'pending' so it shows in the dashboard

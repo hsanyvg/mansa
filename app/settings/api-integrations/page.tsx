@@ -19,6 +19,7 @@ interface LandingPageWebhook {
   apiKey: string;
   isActive: boolean;
   createdAt: string;
+  linkedProductId?: string;
 }
 
 export default function ApiIntegrationsPage() {
@@ -57,6 +58,10 @@ export default function ApiIntegrationsPage() {
   const [webhookApiKey, setWebhookApiKey] = useState('');
   const [isWebhookActive, setIsWebhookActive] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookLinkedProductId, setWebhookLinkedProductId] = useState('');
+
+  // Products
+  const [products, setProducts] = useState<any[]>([]);
 
   // TODO: Update this when real Auth is implemented
   const currentUserId = 'default_tenant'; 
@@ -101,10 +106,18 @@ export default function ApiIntegrationsPage() {
       }
     });
 
+    // Fetch products for dropdown
+    const productsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products');
+    const unsubscribeProducts = onSnapshot(productsRef, (snapshot) => {
+      const prods = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setProducts(prods);
+    });
+
     return () => {
       unsubscribeMeta();
       unsubscribeDelivery();
       unsubscribeWebhook();
+      unsubscribeProducts();
     };
   }, []);
 
@@ -290,6 +303,7 @@ export default function ApiIntegrationsPage() {
     setWebhookName('');
     setWebhookApiKey('');
     setIsWebhookActive(true);
+    setWebhookLinkedProductId('');
     setSelectedLandingPage(null);
   };
 
@@ -305,6 +319,7 @@ export default function ApiIntegrationsPage() {
     setWebhookName(lp.name);
     setWebhookApiKey(lp.apiKey);
     setIsWebhookActive(lp.isActive);
+    setWebhookLinkedProductId(lp.linkedProductId || '');
     setWebhookActiveForm('edit');
   };
 
@@ -322,7 +337,7 @@ export default function ApiIntegrationsPage() {
 
       if (webhookActiveForm === 'edit' && selectedLandingPage) {
         updatedPages = updatedPages.map(lp => 
-          lp.id === selectedLandingPage.id ? { ...lp, name: webhookName, apiKey: webhookApiKey, isActive: isWebhookActive } : lp
+          lp.id === selectedLandingPage.id ? { ...lp, name: webhookName, apiKey: webhookApiKey, isActive: isWebhookActive, linkedProductId: webhookLinkedProductId || undefined } : lp
         );
       } else {
         const newLp: LandingPageWebhook = {
@@ -330,6 +345,7 @@ export default function ApiIntegrationsPage() {
           name: webhookName,
           apiKey: webhookApiKey,
           isActive: isWebhookActive,
+          linkedProductId: webhookLinkedProductId || undefined,
           createdAt: new Date().toISOString()
         };
         updatedPages.push(newLp);
@@ -862,6 +878,24 @@ export default function ApiIntegrationsPage() {
                   />
                   <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
                     هذا الاسم سيظهر كمصدر (Source) في الطلبات القادمة من هذه الصفحة لتتمكن من تتبعها.
+                  </p>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>الصنف المرتبط بصفحة الهبوط (اختياري لكن يُنصح به)</label>
+                  <select 
+                    className={styles.input} 
+                    value={webhookLinkedProductId} 
+                    onChange={(e) => setWebhookLinkedProductId(e.target.value)}
+                    style={{ background: '#1f2937', color: '#fff' }}
+                  >
+                    <option value="">بدون ربط مباشر (يعتمد على اسم الصنف في الطلب)</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <p style={{fontSize: '0.75rem', color: '#10b981', marginTop: '0.5rem'}}>
+                    عند اختيار صنف، سيتم تسجيل الطلبات وخصم المخزون من هذا الصنف تلقائياً بدون الاعتماد على الاسم القادم من الطلب، مما يمنع الأخطاء المطبعية تماماً.
                   </p>
                 </div>
 

@@ -42,3 +42,5 @@ next-env.d.ts
 serviceAccountKey.json  
 scratch/
 *.xlsx
+# Local Netlify folder
+.netlify
