@@ -204,6 +204,7 @@ export async function POST(request: Request) {
           const rawSnap = await rawProdRef.get();
           if (rawSnap.exists) {
             const rawData = rawSnap.data();
+            if (!rawData) continue;
             let stock = { ...rawData.stock };
             let qtyToDeduct = comp.quantityNeeded * Number(quantity);
             
