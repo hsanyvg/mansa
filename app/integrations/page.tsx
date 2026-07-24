@@ -262,7 +262,7 @@ export default function IntegrationsPage() {
                     </div>
                     <div className={styles.infoRow}>
                       <span className={styles.infoLabel}>الأصناف المربوطة:</span>
-                      <span className={styles.productsCount}>{conn.linkedProducts?.length || 0} أصناف</span>
+                      <span className={styles.productsCount}>{(conn.linkedProducts || []).filter(id => productsList.some(p => p.id === id)).length} أصناف</span>
                     </div>
                   </div>
                 </div>
