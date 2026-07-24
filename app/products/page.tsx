@@ -947,6 +947,7 @@ export default function ProductsPage() {
               })()}
             </tbody>
           </table>
+        </div>
       </main>
 
       {/* Add Product Modal */}
