@@ -162,6 +162,7 @@ export async function POST(request: Request) {
     }
       
     let actualProductId = 'lp_product';
+    let actualProductName = productName;
     let isComposite = false;
     let composition = null;
     let dbProductRef = null;
@@ -171,6 +172,7 @@ export async function POST(request: Request) {
     if (productDoc) {
       actualProductId = productDoc.id;
       const productData = productDoc.data();
+      actualProductName = productData.name || productName;
       isComposite = productData.isComposite || false;
       composition = productData.composition || null;
       dbProductRef = productDoc.ref;
@@ -259,7 +261,7 @@ export async function POST(request: Request) {
       totalAmount: Number(totalPrice),
       items: [{
         productId: actualProductId,
-        productName: productName,
+        productName: actualProductName,
         quantity: Number(quantity),
         unitPrice: Number(quantity) > 0 ? Number(totalPrice) / Number(quantity) : Number(totalPrice),
         total: Number(totalPrice),
@@ -287,7 +289,7 @@ export async function POST(request: Request) {
       const pixelPayload = {
         orderId: nextId.toString(),
         productId: actualProductId,
-        productName: productName,
+        productName: actualProductName,
         quantity: Number(quantity) || 1,
         value: Number(totalPrice),
         currency: 'IQD',
