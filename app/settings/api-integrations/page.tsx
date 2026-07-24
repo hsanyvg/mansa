@@ -73,6 +73,7 @@ export default function ApiIntegrationsPage() {
 
   // Products
   const [products, setProducts] = useState<any[]>([]);
+  const [productSearchTerm, setProductSearchTerm] = useState('');
 
   // TODO: Update this when real Auth is implemented
   const currentUserId = 'default_tenant'; 
@@ -328,6 +329,7 @@ export default function ApiIntegrationsPage() {
     setWebhookApiKey('');
     setIsWebhookActive(true);
     setWebhookLinkedProductId('');
+    setProductSearchTerm('');
     setIsPixelLinked(false);
     setLinkedPixelPlatform('meta');
     setLinkedPixelDocId('');
@@ -944,6 +946,14 @@ export default function ApiIntegrationsPage() {
 
                 <div className={styles.formGroup}>
                   <label className={styles.label}>الصنف المرتبط بصفحة الهبوط (اختياري لكن يُنصح به)</label>
+                  <input
+                    type="text"
+                    className={styles.input}
+                    placeholder="🔍 ابحث عن صنف..."
+                    value={productSearchTerm}
+                    onChange={(e) => setProductSearchTerm(e.target.value)}
+                    style={{ marginBottom: '0.5rem', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                  />
                   <select 
                     className={styles.input} 
                     value={webhookLinkedProductId} 
@@ -960,7 +970,7 @@ export default function ApiIntegrationsPage() {
                     style={{ background: '#1f2937', color: '#fff' }}
                   >
                     <option value="">بدون ربط مباشر (يعتمد على اسم الصنف في الطلب)</option>
-                    {products.map(p => (
+                    {products.filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map(p => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
