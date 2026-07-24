@@ -723,7 +723,6 @@ export default function ProductsPage() {
                 <th>فئة فرعية</th>
                 <th>التكلفة</th>
                 <th>البيع</th>
-                <th>الربح المتوقع</th>
                 <th>الفعلي</th>
                 <th>المحجوز</th>
                 <th>المتاح</th>
@@ -814,48 +813,6 @@ export default function ProductsPage() {
                       <td>{subCat ? subCat.name : '---'}</td>
                       <td>{firstUnit ? `${firstUnit.type} : ${new Intl.NumberFormat('en-US').format(firstUnit.purchase)}` : '---'}</td>
                       <td>{firstUnit ? `${firstUnit.type} : ${new Intl.NumberFormat('en-US').format(firstUnit.selling)}` : '---'}</td>
-                      <td style={{ fontWeight: 'bold', direction: 'rtl', verticalAlign: 'middle' }}>
-                        {(() => {
-                          if (!firstUnit) return '---';
-                          const purchaseVal = Number(firstUnit.purchase) || 0;
-                          const sellingVal = Number(firstUnit.selling) || 0;
-                          const unitProfit = sellingVal - purchaseVal;
-
-                          let totalQty = prod.totalBaseQuantity || 0;
-                          let totalReserved = 0;
-                          if (prod.totalBaseQuantity === undefined && prod.stock && prod.units && prod.units.length > 0) {
-                            Object.keys(prod.stock).forEach((storeId: string) => {
-                              if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
-                                const s = prod.stock[storeId];
-                                const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
-                                totalQty += (Number(s.quantity) || 0) * uMul;
-                              }
-                            });
-                          }
-                          if (prod.stock && prod.units && prod.units.length > 0) {
-                            Object.keys(prod.stock).forEach((storeId: string) => {
-                              if (storesDb.find(s => s.id === storeId) || storeId === 'default_store') {
-                                const s = prod.stock[storeId];
-                                const uMul = prod.units.find((u: any) => u.type === s.unit)?.count || 1;
-                                totalReserved += (Number(s.reserved) || 0) * uMul;
-                              }
-                            });
-                          }
-                          const available = totalQty - totalReserved;
-                          const totalStockProfit = unitProfit * available;
-
-                          return (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', justifyContent: 'center' }}>
-                              <span style={{ fontSize: '0.9rem', color: unitProfit >= 0 ? '#10B981' : '#EF4444', whiteSpace: 'nowrap' }}>
-                                مفرد: {new Intl.NumberFormat('en-US').format(unitProfit)} د.ع
-                              </span>
-                              <span style={{ fontSize: '0.8rem', color: totalStockProfit >= 0 ? '#34D399' : '#F87171', opacity: 0.85, whiteSpace: 'nowrap' }}>
-                                إجمالي: {new Intl.NumberFormat('en-US').format(totalStockProfit)} د.ع
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </td>
                       <td style={{ fontWeight: 'bold', direction: 'rtl', verticalAlign: 'middle' }}>
                         {(() => {
                           let totalQty = 0;
