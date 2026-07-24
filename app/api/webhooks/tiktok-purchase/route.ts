@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     if (client_ip) userData.client_ip_address = client_ip;
     if (user_agent) userData.client_user_agent = user_agent;
 
-    const eventTime = Math.floor(Date.now() / 1000);
+    const eventTime = new Date().toISOString();
 
     const promises = querySnapshot.docs.map(async (doc) => {
       const { pixelId, accessToken, testEventCode } = doc.data();
