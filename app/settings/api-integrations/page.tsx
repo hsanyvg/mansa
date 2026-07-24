@@ -996,34 +996,41 @@ export default function ApiIntegrationsPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                       <select 
                         className={styles.input} 
-                        value={linkedPixelPlatform} 
+                        value={linkedPixelDocId ? `${linkedPixelPlatform}:${linkedPixelDocId}` : ""}
                         onChange={(e) => {
-                          setLinkedPixelPlatform(e.target.value as any);
-                          setLinkedPixelDocId('');
+                          const val = e.target.value;
+                          if (!val) {
+                             setLinkedPixelDocId('');
+                          } else {
+                             const [plat, id] = val.split(':');
+                             setLinkedPixelPlatform(plat as any);
+                             setLinkedPixelDocId(id);
+                          }
                         }}
-                        style={{ background: '#1f2937', color: '#fff' }}
-                      >
-                        <option value="meta">بكسل ميتا (Meta Pixel)</option>
-                        <option value="tiktok">بكسل تيك توك (TikTok Pixel)</option>
-                      </select>
-                      
-                      <select 
-                        className={styles.input} 
-                        value={linkedPixelDocId} 
-                        onChange={(e) => setLinkedPixelDocId(e.target.value)}
                         style={{ background: '#1f2937', color: '#fff' }}
                         required={isPixelLinked}
                       >
                         <option value="">-- اختر البكسل المطلوب --</option>
-                        {(linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels)
-                          .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
-                          .map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.pixelId})</option>
-                        ))}
+                        <optgroup label="بكسلات ميتا (Meta)">
+                          {metaPixels
+                            .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
+                            .map(p => (
+                            <option key={`meta:${p.id}`} value={`meta:${p.id}`}>{p.name} ({p.pixelId})</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="بكسلات تيك توك (TikTok)">
+                          {tiktokPixels
+                            .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
+                            .map(p => (
+                            <option key={`tiktok:${p.id}`} value={`tiktok:${p.id}`}>{p.name} ({p.pixelId})</option>
+                          ))}
+                        </optgroup>
                       </select>
-                      {webhookLinkedProductId && (linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels).filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && (
+                      {webhookLinkedProductId && 
+                       metaPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && 
+                       tiktokPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && (
                         <p style={{fontSize: '0.75rem', color: '#ef4444', margin: 0}}>
-                          ⚠️ لا يوجد بكسل في هذه المنصة يدعم الصنف المختار. يرجى إضافة الصنف إلى البكسل من نافذة المنصات.
+                          ⚠️ لا يوجد أي بكسل يدعم الصنف المختار. يرجى إضافة الصنف إلى بكسل معين من نافذة المنصات.
                         </p>
                       )}
                     </div>
