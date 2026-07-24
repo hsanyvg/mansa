@@ -909,30 +909,40 @@ export default function OrderEntryPage() {
       // Commit Batch
       await batch.commit();
 
-      // --- Trigger Meta CAPI Webhook for the entire order ---
+      // --- Trigger Meta & TikTok Pixels for each item in the order ---
       try {
-        const orderId = newOrderRef.id;
-        const contents = cart.map(item => ({
-          id: item.id,
-          quantity: item.quantity,
-          item_price: item.unitPrice
-        }));
-
-        fetch('/api/pixel/purchase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: auth.currentUser?.uid || 'anonymous',
-            eventId: `ord_${orderId}_${Date.now()}`,
+        const baseUrl = window.location.origin;
+        for (const item of cart) {
+          const pixelPayload = {
+            productId: item.product.id,
+            value: item.unitPrice * item.quantity,
+            currency: 'IQD',
+            email: '',
             phone: formData.customerPhone,
-            city: formData.governorate,
-            totalAmount: totalAmount,
-            contents: contents,
-            orderId: orderId
-          })
-        }).catch(err => console.error("Meta CAPI API trigger error:", err));
-      } catch (capiErr) {
-        console.error("Failed to trigger Meta CAPI:", capiErr);
+            firstName: formData.customerName,
+            state: formData.governorate,
+            userId: auth.currentUser?.uid || 'anonymous',
+            client_ip: '127.0.0.1',
+            user_agent: window.navigator.userAgent,
+            event_source_url: window.location.href
+          };
+
+          // Trigger Meta Pixel
+          fetch(`${baseUrl}/api/webhooks/meta-purchase`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pixelPayload)
+          }).catch(e => console.error("Meta API error:", e));
+
+          // Trigger TikTok Pixel
+          fetch(`${baseUrl}/api/webhooks/tiktok-purchase`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pixelPayload)
+          }).catch(e => console.error("TikTok API error:", e));
+        }
+      } catch (pixelErr) {
+        console.error("Failed to trigger Pixels:", pixelErr);
       }
 
       setNotificationModal({ show: true, message: 'تم حفظ الطلب وتحديث المخزون بنجاح!' });
