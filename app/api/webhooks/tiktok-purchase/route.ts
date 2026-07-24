@@ -26,10 +26,15 @@ export async function POST(request: Request) {
     const connectionsRef = userId
       ? adminDb.collection('users').doc(userId).collection('integrations').doc('tiktok').collection('connections')
       : adminDb.collection('integrations').doc('tiktok').collection('connections');
-    const querySnapshot = await connectionsRef.where('linkedProducts', 'array-contains', productId).get();
+    let querySnapshot = await connectionsRef.where('linkedProducts', 'array-contains', productId).get();
+    
+    // Fallback: If no pixel is linked to this specific product (e.g. name mismatch from landing page), use ALL pixels for this user
+    if (querySnapshot.empty) {
+      querySnapshot = await connectionsRef.get();
+    }
 
     if (querySnapshot.empty) {
-      return NextResponse.json({ error: 'No TikTok pixel found linked to this product.' }, { status: 404, headers: corsHeaders });
+      return NextResponse.json({ error: 'No TikTok pixel found.' }, { status: 404, headers: corsHeaders });
     }
 
     const userData: any = {};
