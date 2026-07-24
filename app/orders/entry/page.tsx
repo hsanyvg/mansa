@@ -912,8 +912,10 @@ export default function OrderEntryPage() {
       // --- Trigger Meta & TikTok Pixels for each item in the order ---
       try {
         const baseUrl = window.location.origin;
+        const orderId = newOrderRef.id;
         for (const item of cart) {
           const pixelPayload = {
+            orderId: orderId,
             productId: item.product.id,
             productName: item.product.name,
             quantity: item.quantity,

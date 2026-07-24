@@ -2,10 +2,18 @@ import { NextResponse } from 'next/server';
 import { adminDb } from '../../../../lib/firebaseAdmin';
 import crypto from 'crypto';
 
-const hashData = (data: string | undefined | null) => {
+const hashData = (data: string | undefined | null, isPhone: boolean = false) => {
   if (!data) return undefined;
-  const trimmedData = data.trim().toLowerCase();
-  return crypto.createHash('sha256').update(trimmedData).digest('hex');
+  let trimmed = data.trim().toLowerCase();
+  if (isPhone) {
+    trimmed = trimmed.replace(/\D/g, ''); // Remove non-digits
+    if (trimmed.startsWith('07') && trimmed.length === 11) {
+      trimmed = '964' + trimmed.substring(1);
+    } else if (trimmed.startsWith('7') && trimmed.length === 10) {
+      trimmed = '964' + trimmed;
+    }
+  }
+  return crypto.createHash('sha256').update(trimmed).digest('hex');
 };
 
 const corsHeaders = {
@@ -18,7 +26,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { 
-      productId, productName, quantity, value, currency, email, phone, firstName, lastName, city, state, 
+      orderId, productId, productName, quantity, value, currency, email, phone, firstName, lastName, city, state, 
       client_ip, user_agent, event_source_url, userId 
     } = body;
 
@@ -42,7 +50,7 @@ export async function POST(request: Request) {
 
     const userData: any = {};
     if (email) userData.email = hashData(email);
-    if (phone) userData.phone_number = hashData(phone);
+    if (phone) userData.phone_number = hashData(phone, true); // Pass true for isPhone
     if (client_ip) userData.client_ip_address = client_ip;
     if (user_agent) userData.client_user_agent = user_agent;
 
@@ -56,6 +64,7 @@ export async function POST(request: Request) {
       const tiktokPayload: any = {
         pixel_code: pixelId,
         event: 'PlaceAnOrder',
+        event_id: orderId ? `ord_${orderId}_${eventTime}` : undefined,
         timestamp: eventTime,
         context: {
           user: userData,
@@ -70,7 +79,8 @@ export async function POST(request: Request) {
             content_type: 'product'
           }],
           value: value ? Number(value) : 0,
-          currency: currency || 'IQD'
+          currency: currency || 'IQD',
+          order_id: orderId
         }
       };
 

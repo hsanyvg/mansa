@@ -285,6 +285,7 @@ export async function POST(request: Request) {
     try {
       const baseUrl = new URL(request.url).origin;
       const pixelPayload = {
+        orderId: nextId.toString(),
         productId: actualProductId,
         productName: productName,
         quantity: Number(quantity) || 1,

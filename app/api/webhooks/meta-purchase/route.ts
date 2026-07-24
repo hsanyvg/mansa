@@ -3,11 +3,18 @@ import { adminDb } from '../../../../lib/firebaseAdmin';
 import crypto from 'crypto';
 
 // دالة مساعدة لتشفير البيانات بصيغة SHA256 كما تتطلب ميتا
-const hashData = (data: string | undefined | null) => {
+const hashData = (data: string | undefined | null, isPhone: boolean = false) => {
   if (!data) return undefined;
-  // ميتا تتطلب إزالة الفراغات وتحويل النص إلى أحرف صغيرة قبل التشفير
-  const trimmedData = data.trim().toLowerCase();
-  return crypto.createHash('sha256').update(trimmedData).digest('hex');
+  let trimmed = data.trim().toLowerCase();
+  if (isPhone) {
+    trimmed = trimmed.replace(/\D/g, ''); // Remove non-digits
+    if (trimmed.startsWith('07') && trimmed.length === 11) {
+      trimmed = '964' + trimmed.substring(1);
+    } else if (trimmed.startsWith('7') && trimmed.length === 10) {
+      trimmed = '964' + trimmed;
+    }
+  }
+  return crypto.createHash('sha256').update(trimmed).digest('hex');
 };
 
 // ترويسات CORS للسماح بالطلبات الخارجية
@@ -20,7 +27,7 @@ const corsHeaders = {
 export async function POST(request: Request) {
   try {
     const { 
-      productId, productName, quantity, value, currency, email, phone, firstName, lastName, city, state, 
+      orderId, productId, productName, quantity, value, currency, email, phone, firstName, lastName, city, state, 
       client_ip, user_agent, event_source_url, externalId, fb_login_id, userId 
     } = await request.json();
 
@@ -55,7 +62,7 @@ export async function POST(request: Request) {
     }
     
     if (phone) {
-      const hashedPhone = hashData(phone);
+      const hashedPhone = hashData(phone, true); // Pass true for isPhone
       if (hashedPhone) userData.ph = [hashedPhone];
     }
 
@@ -91,6 +98,7 @@ export async function POST(request: Request) {
           {
             event_name: 'Purchase',
             event_time: eventTime,
+            event_id: orderId ? `ord_${orderId}_${eventTime}` : undefined,
             action_source: 'website',
             user_data: userData,
             custom_data: {
