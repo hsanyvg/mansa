@@ -12,11 +12,7 @@ import { calculateTotalBaseQuantity, formatDisplayQuantity, getInventoryBalances
 
 export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [reservedSearchQuery, setReservedSearchQuery] = useState('');
   const [entriesLength, setEntriesLength] = useState(25);
-  
-  // New States for Reserved Products Tab
-  const [pageView, setPageView] = useState<'products' | 'reserved'>('products');
   
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [tempDateFilter, setTempDateFilter] = useState<'اليوم' | 'الأسبوع' | 'الشهر' | 'الحد الأقصى' | 'مخصص'>('اليوم');
@@ -545,55 +541,26 @@ export default function ProductsPage() {
       <header className={styles.header} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'stretch' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 className={styles.title}>قائمة الأصناف</h1>
-          {pageView === 'products' && (
-            <button className={styles.addButton} onClick={() => {
-              setEditingProductId(null);
-              setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
-              setUnits([
-                { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
-                { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
-                { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
-              ]);
-              setSelectedPage('');
-              setSelectedMainCat('');
-              setSelectedSubCat('');
-              setProductStock({});
-              setShowAddModal(true);
-            }}>
-              <span>+ إضافة</span>
-            </button>
-          )}
-        </div>
-        
-        <div className={styles.pageTabs} style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
-          <button 
-            onClick={() => setPageView('products')}
-            style={{ 
-              background: 'none', border: 'none', padding: '0.5rem 1rem', fontSize: '1rem', cursor: 'pointer',
-              fontWeight: pageView === 'products' ? 'bold' : 'normal', 
-              color: pageView === 'products' ? 'var(--primary)' : 'var(--text-muted)', 
-              borderBottom: pageView === 'products' ? '2px solid var(--primary)' : '2px solid transparent' 
-            }}
-          >
-            قائمة الأصناف الأساسية
-          </button>
-          <button 
-            onClick={() => setPageView('reserved')}
-            style={{ 
-              background: 'none', border: 'none', padding: '0.5rem 1rem', fontSize: '1rem', cursor: 'pointer',
-              fontWeight: pageView === 'reserved' ? 'bold' : 'normal', 
-              color: pageView === 'reserved' ? 'var(--primary)' : 'var(--text-muted)', 
-              borderBottom: pageView === 'reserved' ? '2px solid var(--primary)' : '2px solid transparent' 
-            }}
-          >
-            الأصناف المحجوزة
+          <button className={styles.addButton} onClick={() => {
+            setEditingProductId(null);
+            setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
+            setUnits([
+              { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
+              { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
+              { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
+            ]);
+            setSelectedPage('');
+            setSelectedMainCat('');
+            setSelectedSubCat('');
+            setProductStock({});
+            setShowAddModal(true);
+          }}>
+            <span>+ إضافة</span>
           </button>
         </div>
       </header>
 
       <main>
-        {pageView === 'products' ? (
-          <>
         {/* Top Filters (3 columns: Page, Main Category, Subcategory) */}
         <div className={styles.filtersSection}>
           <select 
@@ -980,158 +947,6 @@ export default function ProductsPage() {
               })()}
             </tbody>
           </table>
-        </div>
-          </>
-        ) : (
-          <div className={styles.reservedSection}>
-            <div className={styles.filtersSection} style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', position: 'relative', zIndex: 999 }}>
-              <div className={styles.teamDatePickerContainer} ref={datePickerRef} style={{ zIndex: 50 }}>
-                <button 
-                  type="button"
-                  className={styles.teamDateRangeBtn} 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setIsDatePickerOpen(!isDatePickerOpen);
-                  }}
-                >
-                  📅 {getDateRangeLabel()}
-                </button>
-                
-                {isDatePickerOpen && (
-                  <div className={styles.teamDateModal}>
-                    <div className={styles.teamShortcutList}>
-                      <button 
-                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'اليوم' ? styles.activeShortcut : ''}`} 
-                        onClick={() => selectDateShortcut('اليوم')}
-                      >
-                        اليوم
-                      </button>
-                      <button 
-                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'الأسبوع' ? styles.activeShortcut : ''}`} 
-                        onClick={() => selectDateShortcut('الأسبوع')}
-                      >
-                        الأسبوع
-                      </button>
-                      <button 
-                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'الشهر' ? styles.activeShortcut : ''}`} 
-                        onClick={() => selectDateShortcut('الشهر')}
-                      >
-                        الشهر
-                      </button>
-                      <button 
-                        className={`${styles.teamShortcutBtn} ${tempDateFilter === 'الحد الأقصى' ? styles.activeShortcut : ''}`} 
-                        onClick={() => selectDateShortcut('الحد الأقصى')}
-                      >
-                        الحد الأقصى
-                      </button>
-                    </div>
-                    
-                    <div className={styles.teamDateInputs}>
-                      <div className={styles.teamDateInputGroup}>
-                        <label>من تاريخ:</label>
-                        <input 
-                          type="date" 
-                          className={styles.teamDateInput} 
-                          value={tempStartDate} 
-                          onChange={e => handleCustomDateChange('start', e.target.value)} 
-                        />
-                      </div>
-                      <div className={styles.teamDateInputGroup}>
-                        <label>إلى تاريخ:</label>
-                        <input 
-                          type="date" 
-                          className={styles.teamDateInput} 
-                          value={tempEndDate} 
-                          onChange={e => handleCustomDateChange('end', e.target.value)} 
-                        />
-                      </div>
-                    </div>
-
-                    <div className={styles.teamModalActions}>
-                      <button 
-                        className={styles.teamApplyBtn} 
-                        onClick={handleApplyDateFilter}
-                      >
-                        تم
-                      </button>
-                      <button 
-                        className={styles.teamCancelBtn} 
-                        onClick={handleCancelDateFilter}
-                      >
-                        إلغاء
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className={styles.searchControl} style={{ marginRight: 'auto' }}>
-                <span>إبحث:</span>
-                <input 
-                  type="text" 
-                  className={styles.searchInput}
-                  value={reservedSearchQuery}
-                  onChange={(e) => setReservedSearchQuery(e.target.value)}
-                  placeholder="ابحث عن صنف..."
-                />
-              </div>
-              
-              {isFetchingReserved && <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>جاري الجلب...</span>}
-            </div>
-
-            <div className={styles.tableContainer}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 50 }}>#</th>
-                    <th>اسم الصنف</th>
-                    <th>نوع الصنف</th>
-                    <th>الكمية المحجوزة الإجمالية</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const items = getReservedItems();
-                    const filteredItems = items.filter(item => {
-                      const query = reservedSearchQuery.trim().toLowerCase();
-                      if (!query) return true;
-                      return item.name?.toLowerCase().includes(query) || 
-                             (item.id && item.id.toLowerCase().includes(query));
-                    });
-
-                    if (filteredItems.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                            {items.length === 0 ? "لا توجد أصناف محجوزة في هذا التاريخ" : "لا توجد نتائج تطابق البحث"}
-                          </td>
-                        </tr>
-                      );
-                    }
-                    return filteredItems.map((item, idx) => (
-                      <tr key={idx}>
-                        <td>{idx + 1}</td>
-                        <td style={{ fontWeight: 'bold' }}>{item.name}</td>
-                        <td>
-                          {item.isComposite ? (
-                            <span style={{ background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.85rem', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                              مُجمَّع (باقة)
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>مفرد</span>
-                          )}
-                        </td>
-                        <td style={{ fontWeight: 'bold', color: '#f97316', fontSize: '1.1rem' }}>
-                          {item.quantity}
-                        </td>
-                      </tr>
-                    ));
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Add Product Modal */}
