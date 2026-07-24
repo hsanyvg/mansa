@@ -194,7 +194,6 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    if (pageView !== 'reserved') return;
     setIsFetchingReserved(true);
 
     const now = new Date();
@@ -251,7 +250,7 @@ export default function ProductsPage() {
     });
 
     return () => unsub();
-  }, [pageView, activeDateFilter, activeStartDate, activeEndDate]);
+  }, [activeDateFilter, activeStartDate, activeEndDate]);
 
   const getReservedItems = () => {
     const itemMap = new Map<string, any>();
