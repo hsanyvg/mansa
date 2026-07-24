@@ -28,8 +28,8 @@ export async function POST(request: Request) {
 
     // 1. Connection settings lookup scoped to user
     const connectionsRef = userId
-      ? adminDb.collection('users').doc(userId).collection('integrations').doc('meta').collection('connections')
-      : adminDb.collection('integrations').doc('meta').collection('connections');
+      ? adminDb!.collection('users').doc(userId).collection('integrations').doc('meta').collection('connections')
+      : adminDb!.collection('integrations').doc('meta').collection('connections');
     let querySnapshot = await connectionsRef.where("linkedProducts", "array-contains", productId).get();
     
     // Fallback: If no pixel is linked to this specific product, use ALL pixels for this user

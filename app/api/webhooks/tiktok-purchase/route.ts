@@ -24,8 +24,8 @@ export async function POST(request: Request) {
     }
 
     const connectionsRef = userId
-      ? adminDb.collection('users').doc(userId).collection('integrations').doc('tiktok').collection('connections')
-      : adminDb.collection('integrations').doc('tiktok').collection('connections');
+      ? adminDb!.collection('users').doc(userId).collection('integrations').doc('tiktok').collection('connections')
+      : adminDb!.collection('integrations').doc('tiktok').collection('connections');
     let querySnapshot = await connectionsRef.where('linkedProducts', 'array-contains', productId).get();
     
     // Fallback: If no pixel is linked to this specific product (e.g. name mismatch from landing page), use ALL pixels for this user
