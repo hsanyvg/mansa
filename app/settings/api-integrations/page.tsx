@@ -20,6 +20,8 @@ interface LandingPageWebhook {
   isActive: boolean;
   createdAt: string;
   linkedProductId?: string;
+  linkedPixelDocId?: string;
+  linkedPixelPlatform?: 'meta' | 'tiktok';
 }
 
 export default function ApiIntegrationsPage() {
@@ -59,6 +61,15 @@ export default function ApiIntegrationsPage() {
   const [isWebhookActive, setIsWebhookActive] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookLinkedProductId, setWebhookLinkedProductId] = useState('');
+  
+  // Pixel Linking States
+  const [isPixelLinked, setIsPixelLinked] = useState(false);
+  const [linkedPixelPlatform, setLinkedPixelPlatform] = useState<'meta' | 'tiktok'>('meta');
+  const [linkedPixelDocId, setLinkedPixelDocId] = useState('');
+
+  // Pixel lists
+  const [metaPixels, setMetaPixels] = useState<any[]>([]);
+  const [tiktokPixels, setTiktokPixels] = useState<any[]>([]);
 
   // Products
   const [products, setProducts] = useState<any[]>([]);
@@ -113,11 +124,24 @@ export default function ApiIntegrationsPage() {
       setProducts(prods);
     });
 
+    // Fetch Pixels
+    const metaPixelsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections');
+    const unsubscribeMetaPixels = onSnapshot(metaPixelsRef, (snapshot) => {
+      setMetaPixels(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    const tiktokPixelsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'tiktok', 'connections');
+    const unsubscribeTiktokPixels = onSnapshot(tiktokPixelsRef, (snapshot) => {
+      setTiktokPixels(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       unsubscribeMeta();
       unsubscribeDelivery();
       unsubscribeWebhook();
       unsubscribeProducts();
+      unsubscribeMetaPixels();
+      unsubscribeTiktokPixels();
     };
   }, []);
 
@@ -304,6 +328,9 @@ export default function ApiIntegrationsPage() {
     setWebhookApiKey('');
     setIsWebhookActive(true);
     setWebhookLinkedProductId('');
+    setIsPixelLinked(false);
+    setLinkedPixelPlatform('meta');
+    setLinkedPixelDocId('');
     setSelectedLandingPage(null);
   };
 
@@ -320,6 +347,15 @@ export default function ApiIntegrationsPage() {
     setWebhookApiKey(lp.apiKey);
     setIsWebhookActive(lp.isActive);
     setWebhookLinkedProductId(lp.linkedProductId || '');
+    if (lp.linkedPixelDocId) {
+      setIsPixelLinked(true);
+      setLinkedPixelPlatform(lp.linkedPixelPlatform || 'meta');
+      setLinkedPixelDocId(lp.linkedPixelDocId);
+    } else {
+      setIsPixelLinked(false);
+      setLinkedPixelPlatform('meta');
+      setLinkedPixelDocId('');
+    }
     setWebhookActiveForm('edit');
   };
 
@@ -330,6 +366,21 @@ export default function ApiIntegrationsPage() {
       return;
     }
     
+    // Validation Guard: Ensure selected pixel supports the selected product
+    if (isPixelLinked && linkedPixelDocId && webhookLinkedProductId) {
+      const pixelList = linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels;
+      const selectedPixel = pixelList.find(p => p.id === linkedPixelDocId);
+      if (selectedPixel && selectedPixel.linkedProducts) {
+        if (!selectedPixel.linkedProducts.includes(webhookLinkedProductId)) {
+          alert('هذا البكسل لا يدعم الصنف المختار! يرجى اختيار بكسل آخر أو إضافة الصنف إلى إعدادات البكسل أولاً.');
+          return;
+        }
+      } else {
+        alert('حدث خطأ في قراءة البكسل.');
+        return;
+      }
+    }
+    
     setIsSaving(true);
     try {
       const docRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhooks');
@@ -337,7 +388,15 @@ export default function ApiIntegrationsPage() {
 
       if (webhookActiveForm === 'edit' && selectedLandingPage) {
         updatedPages = updatedPages.map(lp => 
-          lp.id === selectedLandingPage.id ? { ...lp, name: webhookName, apiKey: webhookApiKey, isActive: isWebhookActive, linkedProductId: webhookLinkedProductId || undefined } : lp
+          lp.id === selectedLandingPage.id ? { 
+            ...lp, 
+            name: webhookName, 
+            apiKey: webhookApiKey, 
+            isActive: isWebhookActive, 
+            linkedProductId: webhookLinkedProductId || undefined,
+            linkedPixelDocId: isPixelLinked ? linkedPixelDocId : undefined,
+            linkedPixelPlatform: isPixelLinked ? linkedPixelPlatform : undefined
+          } : lp
         );
       } else {
         const newLp: LandingPageWebhook = {
@@ -346,6 +405,8 @@ export default function ApiIntegrationsPage() {
           apiKey: webhookApiKey,
           isActive: isWebhookActive,
           linkedProductId: webhookLinkedProductId || undefined,
+          linkedPixelDocId: isPixelLinked ? linkedPixelDocId : undefined,
+          linkedPixelPlatform: isPixelLinked ? linkedPixelPlatform : undefined,
           createdAt: new Date().toISOString()
         };
         updatedPages.push(newLp);
@@ -886,7 +947,16 @@ export default function ApiIntegrationsPage() {
                   <select 
                     className={styles.input} 
                     value={webhookLinkedProductId} 
-                    onChange={(e) => setWebhookLinkedProductId(e.target.value)}
+                    onChange={(e) => {
+                      setWebhookLinkedProductId(e.target.value);
+                      if (isPixelLinked && linkedPixelDocId) {
+                         const pixelList = linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels;
+                         const selectedPixel = pixelList.find(p => p.id === linkedPixelDocId);
+                         if (selectedPixel && selectedPixel.linkedProducts && !selectedPixel.linkedProducts.includes(e.target.value)) {
+                            setLinkedPixelDocId('');
+                         }
+                      }
+                    }}
                     style={{ background: '#1f2937', color: '#fff' }}
                   >
                     <option value="">بدون ربط مباشر (يعتمد على اسم الصنف في الطلب)</option>
@@ -897,6 +967,57 @@ export default function ApiIntegrationsPage() {
                   <p style={{fontSize: '0.75rem', color: '#10b981', marginTop: '0.5rem'}}>
                     عند اختيار صنف، سيتم تسجيل الطلبات وخصم المخزون من هذا الصنف تلقائياً بدون الاعتماد على الاسم القادم من الطلب، مما يمنع الأخطاء المطبعية تماماً.
                   </p>
+                </div>
+
+                <div className={styles.formGroup} style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className={styles.toggleContainer} style={{ marginBottom: isPixelLinked ? '1rem' : '0' }}>
+                    <span className={styles.toggleLabel}>هل تريد ربط ببكسل موجود لديك؟</span>
+                    <label className={styles.toggleSwitch}>
+                      <input 
+                        type="checkbox" 
+                        checked={isPixelLinked} 
+                        onChange={(e) => setIsPixelLinked(e.target.checked)}
+                      />
+                      <span className={styles.slider}></span>
+                    </label>
+                  </div>
+                  
+                  {isPixelLinked && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <select 
+                        className={styles.input} 
+                        value={linkedPixelPlatform} 
+                        onChange={(e) => {
+                          setLinkedPixelPlatform(e.target.value as any);
+                          setLinkedPixelDocId('');
+                        }}
+                        style={{ background: '#1f2937', color: '#fff' }}
+                      >
+                        <option value="meta">بكسل ميتا (Meta Pixel)</option>
+                        <option value="tiktok">بكسل تيك توك (TikTok Pixel)</option>
+                      </select>
+                      
+                      <select 
+                        className={styles.input} 
+                        value={linkedPixelDocId} 
+                        onChange={(e) => setLinkedPixelDocId(e.target.value)}
+                        style={{ background: '#1f2937', color: '#fff' }}
+                        required={isPixelLinked}
+                      >
+                        <option value="">-- اختر البكسل المطلوب --</option>
+                        {(linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels)
+                          .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
+                          .map(p => (
+                          <option key={p.id} value={p.id}>{p.name} ({p.pixelId})</option>
+                        ))}
+                      </select>
+                      {webhookLinkedProductId && (linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels).filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && (
+                        <p style={{fontSize: '0.75rem', color: '#ef4444', margin: 0}}>
+                          ⚠️ لا يوجد بكسل في هذه المنصة يدعم الصنف المختار. يرجى إضافة الصنف إلى البكسل من نافذة المنصات.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className={styles.formGroup}>

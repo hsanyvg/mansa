@@ -37,11 +37,24 @@ export async function POST(request: Request) {
     const connectionsRef = userId
       ? adminDb!.collection('users').doc(userId).collection('integrations').doc('tiktok').collection('connections')
       : adminDb!.collection('integrations').doc('tiktok').collection('connections');
-    let querySnapshot = await connectionsRef.where('linkedProducts', 'array-contains', productId).get();
+
+    let querySnapshot: any = { empty: true, docs: [] };
     
-    // Fallback: If no pixel is linked to this specific product (e.g. name mismatch from landing page), use ALL pixels for this user
-    if (querySnapshot.empty) {
-      querySnapshot = await connectionsRef.get();
+    if (body.pixelDocId) {
+      // Smart routing: Fetch exact pixel
+      const docRef = connectionsRef.doc(body.pixelDocId);
+      const docSnap = await docRef.get();
+      if (docSnap.exists) {
+        querySnapshot = { empty: false, docs: [docSnap] };
+      }
+    } else {
+      // Legacy fallback
+      querySnapshot = await connectionsRef.where('linkedProducts', 'array-contains', productId).get();
+      
+      // Fallback: If no pixel is linked to this specific product, use ALL pixels for this user
+      if (querySnapshot.empty) {
+        querySnapshot = await connectionsRef.get();
+      }
     }
 
     if (querySnapshot.empty) {
