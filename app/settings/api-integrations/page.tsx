@@ -22,6 +22,7 @@ interface LandingPageWebhook {
   linkedProductId?: string;
   linkedPixelDocId?: string;
   linkedPixelPlatform?: 'meta' | 'tiktok';
+  linkedPixels?: { platform: 'meta' | 'tiktok', docId: string }[];
 }
 
 export default function ApiIntegrationsPage() {
@@ -405,8 +406,7 @@ export default function ApiIntegrationsPage() {
           apiKey: webhookApiKey,
           isActive: isWebhookActive,
           linkedProductId: webhookLinkedProductId || undefined,
-          linkedPixelDocId: isPixelLinked ? linkedPixelDocId : undefined,
-          linkedPixelPlatform: isPixelLinked ? linkedPixelPlatform : undefined,
+          linkedPixels: isPixelLinked ? linkedPixels : undefined,
           createdAt: new Date().toISOString()
         };
         updatedPages.push(newLp);

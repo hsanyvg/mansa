@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   try {
     const { 
       orderId, productId, productName, quantity, value, currency, email, phone, firstName, lastName, city, state, 
-      client_ip, user_agent, event_source_url, externalId, fb_login_id, userId 
+      client_ip, user_agent, event_source_url, externalId, fb_login_id, userId, pixelDocId 
     } = await request.json();
 
     if (!productId) {
@@ -42,9 +42,9 @@ export async function POST(request: Request) {
       
     let querySnapshot: any = { empty: true, docs: [] };
     
-    if (body.pixelDocId) {
+    if (pixelDocId) {
       // Smart routing: Fetch exact pixel
-      const docRef = connectionsRef.doc(body.pixelDocId);
+      const docRef = connectionsRef.doc(pixelDocId);
       const docSnap = await docRef.get();
       if (docSnap.exists) {
         querySnapshot = { empty: false, docs: [docSnap] };
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     const eventTime = Math.floor(Date.now() / 1000);
 
     // 3. Loop through all matching pixels and send events
-    const promises = querySnapshot.docs.map(async (doc) => {
+    const promises = querySnapshot.docs.map(async (doc: any) => {
       const { pixelId, accessToken, testEventCode } = doc.data();
 
       if (!pixelId || !accessToken) return { status: 'rejected', reason: 'Missing credentials' };

@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
     const eventTime = new Date().toISOString();
 
-    const promises = querySnapshot.docs.map(async (doc) => {
+    const promises = querySnapshot.docs.map(async (doc: any) => {
       const { pixelId, accessToken, testEventCode } = doc.data();
 
       if (!pixelId || !accessToken) return { status: 'rejected', reason: 'Missing credentials' };
