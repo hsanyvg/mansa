@@ -64,8 +64,7 @@ export default function ApiIntegrationsPage() {
   
   // Pixel Linking States
   const [isPixelLinked, setIsPixelLinked] = useState(false);
-  const [linkedPixelPlatform, setLinkedPixelPlatform] = useState<'meta' | 'tiktok'>('meta');
-  const [linkedPixelDocId, setLinkedPixelDocId] = useState('');
+  const [linkedPixels, setLinkedPixels] = useState<{ platform: 'meta' | 'tiktok', docId: string }[]>([]);
 
   // Pixel lists
   const [metaPixels, setMetaPixels] = useState<any[]>([]);
@@ -331,8 +330,7 @@ export default function ApiIntegrationsPage() {
     setWebhookLinkedProductId('');
     setProductSearchTerm('');
     setIsPixelLinked(false);
-    setLinkedPixelPlatform('meta');
-    setLinkedPixelDocId('');
+    setLinkedPixels([]);
     setSelectedLandingPage(null);
   };
 
@@ -349,14 +347,16 @@ export default function ApiIntegrationsPage() {
     setWebhookApiKey(lp.apiKey);
     setIsWebhookActive(lp.isActive);
     setWebhookLinkedProductId(lp.linkedProductId || '');
-    if (lp.linkedPixelDocId) {
+    if (lp.linkedPixels && lp.linkedPixels.length > 0) {
       setIsPixelLinked(true);
-      setLinkedPixelPlatform(lp.linkedPixelPlatform || 'meta');
-      setLinkedPixelDocId(lp.linkedPixelDocId);
+      setLinkedPixels(lp.linkedPixels);
+    } else if (lp.linkedPixelDocId) {
+      // Backwards compatibility for old saved webhooks
+      setIsPixelLinked(true);
+      setLinkedPixels([{ platform: lp.linkedPixelPlatform || 'meta', docId: lp.linkedPixelDocId }]);
     } else {
       setIsPixelLinked(false);
-      setLinkedPixelPlatform('meta');
-      setLinkedPixelDocId('');
+      setLinkedPixels([]);
     }
     setWebhookActiveForm('edit');
   };
@@ -369,17 +369,16 @@ export default function ApiIntegrationsPage() {
     }
     
     // Validation Guard: Ensure selected pixel supports the selected product
-    if (isPixelLinked && linkedPixelDocId && webhookLinkedProductId) {
-      const pixelList = linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels;
-      const selectedPixel = pixelList.find(p => p.id === linkedPixelDocId);
-      if (selectedPixel && selectedPixel.linkedProducts) {
-        if (!selectedPixel.linkedProducts.includes(webhookLinkedProductId)) {
-          alert('هذا البكسل لا يدعم الصنف المختار! يرجى اختيار بكسل آخر أو إضافة الصنف إلى إعدادات البكسل أولاً.');
-          return;
+    if (isPixelLinked && linkedPixels.length > 0 && webhookLinkedProductId) {
+      for (const px of linkedPixels) {
+        const pixelList = px.platform === 'meta' ? metaPixels : tiktokPixels;
+        const selectedPixel = pixelList.find(p => p.id === px.docId);
+        if (selectedPixel && selectedPixel.linkedProducts) {
+          if (!selectedPixel.linkedProducts.includes(webhookLinkedProductId)) {
+            alert(`البكسل (${selectedPixel.name}) لا يدعم الصنف المختار! يرجى اختيار بكسلات أخرى أو إضافة الصنف إلى إعدادات البكسل أولاً.`);
+            return;
+          }
         }
-      } else {
-        alert('حدث خطأ في قراءة البكسل.');
-        return;
       }
     }
     
@@ -396,8 +395,7 @@ export default function ApiIntegrationsPage() {
             apiKey: webhookApiKey, 
             isActive: isWebhookActive, 
             linkedProductId: webhookLinkedProductId || undefined,
-            linkedPixelDocId: isPixelLinked ? linkedPixelDocId : undefined,
-            linkedPixelPlatform: isPixelLinked ? linkedPixelPlatform : undefined
+            linkedPixels: isPixelLinked ? linkedPixels : undefined
           } : lp
         );
       } else {
@@ -959,12 +957,13 @@ export default function ApiIntegrationsPage() {
                     value={webhookLinkedProductId} 
                     onChange={(e) => {
                       setWebhookLinkedProductId(e.target.value);
-                      if (isPixelLinked && linkedPixelDocId) {
-                         const pixelList = linkedPixelPlatform === 'meta' ? metaPixels : tiktokPixels;
-                         const selectedPixel = pixelList.find(p => p.id === linkedPixelDocId);
-                         if (selectedPixel && selectedPixel.linkedProducts && !selectedPixel.linkedProducts.includes(e.target.value)) {
-                            setLinkedPixelDocId('');
-                         }
+                      if (isPixelLinked && linkedPixels.length > 0) {
+                         const validPixels = linkedPixels.filter(px => {
+                           const pixelList = px.platform === 'meta' ? metaPixels : tiktokPixels;
+                           const selectedPixel = pixelList.find(p => p.id === px.docId);
+                           return selectedPixel && selectedPixel.linkedProducts && selectedPixel.linkedProducts.includes(e.target.value);
+                         });
+                         setLinkedPixels(validPixels);
                       }
                     }}
                     style={{ background: '#1f2937', color: '#fff' }}
@@ -993,39 +992,58 @@ export default function ApiIntegrationsPage() {
                   </div>
                   
                   {isPixelLinked && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      <select 
-                        className={styles.input} 
-                        value={linkedPixelDocId ? `${linkedPixelPlatform}:${linkedPixelDocId}` : ""}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (!val) {
-                             setLinkedPixelDocId('');
-                          } else {
-                             const [plat, id] = val.split(':');
-                             setLinkedPixelPlatform(plat as any);
-                             setLinkedPixelDocId(id);
-                          }
-                        }}
-                        style={{ background: '#1f2937', color: '#fff' }}
-                        required={isPixelLinked}
-                      >
-                        <option value="">-- اختر البكسل المطلوب --</option>
-                        <optgroup label="بكسلات ميتا (Meta)">
-                          {metaPixels
-                            .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
-                            .map(p => (
-                            <option key={`meta:${p.id}`} value={`meta:${p.id}`}>{p.name} ({p.pixelId})</option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="بكسلات تيك توك (TikTok)">
-                          {tiktokPixels
-                            .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
-                            .map(p => (
-                            <option key={`tiktok:${p.id}`} value={`tiktok:${p.id}`}>{p.name} ({p.pixelId})</option>
-                          ))}
-                        </optgroup>
-                      </select>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+                      <label className={styles.label} style={{ fontSize: '0.85rem' }}>اختر البكسلات المراد ربطها:</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', background: 'rgba(0,0,0,0.3)', padding: '1rem', borderRadius: '8px' }}>
+                        
+                        {metaPixels.length > 0 && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>بكسلات ميتا (Meta)</div>}
+                        {metaPixels
+                          .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
+                          .map(p => {
+                            const isChecked = linkedPixels.some(px => px.platform === 'meta' && px.docId === p.id);
+                            return (
+                              <label key={`meta:${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#fff', fontSize: '0.9rem' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setLinkedPixels([...linkedPixels, { platform: 'meta', docId: p.id }]);
+                                    } else {
+                                      setLinkedPixels(linkedPixels.filter(px => !(px.platform === 'meta' && px.docId === p.id)));
+                                    }
+                                  }}
+                                />
+                                {p.name} ({p.pixelId})
+                              </label>
+                            );
+                        })}
+
+                        {tiktokPixels.length > 0 && <div style={{ fontSize: '0.8rem', color: '#6ee7b7', fontWeight: 'bold', marginTop: '0.5rem' }}>بكسلات تيك توك (TikTok)</div>}
+                        {tiktokPixels
+                          .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
+                          .map(p => {
+                            const isChecked = linkedPixels.some(px => px.platform === 'tiktok' && px.docId === p.id);
+                            return (
+                              <label key={`tiktok:${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#fff', fontSize: '0.9rem' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setLinkedPixels([...linkedPixels, { platform: 'tiktok', docId: p.id }]);
+                                    } else {
+                                      setLinkedPixels(linkedPixels.filter(px => !(px.platform === 'tiktok' && px.docId === p.id)));
+                                    }
+                                  }}
+                                />
+                                {p.name} ({p.pixelId})
+                              </label>
+                            );
+                        })}
+                        
+                      </div>
+
                       {webhookLinkedProductId && 
                        metaPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && 
                        tiktokPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && (

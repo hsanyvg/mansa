@@ -304,10 +304,24 @@ export async function POST(request: Request) {
       };
 
       const promises = [];
-      const { linkedPixelDocId, linkedPixelPlatform } = matchedLandingPage;
+      const { linkedPixelDocId, linkedPixelPlatform, linkedPixels } = matchedLandingPage;
 
-      if (linkedPixelDocId && linkedPixelPlatform) {
-        // Smart routing: fire only the selected pixel
+      if (linkedPixels && linkedPixels.length > 0) {
+        // Smart routing: fire all selected pixels
+        for (const px of linkedPixels) {
+          const payload = { ...pixelPayload, pixelDocId: px.docId };
+          promises.push(
+            fetch(`${baseUrl}/api/webhooks/${px.platform}-purchase`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            }).then(async res => {
+              if(!res.ok) console.error(`${px.platform} Pixel Trigger Error:`, await res.text());
+            })
+          );
+        }
+      } else if (linkedPixelDocId && linkedPixelPlatform) {
+        // Legacy smart routing: fire only the selected pixel
         pixelPayload.pixelDocId = linkedPixelDocId;
         promises.push(
           fetch(`${baseUrl}/api/webhooks/${linkedPixelPlatform}-purchase`, {
