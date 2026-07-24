@@ -34,6 +34,7 @@ export default function IntegrationsPage() {
   const [testEventCode, setTestEventCode] = useState('');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [productsList, setProductsList] = useState<Product[]>([]);
+  const [productSearchTerm, setProductSearchTerm] = useState('');
 
   // Fetch connections
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function IntegrationsPage() {
     setAccessToken('');
     setTestEventCode('');
     setSelectedProducts([]);
+    setProductSearchTerm('');
     setEditingId(null);
   };
 
@@ -190,8 +192,17 @@ export default function IntegrationsPage() {
                   <span>الأصناف المربوطة بهذا البكسل</span>
                   <span className={styles.countBadge}>{selectedProducts.length}</span>
                 </label>
+                <input
+                  type="text"
+                  placeholder="🔍 ابحث عن صنف..."
+                  value={productSearchTerm}
+                  onChange={(e) => setProductSearchTerm(e.target.value)}
+                  style={{ marginBottom: '0.5rem', padding: '0.6rem 1rem', fontSize: '0.9rem', borderRadius: '8px', background: 'rgba(0, 0, 0, 0.2)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'white' }}
+                />
                 <div className={styles.productsScrollList}>
-                  {productsList.map(product => (
+                  {productsList
+                    .filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase()))
+                    .map(product => (
                     <div key={product.id} className={`${styles.productCheckItem} ${selectedProducts.includes(product.id) ? styles.selected : ''}`} onClick={() => handleProductToggle(product.id)}>
                       <div className={styles.checkCircle}>
                         {selectedProducts.includes(product.id) && <span>✓</span>}
@@ -200,6 +211,9 @@ export default function IntegrationsPage() {
                     </div>
                   ))}
                   {productsList.length === 0 && <p style={{textAlign: 'center', opacity: 0.5, padding: '1rem'}}>لا توجد أصناف مضافة بعد</p>}
+                  {productsList.length > 0 && productsList.filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).length === 0 && (
+                    <p style={{textAlign: 'center', opacity: 0.5, padding: '1rem'}}>لا توجد نتائج مطابقة للبحث</p>
+                  )}
                 </div>
               </div>
 
