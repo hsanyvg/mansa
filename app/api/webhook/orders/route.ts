@@ -286,6 +286,8 @@ export async function POST(request: Request) {
       const baseUrl = new URL(request.url).origin;
       const pixelPayload = {
         productId: actualProductId,
+        productName: productName,
+        quantity: Number(quantity) || 1,
         value: Number(totalPrice),
         currency: 'IQD',
         email: '',

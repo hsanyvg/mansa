@@ -915,6 +915,8 @@ export default function OrderEntryPage() {
         for (const item of cart) {
           const pixelPayload = {
             productId: item.product.id,
+            productName: item.product.name,
+            quantity: item.quantity,
             value: item.unitPrice * item.quantity,
             currency: 'IQD',
             email: '',

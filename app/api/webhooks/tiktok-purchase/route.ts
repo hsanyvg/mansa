@@ -17,7 +17,10 @@ const corsHeaders = {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { productId, value, currency, email, phone, userId, client_ip, user_agent, event_source_url } = body;
+    const { 
+      productId, productName, quantity, value, currency, email, phone, firstName, lastName, city, state, 
+      client_ip, user_agent, event_source_url, userId 
+    } = body;
 
     if (!productId) {
       return NextResponse.json({ error: 'Missing productId parameter' }, { status: 400, headers: corsHeaders });
@@ -59,9 +62,15 @@ export async function POST(request: Request) {
           page: { url: event_source_url || 'https://example.com' }
         },
         properties: {
-          contents: [{ price: value ? Number(value) : 0, quantity: 1, content_id: productId }],
+          contents: [{ 
+            price: value ? Number(value) : 0, 
+            quantity: quantity ? Number(quantity) : 1, 
+            content_id: productId,
+            content_name: productName || 'Unknown Product',
+            content_type: 'product'
+          }],
           value: value ? Number(value) : 0,
-          currency: currency || 'USD'
+          currency: currency || 'IQD'
         }
       };
 
