@@ -304,8 +304,31 @@ export default function Dashboard() {
         return orderTime >= today;
       } else if (filter === 'الأسبوع') {
         return orderTime >= thisWeek;
-      } else if (filter === 'الشهر' || filter === 'مخصص') {
+      } else if (filter === 'الشهر') {
         return orderTime >= thisMonth;
+      } else if (filter === 'مخصص') {
+        let start = 0;
+        let end = Infinity;
+        let d1 = 0, d2 = Infinity;
+        
+        if (filterStartDate) {
+          const [yr, mo, dy] = filterStartDate.split('-').map(Number);
+          d1 = new Date(yr, mo - 1, dy, 0, 0, 0, 0).getTime();
+        }
+        if (filterEndDate) {
+          const [yr, mo, dy] = filterEndDate.split('-').map(Number);
+          d2 = new Date(yr, mo - 1, dy, 23, 59, 59, 999).getTime();
+        }
+        
+        if (filterStartDate && filterEndDate) {
+            start = Math.min(d1, new Date(filterEndDate.split('-').map(Number)[0], filterEndDate.split('-').map(Number)[1] - 1, filterEndDate.split('-').map(Number)[2], 0, 0, 0, 0).getTime());
+            end = Math.max(new Date(filterStartDate.split('-').map(Number)[0], filterStartDate.split('-').map(Number)[1] - 1, filterStartDate.split('-').map(Number)[2], 23, 59, 59, 999).getTime(), d2);
+        } else {
+            start = d1;
+            end = d2;
+        }
+
+        return orderTime >= start && orderTime <= end;
       } else if (filter === 'الحد الأقصى') {
         return orderTime >= thisYear;
       }
@@ -345,14 +368,23 @@ export default function Dashboard() {
         return true;
       } else if (teamFilter === 'مخصص') {
         let start = 0;
+        let end = Infinity;
+        let d1 = 0, d2 = Infinity;
         if (teamStartDate) {
           const [yr, mo, dy] = teamStartDate.split('-').map(Number);
-          start = new Date(yr, mo - 1, dy, 0, 0, 0, 0).getTime();
+          d1 = new Date(yr, mo - 1, dy, 0, 0, 0, 0).getTime();
         }
-        let end = Infinity;
         if (teamEndDate) {
           const [yr, mo, dy] = teamEndDate.split('-').map(Number);
-          end = new Date(yr, mo - 1, dy, 23, 59, 59, 999).getTime();
+          d2 = new Date(yr, mo - 1, dy, 23, 59, 59, 999).getTime();
+        }
+        
+        if (teamStartDate && teamEndDate) {
+            start = Math.min(d1, new Date(teamEndDate.split('-').map(Number)[0], teamEndDate.split('-').map(Number)[1] - 1, teamEndDate.split('-').map(Number)[2], 0, 0, 0, 0).getTime());
+            end = Math.max(new Date(teamStartDate.split('-').map(Number)[0], teamStartDate.split('-').map(Number)[1] - 1, teamStartDate.split('-').map(Number)[2], 23, 59, 59, 999).getTime(), d2);
+        } else {
+            start = d1;
+            end = d2;
         }
         return orderTime >= start && orderTime <= end;
       }
@@ -667,14 +699,22 @@ export default function Dashboard() {
         return true;
       } else if (gaugeFilter === 'مخصص') {
         let start = 0;
+        let end = Infinity;
+        let d1 = 0, d2 = Infinity;
         if (gaugeStartDate) {
           const [yr, mo, dy] = gaugeStartDate.split('-').map(Number);
-          start = new Date(yr, mo - 1, dy, 0, 0, 0, 0).getTime();
+          d1 = new Date(yr, mo - 1, dy, 0, 0, 0, 0).getTime();
         }
-        let end = Infinity;
         if (gaugeEndDate) {
           const [yr, mo, dy] = gaugeEndDate.split('-').map(Number);
-          end = new Date(yr, mo - 1, dy, 23, 59, 59, 999).getTime();
+          d2 = new Date(yr, mo - 1, dy, 23, 59, 59, 999).getTime();
+        }
+        if (gaugeStartDate && gaugeEndDate) {
+            start = Math.min(d1, new Date(gaugeEndDate.split('-').map(Number)[0], gaugeEndDate.split('-').map(Number)[1] - 1, gaugeEndDate.split('-').map(Number)[2], 0, 0, 0, 0).getTime());
+            end = Math.max(new Date(gaugeStartDate.split('-').map(Number)[0], gaugeStartDate.split('-').map(Number)[1] - 1, gaugeStartDate.split('-').map(Number)[2], 23, 59, 59, 999).getTime(), d2);
+        } else {
+            start = d1;
+            end = d2;
         }
         return orderTime >= start && orderTime <= end;
       }

@@ -17,6 +17,7 @@ import {
   AppState
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Updates from 'expo-updates';
 import Svg, { Path, Circle, G, Polygon, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { db, auth } from './firebase';
@@ -32,7 +33,8 @@ import {
   where, 
   getDocs,
   limit,
-  runTransaction
+  runTransaction,
+  Timestamp
 } from 'firebase/firestore';
 import { 
   signInWithEmailAndPassword, 
@@ -214,10 +216,29 @@ export default function App() {
   const [customTotalAmount, setCustomTotalAmount] = useState(null);
   const [ordersFilter, setOrdersFilter] = useState('all');
   const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
+  
+  // Edit Order State
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [originalOrderItems, setOriginalOrderItems] = useState([]);
+  const [originalOrderStatus, setOriginalOrderStatus] = useState('pending');
 
   // Search State
   const [productSearch, setProductSearch] = useState('');
+  
+  // Global Date Filter
+  const [globalDateFilter, setGlobalDateFilter] = useState('last_7_days');
+  const [customStartDate, setCustomStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 7)));
+  const [customEndDate, setCustomEndDate] = useState(new Date());
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+
+  const [displayedOrdersCount, setDisplayedOrdersCount] = useState(100);
   const [phoneSearchMatches, setPhoneSearchMatches] = useState([]);
+
+  // Reset pagination on filter or tab change
+  useEffect(() => {
+    setDisplayedOrdersCount(100);
+  }, [activeTab, globalDateFilter, customStartDate, customEndDate, ordersFilter, completedSubTab, ordersSearchQuery, completedSearchQuery]);
 
   // Custom Modal Visibilities
   const [empModalVisible, setEmpModalVisible] = useState(false);
@@ -230,10 +251,10 @@ export default function App() {
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
   const governoratesList = [
-    "بغداد", "البصرة", "نينوى (الموصل)", "أربيل", "النجف", "ذي قار (الناصرية)",
-    "كركوك", "الأنبار (الرمادي)", "ديالى (بعقوبة)", "المثنى (السماوة)",
-    "القادسية (الديوانية)", "ميسان (العمارة)", "واسط (الكوت)", "صلاح الدين (تكريت)",
-    "دهوك", "السليمانية", "بابل (الحلة)", "كربلاء"
+    "بغداد", "البصرة", "نينوى", "أربيل", "النجف", "ذي قار",
+    "كركوك", "الأنبار", "ديالى", "المثنى",
+    "القادسية", "ميسان", "واسط", "صلاح الدين",
+    "دهوك", "السليمانية", "بابل", "كربلاء"
   ];
 
   // Load Saved Employee
@@ -248,6 +269,58 @@ export default function App() {
     };
     loadEmployee();
   }, []);
+
+  // Date Range Helper
+  const getDateRange = (filter) => {
+    const now = new Date();
+    let start, end;
+    
+    // Set end to end of today
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    
+    switch (filter) {
+      case 'today':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        break;
+      case 'yesterday':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+        break;
+      case 'today_and_yesterday':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+        break;
+      case 'last_7_days':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
+        break;
+      case 'last_30_days':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0);
+        break;
+      case 'last_60_days':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 59, 0, 0, 0, 0);
+        break;
+      case 'last_90_days':
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 89, 0, 0, 0, 0);
+        break;
+      case 'year':
+        start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        break;
+      case 'all_time':
+        return null;
+      case 'custom':
+        // set start to start of the day of customStartDate
+        start = new Date(customStartDate.getFullYear(), customStartDate.getMonth(), customStartDate.getDate(), 0, 0, 0, 0);
+        // set end to end of the day of customEndDate
+        end = new Date(customEndDate.getFullYear(), customEndDate.getMonth(), customEndDate.getDate(), 23, 59, 59, 999);
+        break;
+      default:
+        return null;
+    }
+    
+    return { 
+      start: Timestamp.fromDate(start), 
+      end: Timestamp.fromDate(end) 
+    };
+  };
 
   // Fetch Firestore Orders
   useEffect(() => {
@@ -265,7 +338,14 @@ export default function App() {
       return;
     }
     setLoading(true);
-    const unsub = onSnapshot(collection(db, 'users', adminUid, 'orders'), (snapshot) => {
+
+    let ordersQuery = collection(db, 'users', adminUid, 'orders');
+    const range = getDateRange(globalDateFilter);
+    if (range) {
+      ordersQuery = fsQuery(ordersQuery, where('date', '>=', range.start), where('date', '<=', range.end));
+    }
+
+    const unsub = onSnapshot(ordersQuery, (snapshot) => {
       const allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       // Sort newest first
@@ -292,7 +372,7 @@ export default function App() {
       let countDeliveredToday = 0;
 
       allOrders.forEach((order) => {
-        const orderTime = order.date?.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
+                const orderTime = order.date?.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
         
         if (order.status === 'pending' || order.status === 'new') {
           countNew++;
@@ -340,7 +420,7 @@ export default function App() {
     });
 
     return () => unsub();
-  }, [user, adminUid]);
+  }, [user, adminUid, globalDateFilter, customStartDate, customEndDate]);
 
   // Fetch active employees
   useEffect(() => {
@@ -868,6 +948,199 @@ export default function App() {
     }
   };
 
+  const handleEditOrder = (order) => {
+    if (order.status === 'delivered' || order.status === 'cancelled' || order.status === 'returned_warehouse' || order.status === 'returned_agent' || order.status === 'returned') {
+      setAlertModal({ visible: true, message: 'لا يمكن تعديل هذا الطلب بسبب حالته الحالية.' });
+      return;
+    }
+    
+    setEditingOrderId(order.id);
+    setOriginalOrderItems(order.items || []);
+    setOriginalOrderStatus(order.status || 'pending');
+    
+    setCustomerName(order.customerName || '');
+    setCustomerPhone(order.customerPhone || '');
+    setCustomerPhone2(order.customerPhone2 || '');
+    setGovernorate(order.governorate || '');
+    setRegion(order.region || '');
+    setNotes(order.notes || '');
+    setPaymentMethod(order.paymentMethod || 'كاش عند التوصيل');
+    setFbLoginId(order.fbLoginId || '');
+    
+    if (order.items && order.items.length > 0) {
+      const reconstructedCart = order.items.map(item => ({
+        id: item.productId,
+        product: {
+          id: item.productId,
+          name: item.productName,
+          isComposite: item.isComposite || false,
+          composition: item.composition || null
+        },
+        quantity: item.quantity,
+        unitPrice: item.unitPrice
+      }));
+      setCart(reconstructedCart);
+    } else {
+      setCart([]);
+    }
+    
+    setCustomTotalAmount(order.totalAmount ? order.totalAmount.toString() : null);
+    setActiveTab('entry');
+  };
+
+  const cancelEdit = () => {
+    setEditingOrderId(null);
+    setOriginalOrderItems([]);
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerPhone2('');
+    setGovernorate('');
+    setRegion('');
+    setNotes('');
+    setFbLoginId('');
+    setCart([]);
+    setCustomTotalAmount(null);
+    setHasAttemptedSubmit(false);
+    setActiveTab('orders');
+  };
+
+  const handleEditSubmit = async () => {
+    setHasAttemptedSubmit(true);
+
+    if (!user) {
+      setAlertModal({ visible: true, message: 'يرجى تسجيل الدخول أولاً.' });
+      return;
+    }
+    if (!selectedEmployeeId) {
+      setAlertModal({ visible: true, message: 'يرجى اختيار الموظف أولاً.' });
+      return;
+    }
+    if (
+      customerName.trim() === '' ||
+      !isValidPhoneNumber(customerPhone) ||
+      governorate.trim() === '' ||
+      region.trim() === ''
+    ) {
+      setAlertModal({ visible: true, message: 'يرجى ملء كافة البيانات المطلوبة للزبون.' });
+      return;
+    }
+    if (cart.length === 0) {
+      setAlertModal({ visible: true, message: 'سلة المشتريات فارغة!' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const orderRef = doc(db, 'users', adminUid, 'orders', editingOrderId);
+      const batch = writeBatch(db);
+      
+      const updates = {
+        customerName,
+        customerPhone,
+        customerPhone2,
+        governorate,
+        region,
+        notes,
+        paymentMethod,
+        fbLoginId,
+        totalAmount,
+        items: cart.map(item => ({
+          productId: item.id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.quantity * item.unitPrice,
+          isComposite: item.product.isComposite || false,
+          composition: item.product.composition || null
+        }))
+      };
+
+      batch.update(orderRef, updates);
+
+      // Revert stock for original items
+      for (const oldItem of originalOrderItems) {
+        const productData = { isComposite: oldItem.isComposite, composition: oldItem.composition, id: oldItem.productId };
+        if (productData.isComposite && productData.composition) {
+          for (const component of productData.composition) {
+            const rawProdRef = doc(db, 'users', adminUid, 'products', component.itemId);
+            const rawSnap = await getDoc(rawProdRef);
+            if (rawSnap.exists()) {
+              const rawData = rawSnap.data();
+              let stock = { ...rawData.stock };
+              let qtyToRevert = component.quantityNeeded * oldItem.quantity;
+              const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+              if (stock[firstStoreKey]) {
+                stock[firstStoreKey].reserved = Math.max(0, (stock[firstStoreKey].reserved || 0) - qtyToRevert);
+                batch.update(rawProdRef, { stock });
+              }
+            }
+          }
+        } else {
+          const prodRef = doc(db, 'users', adminUid, 'products', oldItem.productId);
+          const prodSnap = await getDoc(prodRef);
+          if (prodSnap.exists()) {
+            const prodData = prodSnap.data();
+            let stock = { ...prodData.stock };
+            let qtyToRevert = oldItem.quantity;
+            const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+            if (stock[firstStoreKey]) {
+              stock[firstStoreKey].reserved = Math.max(0, (stock[firstStoreKey].reserved || 0) - qtyToRevert);
+              batch.update(prodRef, { stock });
+            }
+          }
+        }
+      }
+
+      // Reserve stock for new items
+      for (const item of cart) {
+        const productData = item.product;
+        if (productData.isComposite && productData.composition) {
+          for (const component of productData.composition) {
+            const rawProdRef = doc(db, 'users', adminUid, 'products', component.itemId);
+            const rawSnap = await getDoc(rawProdRef);
+            if (rawSnap.exists()) {
+              const rawData = rawSnap.data();
+              let stock = { ...rawData.stock };
+              let qtyToReserve = component.quantityNeeded * item.quantity;
+              const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+              if (!stock[firstStoreKey]) {
+                stock[firstStoreKey] = { quantity: 0, reserved: qtyToReserve, unit: rawData.units?.[0]?.type || 'قطعة' };
+              } else {
+                stock[firstStoreKey].reserved = (stock[firstStoreKey].reserved || 0) + qtyToReserve;
+              }
+              batch.update(rawProdRef, { stock });
+            }
+          }
+        } else {
+          const prodRef = doc(db, 'users', adminUid, 'products', item.product.id);
+          const prodSnap = await getDoc(prodRef);
+          if (prodSnap.exists()) {
+            const prodData = prodSnap.data();
+            let stock = { ...prodData.stock };
+            let qtyToReserve = item.quantity;
+            const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+            if (!stock[firstStoreKey]) {
+              stock[firstStoreKey] = { quantity: 0, reserved: qtyToReserve, unit: prodData.units?.[0]?.type || 'قطعة' };
+            } else {
+              stock[firstStoreKey].reserved = (stock[firstStoreKey].reserved || 0) + qtyToReserve;
+            }
+            batch.update(prodRef, { stock });
+          }
+        }
+      }
+
+      await batch.commit();
+      setAlertModal({ visible: true, message: 'تم تحديث الطلب والمخزون بنجاح!' });
+      cancelEdit();
+
+    } catch (err) {
+      console.log("Edit order native error:", err);
+      setAlertModal({ visible: true, message: 'حدث خطأ أثناء التحديث.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const selectedEmployeeName = employees.find(e => e.id === selectedEmployeeId)?.name || 'اختر الموظف 👤';
 
   const getArabicDate = () => {
@@ -959,6 +1232,21 @@ export default function App() {
     );
   };
 
+  const renderArchiveIcon = (active) => {
+    const strokeColor = active ? '#e9d5ff' : '#64748b';
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 3 }}>
+        {active && (
+          <>
+            <Path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+            <Path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
+          </>
+        )}
+        <Path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" stroke={strokeColor} strokeWidth={2} />
+      </Svg>
+    );
+  };
+
   const renderSettingsIcon = (active) => {
     const strokeColor = active ? '#e9d5ff' : '#64748b';
     const pathD = "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z";
@@ -979,7 +1267,7 @@ export default function App() {
     );
   };
 
-  const returnedCount = orders.filter(o => o.status === 'returned').length;
+    const returnedCount = orders.filter(o => o.status === 'returned').length;
   const deliveredCount = orders.filter(o => o.status === 'delivered').length;
   const postponedCount = orders.filter(o => o.status === 'postponed').length;
   const partialCount = orders.filter(o => o.status === 'partial' || o.status === 'replaced').length;
@@ -1181,6 +1469,88 @@ export default function App() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>منصة منسا - الجوال</Text>
       </View>
+
+      {/* Date Filter Bar */}
+      {(activeTab === 'dashboard' || activeTab === 'orders' || activeTab === 'completed_shipments') && (
+        <View style={{ backgroundColor: '#1e1e24', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#333' }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
+          {[
+            { id: 'today', label: 'اليوم' },
+            { id: 'yesterday', label: 'أمس' },
+            { id: 'today_and_yesterday', label: 'اليوم وأمس' },
+            { id: 'last_7_days', label: 'آخر 7 أيام' },
+            { id: 'last_30_days', label: 'آخر 30 يوم' },
+            { id: 'last_60_days', label: 'آخر 60 يوم' },
+            { id: 'last_90_days', label: 'آخر 90 يوم' },
+            { id: 'year', label: 'سنة' },
+            { id: 'all_time', label: 'فترة مطلقة' },
+            { id: 'custom', label: 'تاريخ مخصص' }
+          ].reverse().map(filter => (
+            <TouchableOpacity 
+              key={filter.id}
+              onPress={() => setGlobalDateFilter(filter.id)}
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                borderRadius: 20,
+                backgroundColor: globalDateFilter === filter.id ? 'rgba(168, 85, 247, 0.2)' : 'transparent',
+                borderWidth: 1,
+                borderColor: globalDateFilter === filter.id ? '#a855f7' : '#475569',
+                marginHorizontal: 4
+              }}
+            >
+              <Text style={{ 
+                color: globalDateFilter === filter.id ? '#e9d5ff' : '#cbd5e1',
+                fontWeight: globalDateFilter === filter.id ? 'bold' : 'normal',
+                fontSize: 13
+              }}>{filter.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {globalDateFilter === 'custom' && (
+          <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 10 }}>
+            <TouchableOpacity 
+              style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
+              onPress={() => setShowStartDatePicker(true)}
+            >
+              <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>من تاريخ</Text>
+              <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customStartDate.toISOString().split('T')[0]}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
+              onPress={() => setShowEndDatePicker(true)}
+            >
+              <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>إلى تاريخ</Text>
+              <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customEndDate.toISOString().split('T')[0]}</Text>
+            </TouchableOpacity>
+
+            {showStartDatePicker && (
+              <DateTimePicker
+                value={customStartDate}
+                mode="date"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowStartDatePicker(false);
+                  if (selectedDate) setCustomStartDate(selectedDate);
+                }}
+              />
+            )}
+            {showEndDatePicker && (
+              <DateTimePicker
+                value={customEndDate}
+                mode="date"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowEndDatePicker(false);
+                  if (selectedDate) setCustomEndDate(selectedDate);
+                }}
+              />
+            )}
+          </View>
+        )}
+      </View>
+      )}
 
       {/* Main Tab View */}
       {activeTab === 'dashboard' ? (
@@ -1478,17 +1848,29 @@ export default function App() {
 
 
             {/* Submit Button */}
-            <TouchableOpacity 
-              style={styles.submitBtn} 
-              onPress={handleSubmit}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="white" size="small" />
-              ) : (
-                <Text style={styles.submitBtnText}>💾 حفظ وإرسال الطلب</Text>
+            <View style={{ flexDirection: 'row' }}>
+              <TouchableOpacity 
+                style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }, { flex: 1, marginRight: editingOrderId ? 8 : 0 }]}
+                onPress={editingOrderId ? handleEditSubmit : handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="white" size="small" />
+                ) : (
+                  <Text style={styles.submitBtnText}>{editingOrderId ? 'حفظ التعديلات' : '💾 حفظ وإرسال الطلب'}</Text>
+                )}
+              </TouchableOpacity>
+
+              {editingOrderId && (
+                <TouchableOpacity 
+                  style={[styles.submitBtn, { backgroundColor: '#475569', flex: 1, marginLeft: 8 }]}
+                  onPress={cancelEdit}
+                  disabled={isSubmitting}
+                >
+                  <Text style={styles.submitBtnText}>إلغاء التعديل</Text>
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
 
@@ -1630,68 +2012,84 @@ export default function App() {
 
               {/* Inner dark content card */}
               <View style={styles.neonCardInner}>
-                {orders
-                  .filter((ord) => {
-                    if (ordersFilter === 'completed') return ord.status === 'delivered' || ord.status === 'partial';
-                    if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'partial' && ord.status !== 'cancelled' && ord.status !== 'returned';
-                    return true;
-                  })
-                  .filter((ord) => {
-                    if (!ordersSearchQuery.trim()) return true;
-                    const query = ordersSearchQuery.toLowerCase().trim();
-                    const name = (ord.customerName || '').toLowerCase();
-                    const phone = (ord.customerPhone || '').toLowerCase();
-                    const phone2 = (ord.customerPhone2 || '').toLowerCase();
-                    const gov = (ord.governorate || '').toLowerCase();
-                    const id = (ord.id || '').toLowerCase();
-                    return name.includes(query) || phone.includes(query) || phone2.includes(query) || gov.includes(query) || id.includes(query);
-                  })
-                  .map((ord) => (
-                    <View key={ord.id} style={styles.orderItem}>
-                      <View style={styles.orderLeft}>
-                        <Text style={styles.orderCustName}>{ord.customerName}</Text>
-                        <Text style={styles.orderMetaText}>{ord.customerPhone} | {ord.governorate}</Text>
-                      </View>
-                      <View style={styles.orderRight}>
-                        <Text style={styles.orderAmountText}>{Number(ord.totalAmount || 0).toLocaleString()} د.ع</Text>
-                        <View style={[
-                          styles.statusBadge,
-                          ord.status === 'delivered' ? styles.badgeDelivered :
-                          ord.status === 'partial' ? styles.badgePartial :
-                          ord.status === 'returned' ? styles.badgeReturned :
-                          ord.status === 'cancelled' ? styles.badgeCancelled :
-                          ord.status === 'backordered' ? styles.badgeBackordered : styles.badgePending
-                        ]}>
-                          <Text style={styles.statusBadgeText}>
-                            {ord.status === 'delivered' ? 'واصل' :
-                             ord.status === 'partial' ? 'واصل جزئي' :
-                             ord.status === 'returned' ? 'راجع' :
-                             ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
-                             ord.status === 'cancelled' ? 'ملغي' :
-                             ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
-                          </Text>
+                {(() => {
+                  const filteredList = orders
+                    
+                    .filter((ord) => {
+                      if (ordersFilter === 'completed') return ord.status === 'delivered' || ord.status === 'partial';
+                      if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'partial' && ord.status !== 'cancelled' && ord.status !== 'returned';
+                      return true;
+                    })
+                    .filter((ord) => {
+                      if (!ordersSearchQuery.trim()) return true;
+                      const query = ordersSearchQuery.toLowerCase().trim();
+                      const name = (ord.customerName || '').toLowerCase();
+                      const phone = (ord.customerPhone || '').toLowerCase();
+                      const phone2 = (ord.customerPhone2 || '').toLowerCase();
+                      const gov = (ord.governorate || '').toLowerCase();
+                      const id = (ord.id || '').toLowerCase();
+                      return name.includes(query) || phone.includes(query) || phone2.includes(query) || gov.includes(query) || id.includes(query);
+                    });
+
+                  if (filteredList.length === 0) {
+                    return <Text style={styles.emptyText}>لا توجد نتائج مطابقة للبحث.</Text>;
+                  }
+
+                  return (
+                    <>
+                      {filteredList.slice(0, displayedOrdersCount).map((ord) => (
+                        <View key={ord.id} style={styles.orderItem}>
+                          <View style={styles.orderLeft}>
+                            <Text style={styles.orderCustName}>{ord.customerName}</Text>
+                            <Text style={styles.orderMetaText}>{ord.customerPhone} | {ord.governorate}</Text>
+                          </View>
+                          <View style={styles.orderRight}>
+                            <Text style={styles.orderAmountText}>{Number(ord.totalAmount || 0).toLocaleString()} د.ع</Text>
+                            <View style={[
+                              styles.statusBadge,
+                              ord.status === 'delivered' ? styles.badgeDelivered :
+                              ord.status === 'partial' ? styles.badgePartial :
+                              ord.status === 'returned' ? styles.badgeReturned :
+                              ord.status === 'cancelled' ? styles.badgeCancelled :
+                              ord.status === 'backordered' ? styles.badgeBackordered : styles.badgePending
+                            ]}>
+                              <Text style={styles.statusBadgeText}>
+                                {ord.status === 'delivered' ? 'واصل' :
+                                 ord.status === 'partial' ? 'واصل جزئي' :
+                                 ord.status === 'returned' ? 'راجع' :
+                                 ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
+                                 ord.status === 'cancelled' ? 'ملغي' :
+                                 ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
+                              </Text>
+                            </View>
+                            
+                            {(ord.status !== 'delivered' && ord.status !== 'cancelled' && ord.status !== 'returned_warehouse' && ord.status !== 'returned' && ord.status !== 'returned_agent') && (
+                              <TouchableOpacity 
+                                style={{ padding: 6, backgroundColor: 'rgba(168, 85, 247, 0.15)', borderRadius: 6, marginTop: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' }}
+                                onPress={() => handleEditOrder(ord)}
+                              >
+                                <Text style={{ color: '#e9d5ff', fontWeight: 'bold', fontSize: 12 }}>✏️ تعديل الطلب</Text>
+                              </TouchableOpacity>
+                            )}
+                            
+                            
+                          </View>
                         </View>
-                      </View>
-                    </View>
-                  ))}
-                {orders
-                  .filter((ord) => {
-                    if (ordersFilter === 'completed') return ord.status === 'delivered' || ord.status === 'partial';
-                    if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'partial' && ord.status !== 'cancelled' && ord.status !== 'returned';
-                    return true;
-                  })
-                  .filter((ord) => {
-                    if (!ordersSearchQuery.trim()) return true;
-                    const query = ordersSearchQuery.toLowerCase().trim();
-                    const name = (ord.customerName || '').toLowerCase();
-                    const phone = (ord.customerPhone || '').toLowerCase();
-                    const phone2 = (ord.customerPhone2 || '').toLowerCase();
-                    const gov = (ord.governorate || '').toLowerCase();
-                    const id = (ord.id || '').toLowerCase();
-                    return name.includes(query) || phone.includes(query) || phone2.includes(query) || gov.includes(query) || id.includes(query);
-                  }).length === 0 && (
-                  <Text style={styles.emptyText}>لا توجد نتائج مطابقة للبحث.</Text>
-                )}
+                      ))}
+                      
+                      {filteredList.length > displayedOrdersCount && (
+                        <TouchableOpacity 
+                          style={{ padding: 14, backgroundColor: '#334155', borderRadius: 8, alignItems: 'center', marginTop: 10 }}
+                          onPress={() => setDisplayedOrdersCount(prev => prev + 100)}
+                        >
+                          <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>
+                            عرض المزيد ({filteredList.length - displayedOrdersCount} متبقي)
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  );
+                })()}
               </View>
             </View>
             </Animated.View>
@@ -1849,17 +2247,32 @@ export default function App() {
                 );
               }
 
-              return filtered.map((item, index) => (
-                <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
-                   <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
-                     <Text style={{ fontWeight: 'bold', color: '#10b951' }}>رقم الوصل: {item.receiptNumber}</Text>
-                     <Text style={{ color: '#666' }}>{item.status === 'delivered' ? 'ناجحة' : item.status === 'returned' ? 'راجعة' : item.status === 'partial' || item.status === 'replaced' ? 'جزئي او استبدال' : item.status}</Text>
-                   </View>
-                   <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
-                   <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
-                   <Text style={{ textAlign: 'right', fontWeight: 'bold', color: '#333' }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
-                </View>
-              ));
+              return (
+                <>
+                  {filtered.slice(0, displayedOrdersCount).map((item, index) => (
+                    <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+                         <Text style={{ fontWeight: 'bold', color: '#10b951' }}>رقم الوصل: {item.receiptNumber}</Text>
+                         <Text style={{ color: '#666' }}>{item.status === 'delivered' ? 'ناجحة' : item.status === 'returned' ? 'راجعة' : item.status === 'partial' || item.status === 'replaced' ? 'جزئي او استبدال' : item.status}</Text>
+                       </View>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                       <Text style={{ textAlign: 'right', fontWeight: 'bold', color: '#333' }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
+                    </View>
+                  ))}
+                  
+                  {filtered.length > displayedOrdersCount && (
+                    <TouchableOpacity 
+                      style={{ padding: 14, backgroundColor: '#d1fae5', borderRadius: 8, alignItems: 'center', marginTop: 10, marginBottom: 20 }}
+                      onPress={() => setDisplayedOrdersCount(prev => prev + 100)}
+                    >
+                      <Text style={{ color: '#065f46', fontWeight: 'bold' }}>
+                        عرض المزيد ({filtered.length - displayedOrdersCount} متبقي)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
             })()}
             <View style={{height: 50}} />
           </ScrollView>
@@ -1887,7 +2300,9 @@ export default function App() {
           >
             <Text style={styles.centerNavIcon}>+</Text>
           </TouchableOpacity>
-          <Text style={[styles.navText, { marginTop: 4 }, activeTab === 'entry' && styles.navTextActive]}>إضافة طلب</Text>
+          <Text style={[styles.navText, { marginTop: 4 }, activeTab === 'entry' && styles.navTextActive]}>
+            {editingOrderId ? 'تعديل طلب' : 'إضافة طلب'}
+          </Text>
         </View>
 
         {/* Tab 4: طلبات */}

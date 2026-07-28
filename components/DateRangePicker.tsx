@@ -160,21 +160,27 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
               <div className={styles.inputsGrid}>
                 <div className={styles.inputGroup}>
                   <label className={styles.fieldLabel}>من (تاريخ البدء)</label>
-                  <input 
-                    type="date" 
-                    className={styles.dateInputNative} 
-                    value={toISODate(selectedStartDate)} 
-                    onChange={(e) => handleDateChange('start', e.target.value)}
-                  />
+                  <div lang="en" dir="ltr" style={{ width: '100%' }}>
+                    <input 
+                      type="date" 
+                      className={styles.dateInputNative} 
+                      value={toISODate(selectedStartDate)} 
+                      onChange={(e) => handleDateChange('start', e.target.value)}
+                      style={{ width: '100%', textAlign: 'right', fontFamily: 'Arial, sans-serif' }}
+                    />
+                  </div>
                 </div>
                 <div className={styles.inputGroup}>
                   <label className={styles.fieldLabel}>إلى (تاريخ الانتهاء)</label>
-                  <input 
-                    type="date" 
-                    className={styles.dateInputNative} 
-                    value={toISODate(selectedEndDate)} 
-                    onChange={(e) => handleDateChange('end', e.target.value)}
-                  />
+                  <div lang="en" dir="ltr" style={{ width: '100%' }}>
+                    <input 
+                      type="date" 
+                      className={styles.dateInputNative} 
+                      value={toISODate(selectedEndDate)} 
+                      onChange={(e) => handleDateChange('end', e.target.value)}
+                      style={{ width: '100%', textAlign: 'right', fontFamily: 'Arial, sans-serif' }}
+                    />
+                  </div>
                 </div>
               </div>
 

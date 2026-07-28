@@ -821,10 +821,71 @@ export default function OrdersListPage() {
     }
   };
 
-  const activeOrders = orders.filter(o => !o.isArchived);
-  const archivedOrdersList = orders.filter(o => o.isArchived);
+  const matchDateFilter = React.useCallback((order: any) => {
+    if (!dateFilter || dateFilter === 'الكل') return true;
+    
+    let d = null;
+    if (order.date) {
+      d = (order.date.toDate && typeof order.date.toDate === 'function') ? order.date.toDate() : new Date(order.date);
+    }
+    if (!d || isNaN(d.getTime())) return true;
 
-  const sourceOrders = showArchivedInFilter ? orders : activeOrders;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dateFilter === 'اليوم') {
+      return d >= today;
+    }
+    if (dateFilter === 'أمس') {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return d >= yesterday && d < today;
+    }
+    if (dateFilter === 'آخر 7 أيام') {
+      const past7 = new Date(today);
+      past7.setDate(past7.getDate() - 7);
+      return d >= past7;
+    }
+    if (dateFilter === 'آخر 14 يومًا') {
+      const past14 = new Date(today);
+      past14.setDate(past14.getDate() - 14);
+      return d >= past14;
+    }
+    if (dateFilter === 'هذا الشهر') {
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      return d >= startOfMonth;
+    }
+    
+    if (dateFilter.includes('-')) {
+      const [startStr, endStr] = dateFilter.split('-').map((s: string) => s.trim());
+      if (startStr && endStr) {
+        const parseGB = (str: string) => {
+          const [dd, mm, yyyy] = str.split('/');
+          return new Date(Number(yyyy), Number(mm)-1, Number(dd));
+        };
+        const date1 = parseGB(startStr);
+        const date2 = parseGB(endStr);
+        
+        const sDate = new Date(Math.min(date1.getTime(), date2.getTime()));
+        sDate.setHours(0, 0, 0, 0);
+        const eDate = new Date(Math.max(date1.getTime(), date2.getTime()));
+        eDate.setHours(23, 59, 59, 999);
+        
+        return d >= sDate && d <= eDate;
+      }
+    }
+    
+    return true;
+  }, [dateFilter]);
+
+  const dateFilteredOrders = React.useMemo(() => {
+    return orders.filter(matchDateFilter);
+  }, [orders, matchDateFilter]);
+
+  const activeOrders = dateFilteredOrders.filter(o => !o.isArchived);
+  const archivedOrdersList = dateFilteredOrders.filter(o => o.isArchived);
+
+  const sourceOrders = showArchivedInFilter ? dateFilteredOrders : activeOrders;
 
   const phoneCounts = sourceOrders.reduce((acc, order) => {
     const ph = (order.customerPhone || order.phone || '').trim();
@@ -857,7 +918,7 @@ export default function OrdersListPage() {
   const statusCounts = React.useMemo(() => {
     const counts: Record<string, number> = {};
     const listToCount = showOnlySelected 
-      ? orders.filter(o => selectedOrderIds.includes(o.id))
+      ? dateFilteredOrders.filter(o => selectedOrderIds.includes(o.id))
       : baseList;
 
     listToCount.forEach(order => {
@@ -865,7 +926,7 @@ export default function OrdersListPage() {
       counts[status] = (counts[status] || 0) + 1;
     });
     return counts;
-  }, [baseList, showOnlySelected, selectedOrderIds, orders]);
+  }, [baseList, showOnlySelected, selectedOrderIds, dateFilteredOrders]);
 
   const baseListAfterStatus = React.useMemo(() => {
     let list = baseList;
@@ -1004,66 +1065,14 @@ export default function OrdersListPage() {
     return true;
   }, [filterByProduct, filterByPage, filterByMainCat, filterBySubCat, getItemHierarchy]);
 
-  const matchDateFilter = React.useCallback((order: any) => {
-    if (!dateFilter || dateFilter === 'الكل') return true;
-    
-    let d = null;
-    if (order.date) {
-      d = (order.date.toDate && typeof order.date.toDate === 'function') ? order.date.toDate() : new Date(order.date);
-    }
-    if (!d || isNaN(d.getTime())) return true;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (dateFilter === 'اليوم') {
-      return d >= today;
-    }
-    if (dateFilter === 'أمس') {
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      return d >= yesterday && d < today;
-    }
-    if (dateFilter === 'آخر 7 أيام') {
-      const past7 = new Date(today);
-      past7.setDate(past7.getDate() - 7);
-      return d >= past7;
-    }
-    if (dateFilter === 'آخر 14 يومًا') {
-      const past14 = new Date(today);
-      past14.setDate(past14.getDate() - 14);
-      return d >= past14;
-    }
-    if (dateFilter === 'هذا الشهر') {
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      return d >= startOfMonth;
-    }
-    
-    if (dateFilter.includes('-')) {
-      const [startStr, endStr] = dateFilter.split('-').map((s: string) => s.trim());
-      if (startStr && endStr) {
-        const parseGB = (str: string) => {
-          const [dd, mm, yyyy] = str.split('/');
-          return new Date(Number(yyyy), Number(mm)-1, Number(dd));
-        };
-        const sDate = parseGB(startStr);
-        sDate.setHours(0, 0, 0, 0);
-        const eDate = parseGB(endStr);
-        eDate.setHours(23, 59, 59, 999);
-        return d >= sDate && d <= eDate;
-      }
-    }
-    
-    return true;
-  }, [dateFilter]);
 
   const baseFilteredOrders = React.useMemo(() => {
     return (showOnlySelected 
-      ? orders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || getStatusKey(o) === selectedStatus)
+      ? dateFilteredOrders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || getStatusKey(o) === selectedStatus)
       : baseListAfterStatus)
-      .filter(matchDateFilter)
       .filter(matchOrderSearchAndColumns);
-  }, [showOnlySelected, orders, selectedOrderIds, selectedStatus, baseListAfterStatus, matchOrderSearchAndColumns, matchDateFilter]);
+  }, [showOnlySelected, dateFilteredOrders, selectedOrderIds, selectedStatus, baseListAfterStatus, matchOrderSearchAndColumns]);
 
   const filteredOrders = React.useMemo(() => {
     return baseFilteredOrders.filter(matchHierarchyFilters);
@@ -1071,13 +1080,13 @@ export default function OrdersListPage() {
 
   const statsFilteredOrders = React.useMemo(() => {
     if (selectedOrderIds.length > 0) {
-      return orders.filter(o => selectedOrderIds.includes(o.id));
+      return dateFilteredOrders.filter(o => selectedOrderIds.includes(o.id));
     }
     const afterStatus = selectedStatus === 'all' 
-      ? orders 
-      : orders.filter(o => getStatusKey(o) === selectedStatus);
-    return afterStatus.filter(matchDateFilter).filter(matchOrderSearchAndColumns).filter(matchHierarchyFilters);
-  }, [orders, selectedOrderIds, selectedStatus, matchOrderSearchAndColumns, matchHierarchyFilters, matchDateFilter]);
+      ? dateFilteredOrders 
+      : dateFilteredOrders.filter(o => getStatusKey(o) === selectedStatus);
+    return afterStatus.filter(matchOrderSearchAndColumns).filter(matchHierarchyFilters);
+  }, [dateFilteredOrders, selectedOrderIds, selectedStatus, matchOrderSearchAndColumns, matchHierarchyFilters]);
 
   const statsData = React.useMemo(() => {
     const prodMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; amount: number }> = {};
