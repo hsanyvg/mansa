@@ -67,6 +67,7 @@ interface Expense {
   walletId?: string;
   walletName?: string;
   isArchived?: boolean;
+  tags?: string[];
   createdAt: any;
   imageUrl?: string;
   imageUrls?: string[];
@@ -80,6 +81,8 @@ const toLocalDate = (d: Date) => {
 export default function ExpensesPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
+  const [tagsList, setTagsList] = useState<any[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [pages, setPages] = useState<any[]>([]);
   const [allCategories, setAllCategories] = useState<any[]>([]);
@@ -109,6 +112,26 @@ export default function ExpensesPage() {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [colFilters, setColFilters] = useState<{ date: string; category: string[]; tags: string[]; costCenter: string; details: string; amount: string }>({ date: '', category: [], tags: [], costCenter: '', details: '', amount: '' });
+  const [isCatFilterOpen, setIsCatFilterOpen] = useState(false);
+  const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
+
+  const handleSort = (key: string) => {
+    if (sortConfig.key === key) {
+      setSortConfig({ key, direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' });
+    } else {
+      setSortConfig({ key, direction: 'asc' });
+    }
+  };
+
+  const renderSortIcon = (key: string) => {
+    if (sortConfig.key === key) {
+      return sortConfig.direction === 'asc' ? ' 🔼' : ' 🔽';
+    }
+    return <span style={{ opacity: 0.3 }}> ↕️</span>;
+  };
 
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -147,6 +170,7 @@ export default function ExpensesPage() {
   useEffect(() => {
     if (!isMounted) return;
     const unsubCats = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expense_categories'), s => setCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubTags = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expense_tags'), s => setTagsList(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubPages = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), s => setPages(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubBranches = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), s => setAllCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), s => setAllProducts(s.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -157,7 +181,7 @@ export default function ExpensesPage() {
     const unsubWallets = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), s => setWallets(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubTreasury = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'), s => setTreasuryTransactions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     
-    return () => { unsubCats(); unsubPages(); unsubBranches(); unsubProducts(); unsubExp(); unsubWallets(); unsubTreasury(); };
+    return () => { unsubCats(); unsubTags(); unsubPages(); unsubBranches(); unsubProducts(); unsubExp(); unsubWallets(); unsubTreasury(); };
   }, [isMounted]);
 
   const showToastMsg = (m: string, t: 'success' | 'error' = 'success') => {
@@ -172,6 +196,7 @@ export default function ExpensesPage() {
     setEditingId(null);
     setImagePreviews([]);
     setImageUrls([]);
+    setSelectedTags([]);
   };
 
   const getWalletBalance = (walletId: string, curr: string) => {
@@ -220,7 +245,8 @@ export default function ExpensesPage() {
       walletId: selectedWalletId,
       walletName: selectedWallet?.name || '',
       imageUrl: imageUrls[0] || '',
-      imageUrls: imageUrls
+      imageUrls: imageUrls,
+      tags: selectedTags
     };
 
     try {
@@ -261,7 +287,7 @@ export default function ExpensesPage() {
 
   const handleEdit = (exp: Expense) => {
     setEditingId(exp.id); setCategoryId(exp.categoryId); setAmount(exp.amount.toString());
-    setCurrency(exp.currency); setDate(exp.date); setDetails(exp.details);
+    setCurrency(exp.currency); setDate(exp.date); setDetails(exp.details); setSelectedTags(exp.tags || []);
     if (exp.walletId) setSelectedWalletId(exp.walletId);
     
     const urls = exp.imageUrls || (exp.imageUrl ? [exp.imageUrl] : []);
@@ -364,8 +390,43 @@ export default function ExpensesPage() {
         (exp.time && exp.time.includes(q));
       if (!matchSearch) return false;
     }
+
+    if (colFilters.date && !exp.date.includes(colFilters.date)) return false;
+    if (colFilters.category && colFilters.category.length > 0) {
+      if (!exp.categoryName || !colFilters.category.includes(exp.categoryName)) return false;
+    }
+    if (colFilters.tags && colFilters.tags.length > 0) {
+      if (!exp.tags || !colFilters.tags.some(tag => exp.tags?.includes(tag))) return false;
+    }
+    if (colFilters.costCenter) {
+       const costCenterStr = `${exp.pageName || ''} ${exp.branchName || ''} ${exp.itemName || ''}`.toLowerCase();
+       if (!costCenterStr.includes(colFilters.costCenter.toLowerCase())) return false;
+    }
+    if (colFilters.details && (!exp.details || !exp.details.toLowerCase().includes(colFilters.details.toLowerCase()))) return false;
+    if (colFilters.amount) {
+       const amountStr = `${exp.amount || ''} ${exp.currency || ''}`.toLowerCase();
+       if (!amountStr.includes(colFilters.amount.toLowerCase())) return false;
+    }
+
     return true;
   });
+
+  if (sortConfig.key) {
+    filteredAndSearched.sort((a, b) => {
+      let valA, valB;
+      switch (sortConfig.key) {
+        case 'date': valA = a.date; valB = b.date; break;
+        case 'category': valA = a.categoryName || ''; valB = b.categoryName || ''; break;
+        case 'costCenter': valA = a.pageName || ''; valB = b.pageName || ''; break;
+        case 'details': valA = a.details || ''; valB = b.details || ''; break;
+        case 'amount': valA = a.amount || 0; valB = b.amount || 0; break;
+        default: return 0;
+      }
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
 
   const grouped = filteredAndSearched.reduce((acc: any, e) => {
     const k = e.date ? e.date.substring(0, 7) : 'Unknown';
@@ -514,6 +575,149 @@ export default function ExpensesPage() {
 
   if (!isMounted) return null;
 
+  const renderTableHeader = () => (
+    <thead>
+      <tr>
+        <th style={{ verticalAlign: 'top', minWidth: '120px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleSort('date')}>
+              <span>التاريخ</span>
+              <span>{renderSortIcon('date')}</span>
+            </div>
+            <input type="text" className={styles.input} style={{ padding: '4px', fontSize: '12px' }} placeholder="بحث..." value={colFilters.date} onChange={e => setColFilters({...colFilters, date: e.target.value})} />
+          </div>
+        </th>
+        <th style={{ verticalAlign: 'top', minWidth: '150px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleSort('category')}>
+              <span>الفئة</span>
+              <span>{renderSortIcon('category')}</span>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <div 
+                className={styles.input} 
+                style={{ padding: '4px', fontSize: '12px', minHeight: '26px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                onClick={() => setIsCatFilterOpen(!isCatFilterOpen)}
+              >
+                <span>{colFilters.category.length > 0 ? `محدد (${colFilters.category.length})` : 'الكل'}</span>
+                <span>▼</span>
+              </div>
+              {isCatFilterOpen && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, background: 'var(--card-bg, #1e293b)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', maxHeight: '200px', overflowY: 'auto', minWidth: '150px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.25rem' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={colFilters.category.length === 0} 
+                      onChange={() => setColFilters({...colFilters, category: []})}
+                    />
+                    <span style={{ fontSize: '12px' }}>الكل</span>
+                  </label>
+                  {categories.map(c => (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.25rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={colFilters.category.includes(c.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setColFilters({...colFilters, category: [...colFilters.category, c.name]});
+                          } else {
+                            setColFilters({...colFilters, category: colFilters.category.filter(cat => cat !== c.name)});
+                          }
+                        }}
+                      />
+                      <span style={{ fontSize: '12px' }}>{c.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </th>
+        <th style={{ verticalAlign: 'top', minWidth: '150px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleSort('costCenter')}>
+              <span>المركز المالي</span>
+              <span>{renderSortIcon('costCenter')}</span>
+            </div>
+            <input type="text" className={styles.input} style={{ padding: '4px', fontSize: '12px' }} placeholder="بحث..." value={colFilters.costCenter} onChange={e => setColFilters({...colFilters, costCenter: e.target.value})} />
+          </div>
+        </th>
+        <th style={{ verticalAlign: 'top', minWidth: '150px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>الوسوم</span>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <div 
+                className={styles.input} 
+                style={{ padding: '4px', fontSize: '12px', minHeight: '26px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                onClick={() => setIsTagFilterOpen(!isTagFilterOpen)}
+              >
+                <span>{colFilters.tags.length > 0 ? `محدد (${colFilters.tags.length})` : 'الكل'}</span>
+                <span>▼</span>
+              </div>
+              {isTagFilterOpen && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, background: 'var(--card-bg, #1e293b)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', maxHeight: '200px', overflowY: 'auto', minWidth: '150px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.25rem' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={colFilters.tags.length === 0} 
+                      onChange={() => setColFilters({...colFilters, tags: []})}
+                    />
+                    <span style={{ fontSize: '12px' }}>الكل</span>
+                  </label>
+                  {tagsList.map(t => (
+                    <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.25rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={colFilters.tags.includes(t.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) setColFilters({...colFilters, tags: [...colFilters.tags, t.name]});
+                          else setColFilters({...colFilters, tags: colFilters.tags.filter(tag => tag !== t.name)});
+                        }}
+                      />
+                      <span style={{ fontSize: '12px' }}>{t.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </th>
+        <th style={{ verticalAlign: 'top', minWidth: '200px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleSort('details')}>
+              <span>البيان / التفاصيل</span>
+              <span>{renderSortIcon('details')}</span>
+            </div>
+            <input type="text" className={styles.input} style={{ padding: '4px', fontSize: '12px' }} placeholder="بحث..." value={colFilters.details} onChange={e => setColFilters({...colFilters, details: e.target.value})} />
+          </div>
+        </th>
+        <th style={{ verticalAlign: 'top' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '4px' }}>
+            <span>المرفقات</span>
+            <div style={{ height: '24px' }}></div>
+          </div>
+        </th>
+        <th style={{ verticalAlign: 'top', minWidth: '120px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleSort('amount')}>
+              <span>المبلغ</span>
+              <span>{renderSortIcon('amount')}</span>
+            </div>
+            <input type="text" className={styles.input} style={{ padding: '4px', fontSize: '12px' }} placeholder="بحث..." value={colFilters.amount} onChange={e => setColFilters({...colFilters, amount: e.target.value})} />
+          </div>
+        </th>
+        <th style={{ verticalAlign: 'top', textAlign: 'center', minWidth: '80px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '4px' }}>
+            <span>إجراءات</span>
+            <div style={{ height: '24px' }}></div>
+          </div>
+        </th>
+      </tr>
+    </thead>
+  );
+
   return (
     <div className={styles.container}>
       {toast && <div className={`${styles.toast} ${styles[toast.type]}`}>{toast.message}</div>}
@@ -555,10 +759,33 @@ export default function ExpensesPage() {
                 {date !== new Date().toISOString().split('T')[0] && <span className={styles.dateWarning}>⚠️ انتبه! ليس تاريخ اليوم</span>}
               </div>
             </div>
-            <div className={styles.formGroup}><label className={styles.label}>البيان / التفاصيل</label><input type="text" className={styles.input} value={details} onChange={e => setDetails(e.target.value)} required placeholder="اكتب التفاصيل هنا..." /></div>
+            <div className={`${styles.formGroup} ${styles.detailsGroup}`}>
+              <label className={styles.label}>البيان / التفاصيل</label>
+              <textarea className={styles.input} style={{ height: '100%', minHeight: '120px', resize: 'vertical' }} value={details} onChange={e => setDetails(e.target.value)} required placeholder="اكتب التفاصيل هنا..." />
+            </div>
             <div className={styles.formGroup}><label className={styles.label}>البيج (اختياري)</label><select className={styles.select} value={selectedPageId} onChange={e => { setSelectedPageId(e.target.value); setSelectedBranchId(''); setSelectedItemId(''); }}><option value="">اختر البيج...</option>{pages.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الفرع (اختياري)</label><select className={styles.select} value={selectedBranchId} onChange={e => { setSelectedBranchId(e.target.value); setSelectedItemId(''); }} disabled={!selectedPageId}><option value="">اختر الفرع...</option>{allCategories.filter(b => b.pageId === selectedPageId).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
             <div className={styles.formGroup}><label className={styles.label}>الصنف (اختياري)</label><select className={styles.select} value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} disabled={!selectedBranchId}><option value="">اختر الصنف...</option>{allProducts.filter(i => i.categoryId === selectedBranchId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>الوسوم / الإشارات (اختياري)</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', background: 'var(--card-bg, rgba(0,0,0,0.2))', padding: '0.5rem', borderRadius: '8px', minHeight: '42px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                {tagsList.length === 0 ? <span style={{ fontSize: '12px', color: '#888' }}>لا توجد وسوم. أضفها من الإعدادات.</span> : null}
+                {tagsList.map(tag => (
+                  <label key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', background: selectedTags.includes(tag.name) ? 'var(--primary, #8b5cf6)' : 'rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', color: '#fff', transition: '0.2s' }}>
+                    <input 
+                      type="checkbox" 
+                      style={{ display: 'none' }}
+                      checked={selectedTags.includes(tag.name)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedTags([...selectedTags, tag.name]);
+                        else setSelectedTags(selectedTags.filter(t => t !== tag.name));
+                      }}
+                    />
+                    {tag.name}
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className={styles.formGroup}>
               <label className={styles.label}>صور الفاتورة / الوصل (اختياري)</label>
               <input 
@@ -837,13 +1064,18 @@ export default function ExpensesPage() {
                 </div>
                 <div className={styles.tableContainer}>
                   <table className={styles.table}>
-                    <thead><tr><th>التاريخ</th><th>الفئة</th><th>المركز المالي</th><th>البيان</th><th>المرفقات</th><th>المبلغ</th><th style={{ textAlign: 'center' }}>إجراءات</th></tr></thead>
+                    {renderTableHeader()}
                     <tbody>
                       {grouped[m].map((exp:any) => (
                         <tr key={exp.id}>
                           <td>{exp.date}{exp.time && <span className={styles.timeText}>🕒 {exp.time}</span>}</td>
                           <td><span className={styles.categoryTag}>{exp.categoryName}</span></td>
                           <td><div className={styles.costCenterBox}><span className={styles.pageText}>{exp.pageName}</span>{exp.branchName && <span className={styles.branchText}> / {exp.branchName}</span>}{exp.itemName && <span className={styles.itemText}> / {exp.itemName}</span>}</div></td>
+                          <td>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {exp.tags?.map((t: string) => <span key={t} style={{ background: 'var(--primary, #8b5cf6)', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '8px' }}>{t}</span>)}
+                            </div>
+                          </td>
                           <td>
                             {exp.details}
                             {exp.isArchived && <span className={styles.archivedBadge}>مؤرشف</span>}
@@ -888,13 +1120,18 @@ export default function ExpensesPage() {
         ) : (
           <div className={styles.tableContainer}>
             <table className={styles.table}>
-              <thead><tr><th>التاريخ</th><th>الفئة</th><th>المركز المالي</th><th>البيان / التفاصيل</th><th>المرفقات</th><th>المبلغ</th><th style={{ textAlign: 'center' }}>إجراءات</th></tr></thead>
+              {renderTableHeader()}
               <tbody>
                 {filteredAndSearched.map(exp => (
                   <tr key={exp.id} className={`${editingId === exp.id ? styles.editingRow : ''} ${exp.isArchived ? styles.archivedRow : ''}`}>
                     <td>{exp.date}{exp.time && <span className={styles.timeText}>🕒 {exp.time}</span>}</td>
                     <td><span className={styles.categoryTag}>{exp.categoryName}</span></td>
                     <td><div className={styles.costCenterBox}><span className={styles.pageText}>{exp.pageName}</span>{exp.branchName && <span className={styles.branchText}> / {exp.branchName}</span>}{exp.itemName && <span className={styles.itemText}> / {exp.itemName}</span>}</div></td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {exp.tags?.map((t: string) => <span key={t} style={{ background: 'var(--primary, #8b5cf6)', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '8px' }}>{t}</span>)}
+                      </div>
+                    </td>
                     <td>
                       {exp.details}
                       {exp.isArchived && <span className={styles.archivedBadge}>مؤرشف</span>}

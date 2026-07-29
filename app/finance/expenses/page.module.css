@@ -1152,3 +1152,20 @@
   font-size: 0.8rem;
   font-weight: 700;
 }
+
+.detailsGroup {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 1024px) {
+  .formGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .detailsGroup {
+    grid-column: 1 / 2;
+    grid-row: 1 / span 3;
+  }
+  .detailsGroup textarea {
+    flex: 1;
+  }
+}

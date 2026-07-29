@@ -1621,8 +1621,8 @@ export default function OrdersListPage() {
   const [customDeliveryCompany, setCustomDeliveryCompany] = useState('');
 
   const getStockState = (status: string) => {
-    if (['shipped', 'delivered', 'partial', 'returned_agent'].includes(status)) return 'HARD_DEDUCTED';
-    if (['cancelled', 'returned', 'returned_warehouse'].includes(status)) return 'FREE';
+    if (['shipped', 'delivered', 'partial', 'returned_agent', 'returned'].includes(status)) return 'HARD_DEDUCTED';
+    if (['cancelled', 'returned_warehouse'].includes(status)) return 'FREE';
     return 'SOFT_ALLOCATED'; // pending, processing, backordered, new
   };
 
@@ -2102,7 +2102,7 @@ export default function OrdersListPage() {
           }
         }
         
-        if (newStatus === 'returned' || newStatus === 'returned_agent' || newStatus === 'pending') {
+        if (newStatus === 'returned' || newStatus === 'returned_agent' || newStatus === 'returned_warehouse' || newStatus === 'pending') {
           updateData.deliveryCost = 0;
           if (order.deliveryCost > 0) {
             const currentTotal = order.totalAmount || order.price || 0;
@@ -2440,12 +2440,13 @@ export default function OrdersListPage() {
     o.is_settled !== true
   );
 
-  const canConfirmReturn = selectedOrders.some(o => (o.status === 'returned' || o.status === 'returned_agent') && !o.isArchived);
+  const canReceiveToWarehouse = selectedOrders.some(o => (o.status === 'returned' || o.status === 'returned_agent') && !o.isArchived);
+  const canConfirmReturn = selectedOrders.some(o => o.status === 'returned_warehouse' && !o.isArchived);
 
   const canRestore = selectedOrders.some(o => o.isArchived);
   const canDeletePermanent = selectedOrders.some(o => o.isArchived);
 
-  const hasAnyBulkAction = canTransfer || canArchive || canDelete || canConfirmReturn || canRestore || canDeletePermanent;
+  const hasAnyBulkAction = canTransfer || canArchive || canDelete || canConfirmReturn || canReceiveToWarehouse || canRestore || canDeletePermanent;
 
   const handleExportExcel = () => {
     try {
@@ -3114,6 +3115,18 @@ export default function OrdersListPage() {
                       <span>أرشفة المحددة</span>
                     </button>
                   )}
+                  {canReceiveToWarehouse && (
+                    <button 
+                      className={styles.bulkDropdownItem}
+                      onClick={() => {
+                        setShowBulkDropdown(false);
+                        confirmBulkStatusChange(selectedOrderIds, 'returned_warehouse');
+                      }}
+                    >
+                      <span className={styles.itemIcon}>📦</span>
+                      <span>استلام الراجع (للمحدد)</span>
+                    </button>
+                  )}
 
                   {canConfirmReturn && (
                     <button 
@@ -3124,7 +3137,7 @@ export default function OrdersListPage() {
                       }}
                     >
                       <span className={styles.itemIcon}>📝</span>
-                      <span>تأكيد استلام المحددة</span>
+                      <span>إنشاء كشف الرواجع (وثيقة)</span>
                     </button>
                   )}
 
@@ -3174,30 +3187,6 @@ export default function OrdersListPage() {
               )}
             </div>
           )}
-
-          <button 
-            onClick={() => {
-              setShowReturnsModal(true);
-              setRecentlyReceivedReturns([]);
-              setTimeout(() => { if (returnsScannerInputRef.current) returnsScannerInputRef.current.focus(); }, 100);
-            }}
-            style={{
-              backgroundColor: '#f59e0b',
-              color: 'white',
-              border: 'none',
-              padding: '0.6rem 1.2rem',
-              borderRadius: '0.6rem',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontSize: '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-            }}
-          >
-            <span>📦 استلام الراجع</span>
-          </button>
 
           <button
             onClick={() => setShowStatsModal(true)}

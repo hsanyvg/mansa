@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  StyleSheet, 
+  StyleSheet, Switch, 
   Text, 
   View, 
   TextInput, 
@@ -47,6 +47,11 @@ import {
 } from 'firebase/auth';
 
 export default function App() {
+  const [isLightMode, setIsLightMode] = useState(false);
+  const styles = useMemo(() => getStyles(isLightMode), [isLightMode]);
+
+
+
   // Check for OTA Updates on startup
   useEffect(() => {
     async function checkUpdates() {
@@ -1590,38 +1595,110 @@ export default function App() {
             </View>
           </View>
 
-          {/* Recent Orders */}
-          <View style={styles.bigCard}>
-            <Text style={styles.cardTitle}>🕒 آخر الإدخالات والطلبات</Text>
-            {orders.slice(0, 10).map((ord) => (
-              <View key={ord.id} style={styles.orderItem}>
-                <View style={styles.orderLeft}>
-                  <Text style={styles.orderCustName}>{ord.customerName}</Text>
-                  <Text style={styles.orderMetaText}>{ord.customerPhone} | {ord.governorate}</Text>
-                </View>
-                <View style={styles.orderRight}>
-                  <Text style={styles.orderAmountText}>{Number(ord.totalAmount || 0).toLocaleString()} د.ع</Text>
-                  <View style={[
-                    styles.statusBadge,
-                    ord.status === 'delivered' ? styles.badgeDelivered :
-                    ord.status === 'returned' ? styles.badgeReturned :
-                    ord.status === 'cancelled' ? styles.badgeCancelled :
-                    ord.status === 'backordered' ? styles.badgeBackordered : styles.badgePending
-                  ]}>
-                    <Text style={styles.statusBadgeText}>
-                      {ord.status === 'delivered' ? 'واصل' :
-                       ord.status === 'returned_agent' ? 'راجع بحوزة مندوب' :
-                       ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
-                       ord.status === 'cancelled' ? 'ملغي' :
-                       ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
-                    </Text>
-                  </View>
-                </View>
+          
+          {/* Team Performance Section */}
+          <View style={[styles.bigCard, { marginTop: 15, paddingHorizontal: 0, paddingBottom: 20 }]}>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingHorizontal: 15 }}>
+              <Text style={styles.cardTitle}>📊 أداء الفريق ({employees.length} موظف)</Text>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : 'rgba(255,255,255,0.1)' }}>
+                <Text style={{ fontSize: 10, color: isLightMode ? '#475569' : '#94a3b8' }}>🗓️ تاريخ: {
+                  [
+                    { id: 'today', label: 'اليوم' },
+                    { id: 'yesterday', label: 'أمس' },
+                    { id: 'today_and_yesterday', label: 'اليوم وأمس' },
+                    { id: 'last_7_days', label: 'آخر 7 أيام' },
+                    { id: 'last_30_days', label: 'آخر 30 يوم' },
+                    { id: 'last_60_days', label: 'آخر 60 يوم' },
+                    { id: 'last_90_days', label: 'آخر 90 يوم' },
+                    { id: 'year', label: 'سنة' },
+                    { id: 'all_time', label: 'فترة مطلقة' },
+                    { id: 'custom', label: 'تاريخ مخصص' }
+                  ].find(f => f.id === globalDateFilter)?.label || 'الكل'
+                }</Text>
               </View>
-            ))}
-            {orders.length === 0 && (
-              <Text style={styles.emptyText}>لا توجد طلبات مسجلة حالياً.</Text>
-            )}
+            </View>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 15 }}>
+              {(() => {
+                const teamStats = employees.map(emp => {
+                  const empOrders = orders.filter(o => o.employeeId === emp.id);
+                  const total = empOrders.length;
+                  const delivered = empOrders.filter(o => o.status === 'delivered').length;
+                  const returned = empOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse').length;
+                  const cancelled = empOrders.filter(o => o.status === 'cancelled').length;
+                  const pending = Math.max(0, total - delivered - returned - cancelled);
+                  
+                  return {
+                    emp,
+                    total,
+                    delivered,
+                    returned,
+                    pending,
+                    delPct: total ? Math.round((delivered/total)*100) : 0,
+                    retPct: total ? Math.round((returned/total)*100) : 0,
+                    penPct: total ? Math.round((pending/total)*100) : 0,
+                  };
+                }).sort((a, b) => b.total - a.total);
+
+                return teamStats.map(stat => (
+                  <View key={stat.emp.id} style={{ 
+                    width: 140, 
+                    backgroundColor: isLightMode ? '#ffffff' : 'rgba(30, 30, 40, 0.4)', 
+                    borderRadius: 12, 
+                    padding: 12, 
+                    marginLeft: 10,
+                    borderWidth: 1,
+                    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255,255,255,0.05)'
+                  }}>
+                    <Text style={{ color: isLightMode ? '#0f172a' : '#fff', fontWeight: 'bold', textAlign: 'center', fontSize: 14, marginBottom: 4 }} numberOfLines={1}>{stat.emp.name}</Text>
+                    <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', textAlign: 'center', fontSize: 11, marginBottom: 15 }}>إجمالي الطلبات: {stat.total}</Text>
+                    
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-end', height: 120 }}>
+                      
+                      {/* Pending Bar */}
+                      <View style={{ alignItems: 'center', width: '30%' }}>
+                        <Text style={{ color: '#eab308', fontWeight: 'bold', fontSize: 12 }}>{stat.pending}</Text>
+                        <Text style={{ color: '#eab308', fontSize: 9, marginBottom: 4 }}>({stat.penPct}%)</Text>
+                        <View style={{ height: 70, width: 8, backgroundColor: 'rgba(234, 179, 8, 0.2)', borderRadius: 4, justifyContent: 'flex-end' }}>
+                          <View style={{ width: '100%', height: stat.penPct + '%', backgroundColor: '#eab308', borderRadius: 4 }} />
+                        </View>
+                        <View style={{ marginTop: 6, width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#eab308', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#eab308', fontSize: 8 }}>⌛</Text>
+                        </View>
+                        <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 10, marginTop: 4 }}>انتظار</Text>
+                      </View>
+
+                      {/* Returned Bar */}
+                      <View style={{ alignItems: 'center', width: '30%' }}>
+                        <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 12 }}>{stat.returned}</Text>
+                        <Text style={{ color: '#ef4444', fontSize: 9, marginBottom: 4 }}>({stat.retPct}%)</Text>
+                        <View style={{ height: 70, width: 8, backgroundColor: 'rgba(239, 68, 68, 0.2)', borderRadius: 4, justifyContent: 'flex-end' }}>
+                          <View style={{ width: '100%', height: stat.retPct + '%', backgroundColor: '#ef4444', borderRadius: 4 }} />
+                        </View>
+                        <View style={{ marginTop: 6, width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#ef4444', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#ef4444', fontSize: 8 }}>↩</Text>
+                        </View>
+                        <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 10, marginTop: 4 }}>راجع</Text>
+                      </View>
+
+                      {/* Delivered Bar */}
+                      <View style={{ alignItems: 'center', width: '30%' }}>
+                        <Text style={{ color: '#10b981', fontWeight: 'bold', fontSize: 12 }}>{stat.delivered}</Text>
+                        <Text style={{ color: '#10b981', fontSize: 9, marginBottom: 4 }}>({stat.delPct}%)</Text>
+                        <View style={{ height: 70, width: 8, backgroundColor: 'rgba(16, 185, 129, 0.2)', borderRadius: 4, justifyContent: 'flex-end' }}>
+                          <View style={{ width: '100%', height: stat.delPct + '%', backgroundColor: '#10b981', borderRadius: 4 }} />
+                        </View>
+                        <View style={{ marginTop: 6, width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#10b981', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#10b981', fontSize: 8 }}>✓</Text>
+                        </View>
+                        <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 10, marginTop: 4 }}>واصل</Text>
+                      </View>
+
+                    </View>
+                  </View>
+                ));
+              })()}
+            </ScrollView>
           </View>
         </ScrollView>
       ) : activeTab === 'entry' ? (
@@ -1989,7 +2066,7 @@ export default function App() {
           </Animated.View>
 
           {/* Section: أحدث الطلبات */}
-          <Text style={styles.sectionHeaderTitle}>أحدث الطلبات</Text>
+          <Text style={styles.sectionHeaderTitle}>قائمة الطلبات</Text>
           
           {/* Neon spinning border card wrapper */}
           <Animated.View style={[styles.neonCardShadow, { shadowOpacity: neonAnim.interpolate({ inputRange: [0.45, 0.95], outputRange: [0.3, 0.7] }) }]}>
@@ -2100,6 +2177,36 @@ export default function App() {
           <View style={styles.tabHeaderCard}>
             <Text style={styles.tabHeaderTitle}>⚙️ إعدادات النظام</Text>
           </View>
+          <View style={styles.statCardBig}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View>
+                <Text style={styles.profileLabel}>المظهر:</Text>
+                <Text style={styles.profileValue}>{isLightMode ? 'فاتح' : 'داكن'}</Text>
+              </View>
+              <Switch 
+                value={isLightMode} 
+                onValueChange={setIsLightMode} 
+                trackColor={{ false: '#334155', true: '#a855f7' }}
+                thumbColor={isLightMode ? '#fff' : '#94a3b8'}
+              />
+            </View>
+          </View>
+  
+          <View style={styles.statCardBig}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View>
+                <Text style={styles.profileLabel}>المظهر:</Text>
+                <Text style={styles.profileValue}>{isLightMode ? 'فاتح' : 'داكن'}</Text>
+              </View>
+              <Switch 
+                value={isLightMode} 
+                onValueChange={setIsLightMode} 
+                trackColor={{ false: '#334155', true: '#a855f7' }}
+                thumbColor={isLightMode ? '#fff' : '#94a3b8'}
+              />
+            </View>
+          </View>
+  
 
           <View style={styles.statCardBig}>
             <Text style={styles.profileLabel}>الموظف الحالي:</Text>
@@ -2449,7 +2556,7 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (isLightMode) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#0d0d12',
@@ -2462,7 +2569,7 @@ const styles = StyleSheet.create({
     gap: 15,
   },
   loadingText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
     fontSize: 16,
   },
@@ -2470,7 +2577,7 @@ const styles = StyleSheet.create({
     height: 60,
     backgroundColor: 'rgba(30, 30, 40, 0.4)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -2523,7 +2630,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     padding: 12,
     elevation: 3,
     shadowColor: '#000',
@@ -2533,7 +2640,7 @@ const styles = StyleSheet.create({
   },
   newStatLabel: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     marginBottom: 6,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -2566,7 +2673,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     padding: 18,
     marginBottom: 20,
     elevation: 3,
@@ -2580,7 +2687,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     paddingVertical: 12,
     paddingHorizontal: 12,
     marginBottom: 20,
@@ -2619,7 +2726,7 @@ const styles = StyleSheet.create({
   },
   gaugeDescription: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     marginTop: 5,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -2629,7 +2736,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   statValue: {
@@ -2649,7 +2756,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     padding: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -2665,9 +2772,9 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   orderItem: {
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.02)' : isLightMode ? 'rgba(15, 23, 42, 0.02)' : 'rgba(255, 255, 255, 0.02)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
     borderRadius: 12,
     padding: 12,
     flexDirection: 'row-reverse',
@@ -2686,7 +2793,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   orderMetaText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -2729,7 +2836,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.15)',
   },
   emptyText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     textAlign: 'center',
     paddingVertical: 20,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -2755,7 +2862,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 15,
@@ -2774,7 +2881,7 @@ const styles = StyleSheet.create({
   phoneDropdown: {
     backgroundColor: '#1e1e28',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
     marginTop: 4,
     maxHeight: 180,
@@ -2783,7 +2890,7 @@ const styles = StyleSheet.create({
   dropdownItem: {
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.03)',
+    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
     alignItems: 'flex-end',
   },
   dropdownItemTitle: {
@@ -2793,7 +2900,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   dropdownItemSubtitle: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 11,
     marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -2801,7 +2908,7 @@ const styles = StyleSheet.create({
   modalTrigger: {
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 15,
@@ -2815,18 +2922,18 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   triggerPlaceholder: {
-    color: 'rgba(255, 255, 255, 0.3)',
+    color: isLightMode ? 'rgba(15, 23, 42, 0.3)' : isLightMode ? 'rgba(15, 23, 42, 0.3)' : 'rgba(255, 255, 255, 0.3)',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   triggerArrow: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
   },
   cartSection: {
     backgroundColor: 'rgba(30, 30, 40, 0.3)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.04)' : isLightMode ? 'rgba(15, 23, 42, 0.04)' : 'rgba(255, 255, 255, 0.04)',
     borderRadius: 16,
     padding: 12,
     gap: 10,
@@ -2860,11 +2967,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.02)' : isLightMode ? 'rgba(15, 23, 42, 0.02)' : 'rgba(255, 255, 255, 0.02)',
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
   },
   cartItemLeft: {
     alignItems: 'flex-end',
@@ -2876,7 +2983,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   cartItemSub: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 11,
     marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -2889,7 +2996,7 @@ const styles = StyleSheet.create({
   cartPriceInput: {
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 6,
     color: '#ffffff',
     fontSize: 12,
@@ -2900,13 +3007,13 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   currencyLabel: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 11,
     marginRight: 4,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   multiplierLabel: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     marginRight: 6,
     fontWeight: 'bold',
@@ -2917,7 +3024,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   qtyBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     width: 26,
     height: 26,
     borderRadius: 13,
@@ -2932,7 +3039,7 @@ const styles = StyleSheet.create({
   cartQtyInput: {
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 6,
     color: '#ffffff',
     fontSize: 13,
@@ -2955,7 +3062,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
     borderStyle: 'dashed',
     marginTop: 5,
   },
@@ -2978,7 +3085,7 @@ const styles = StyleSheet.create({
   totalAmountInput: {
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 8,
     color: '#e9d5ff',
     fontSize: 15,
@@ -2997,7 +3104,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   emptyCartText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     textAlign: 'center',
     paddingVertical: 15,
@@ -3011,7 +3118,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
@@ -3021,7 +3128,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.15)',
   },
   paymentBtnText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -3070,7 +3177,7 @@ const styles = StyleSheet.create({
     height: 70,
     backgroundColor: 'rgba(20, 20, 30, 0.95)',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     flexDirection: 'row-reverse',
     justifyContent: 'space-around',
     alignItems: 'center',
@@ -3089,14 +3196,14 @@ const styles = StyleSheet.create({
   },
   navIcon: {
     fontSize: 20,
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     marginBottom: 2,
   },
   navIconActive: {
     color: '#a855f7',
   },
   navText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 10,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -3127,7 +3234,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.2)' : isLightMode ? 'rgba(15, 23, 42, 0.2)' : 'rgba(255, 255, 255, 0.2)',
   },
   centerNavBtnActive: {
     backgroundColor: '#a855f7',
@@ -3147,7 +3254,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 30, 40, 0.4)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     padding: 15,
     marginBottom: 20,
     alignItems: 'center',
@@ -3159,7 +3266,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   profileLabel: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 13,
     marginBottom: 4,
     textAlign: 'center',
@@ -3196,7 +3303,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   settingLabel: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 13,
     marginBottom: 4,
     textAlign: 'right',
@@ -3221,7 +3328,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -3246,12 +3353,12 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     flexDirection: 'row-reverse',
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
     borderRadius: 14,
     padding: 4,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
   },
   segmentBtn: {
     flex: 1,
@@ -3283,7 +3390,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     paddingVertical: 14,
     paddingHorizontal: 8,
     alignItems: 'center',
@@ -3344,7 +3451,7 @@ const styles = StyleSheet.create({
   modalItem: {
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     alignItems: 'center',
   },
   modalItemText: {
@@ -3353,7 +3460,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   modalCloseBtn: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     paddingVertical: 12,
     borderRadius: 12,
     marginTop: 15,
@@ -3366,7 +3473,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   searchBar: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     borderRadius: 12,
     padding: 12,
     color: '#ffffff',
@@ -3476,7 +3583,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
   },
   productPriceText: {
     color: '#a78bfa',
@@ -3485,7 +3592,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   emptySearchText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     textAlign: 'center',
     paddingVertical: 40,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -3500,7 +3607,7 @@ const styles = StyleSheet.create({
   alertContent: {
     backgroundColor: '#1e1e28',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
     borderRadius: 16,
     padding: 20,
     width: '100%',
@@ -3548,7 +3655,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authSubtitle: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 32,
@@ -3572,17 +3679,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   inputLabel: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 13,
     marginBottom: 8,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 16,
     paddingVertical: 12,
     color: '#ffffff',
@@ -3633,10 +3740,10 @@ const styles = StyleSheet.create({
   authSeparatorLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
   },
   authSeparatorText: {
-    color: '#94a3b8',
+    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     marginHorizontal: 10,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -3646,9 +3753,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.02)' : isLightMode ? 'rgba(15, 23, 42, 0.02)' : 'rgba(255, 255, 255, 0.02)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.12)' : isLightMode ? 'rgba(15, 23, 42, 0.12)' : 'rgba(255, 255, 255, 0.12)',
     borderRadius: 8,
     paddingVertical: 12,
     marginTop: 2,
