@@ -256,7 +256,7 @@ export async function POST(request: Request) {
       customerPhone2: '',
       governorate: governorate,
       region: '',
-      notes: notes || 'طلب قادم من صفحة الهبوط أوتوماتيكياً',
+      notes: (notes && typeof notes === 'string' && notes.includes('طلب قادم من صفحة الهبوط') ? notes.replace(/طلب قادم من صفحة الهبوط أوتوماتيكياً/g, '').trim() : notes || ''),
       paymentMethod: 'كاش عند التوصيل',
       totalAmount: Number(totalPrice),
       items: [{
