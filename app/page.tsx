@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [teamEndDate, setTeamEndDate] = useState('');
   const [isTeamCalOpen, setIsTeamCalOpen] = useState(false);
   const teamCalRef = useRef<HTMLDivElement>(null);
+  const [teamViewMode, setTeamViewMode] = useState<'team' | 'landing_pages'>('team');
   
   // Temporary state for calendar modal before user clicks Apply ("تم")
   const [tempFilter, setTempFilter] = useState('الشهر');
@@ -49,6 +50,11 @@ export default function Dashboard() {
   const [tempGaugeFilter, setTempGaugeFilter] = useState('الشهر');
   const [tempGaugeStartDate, setTempGaugeStartDate] = useState('');
   const [tempGaugeEndDate, setTempGaugeEndDate] = useState('');
+
+  // Sales Card custom filters
+  const [salesCardViewType, setSalesCardViewType] = useState<'sales' | 'orders'>('sales');
+  const [salesCardYear, setSalesCardYear] = useState(new Date().getFullYear());
+  const [salesCardMonth, setSalesCardMonth] = useState(new Date().getMonth() + 1);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -282,6 +288,30 @@ export default function Dashboard() {
     setFilter(tempMainFilter);
     setFilterStartDate(tempMainStart);
     setFilterEndDate(tempMainEnd);
+    
+    // Sync Team Performance Card
+    setTeamFilter(tempMainFilter);
+    setTeamStartDate(tempMainStart);
+    setTeamEndDate(tempMainEnd);
+    
+    // Sync Delivery/Returns Gauge Card
+    setGaugeFilter(tempMainFilter);
+    setGaugeStartDate(tempMainStart);
+    setGaugeEndDate(tempMainEnd);
+    
+    // Sync Sales Card (extracts Year and Month)
+    if (tempMainFilter === 'الشهر' || tempMainFilter === 'اليوم' || tempMainFilter === 'الأسبوع') {
+      const now = new Date();
+      setSalesCardYear(now.getFullYear());
+      setSalesCardMonth(now.getMonth() + 1);
+    } else if (tempMainFilter === 'مخصص' && tempMainStart) {
+      const [yr, mo] = tempMainStart.split('-').map(Number);
+      if (yr && mo) {
+        setSalesCardYear(yr);
+        setSalesCardMonth(mo);
+      }
+    }
+
     setIsFilterCalOpen(false);
   };
 
@@ -419,26 +449,48 @@ export default function Dashboard() {
       }
 
       const empStats = empMap.get(empName)!;
+      if (order.status === 'cancelled' || order.status === 'deleted' || order.isDeleted === true) {
+        return; // Ignore cancelled and deleted orders completely for team performance
+      }
+
       empStats.total += 1;
-      if (order.status === 'delivered' || order.status === 'partial') {
+      
+      if (order.status === 'delivered' || order.status === 'completed' || order.is_settled === true || order.paymentStatus === 'partially_settled' || order.status === 'partial') {
         empStats.delivered += 1;
       } else if (order.status === 'returned' || order.status === 'returned_agent' || order.status === 'returned_warehouse' || order.returnStatus === 'in_warehouse') {
         empStats.returned += 1;
-      } else if (order.status !== 'cancelled') {
+      } else {
         empStats.pending += 1;
       }
     });
 
     const empList = Array.from(empMap.values());
+    
+    // Filter based on view mode (team vs landing pages)
+    const isLandingPage = (name: string) => {
+      const lower = name.toLowerCase();
+      return lower.includes('محبس') || lower.includes('عقيق') || lower.includes('landing') || lower.includes('هبوط');
+    };
+
+    const filteredList = empList.filter(emp => {
+      if (emp.total === 0) return false;
+
+      if (teamViewMode === 'team') {
+        return !isLandingPage(emp.name);
+      } else {
+        return isLandingPage(emp.name);
+      }
+    });
+
     // Sort primarily by total orders, and secondarily alphabetically by name
-    empList.sort((a, b) => {
+    filteredList.sort((a, b) => {
       if (b.total !== a.total) {
         return b.total - a.total;
       }
       return a.name.localeCompare(b.name, 'ar');
     });
-    return empList;
-  }, [orders, teamFilteredOrders]);
+    return filteredList;
+  }, [orders, teamFilteredOrders, teamViewMode]);
 
   const getDateRangeLabel = () => {
     const now = new Date();
@@ -461,120 +513,80 @@ export default function Dashboard() {
 
   const stockPercent = productsCount > 0 ? Math.round((inStockCount / productsCount) * 100) : 0;
 
-  const salesTrendData = React.useMemo(() => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const salesCardData = React.useMemo(() => {
     const points: { value: number; time?: number; label: string }[] = [];
+    const daysInMonth = new Date(salesCardYear, salesCardMonth, 0).getDate();
 
-    const getStartOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-
-    if (filter === 'اليوم') {
-      // 12 blocks of 2 hours for today (00:00, 02:00, ..., 22:00)
-      for (let i = 0; i < 12; i++) {
-        const hour = i * 2;
-        const label = hour === 0 ? '12ص' : hour === 12 ? '12م' : hour < 12 ? `${hour}ص` : `${hour - 12}م`;
-        points.push({ value: 0, label });
-      }
-      filteredOrders.forEach(order => {
-        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
-        if (!isSettledOrPartial || !order.date) return;
-        const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
-        const hour = date.getHours();
-        const blockIndex = Math.min(11, Math.floor(hour / 2));
-        points[blockIndex].value += Number(order.totalAmount) || 0;
-      });
-    } else if (filter === 'الأسبوع') {
-      // Last 7 days
-      const days = ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
-        points.push({ value: 0, time: getStartOfDay(d), label: days[d.getDay()] });
-      }
-      filteredOrders.forEach(order => {
-        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
-        if (!isSettledOrPartial || !order.date) return;
-        const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
-        const orderDayStart = getStartOfDay(new Date(orderTime));
-        const point = points.find(p => p.time === orderDayStart);
-        if (point) {
-          point.value += Number(order.totalAmount) || 0;
-        }
-      });
-    } else if (filter === 'الشهر' || filter === 'مخصص') {
-      // Last 15 days or last 30 days
-      for (let i = 14; i >= 0; i--) {
-        const d = new Date(today.getTime() - i * 2 * 24 * 60 * 60 * 1000);
-        points.push({ value: 0, time: getStartOfDay(d), label: `${d.getDate()}` });
-      }
-      filteredOrders.forEach(order => {
-        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
-        if (!isSettledOrPartial || !order.date) return;
-        const orderTime = order.date.toDate ? order.date.toDate().getTime() : new Date(order.date).getTime();
-        const orderDayStart = getStartOfDay(new Date(orderTime));
-        let minDiff = Infinity;
-        let closestIndex = 0;
-        points.forEach((p, idx) => {
-          const diff = Math.abs(orderDayStart - p.time!);
-          if (diff < minDiff) {
-            minDiff = diff;
-            closestIndex = idx;
-          }
-        });
-        if (minDiff <= 2 * 24 * 60 * 60 * 1000) {
-          points[closestIndex].value += Number(order.totalAmount) || 0;
-        }
-      });
-    } else {
-      // هذا العام: last 12 months
-      const monthsShort = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        points.push({ value: 0, time: d.getTime(), label: monthsShort[d.getMonth()] });
-      }
-      filteredOrders.forEach(order => {
-        const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
-        if (!isSettledOrPartial || !order.date) return;
-        const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
-        const yr = date.getFullYear();
-        const mo = date.getMonth();
-        points.forEach(p => {
-          const d = new Date(p.time!);
-          if (d.getFullYear() === yr && d.getMonth() === mo) {
-            p.value += Number(order.totalAmount) || 0;
-          }
-        });
-      });
+    for (let i = 1; i <= daysInMonth; i++) {
+      points.push({ value: 0, time: new Date(salesCardYear, salesCardMonth - 1, i).getTime(), label: `${i}` });
     }
 
-    return points;
-  }, [filteredOrders, filter, filterStartDate, filterEndDate]);
+    let total = 0;
+    let prevTotal = 0;
+
+    orders.forEach(order => {
+      if (order.status === 'cancelled' || order.status === 'deleted' || order.isDeleted === true) return;
+      if (!order.date) return;
+
+      const date = order.date.toDate ? order.date.toDate() : new Date(order.date);
+      const yr = date.getFullYear();
+      const mo = date.getMonth() + 1;
+      
+      const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
+
+      const isDelivered = order.status === 'delivered' || order.status === 'completed' || order.is_settled === true || order.paymentStatus === 'partially_settled' || order.status === 'partial';
+
+      if (yr === salesCardYear && mo === salesCardMonth) {
+        const dayIndex = date.getDate() - 1;
+        if (isDelivered) {
+          if (salesCardViewType === 'sales') {
+            const amount = Number(order.totalAmount) || 0;
+            points[dayIndex].value += amount;
+            total += amount;
+          } else {
+            points[dayIndex].value += 1;
+            total += 1;
+          }
+        }
+      } else if (
+        (mo === salesCardMonth - 1 && yr === salesCardYear) || 
+        (salesCardMonth === 1 && mo === 12 && yr === salesCardYear - 1)
+      ) {
+        if (isDelivered) {
+          if (salesCardViewType === 'sales') {
+            prevTotal += Number(order.totalAmount) || 0;
+          } else {
+            prevTotal += 1;
+          }
+        }
+      }
+    });
+
+    return { points, total, prevTotal };
+  }, [orders, salesCardYear, salesCardMonth, salesCardViewType]);
 
   const svgChartPath = React.useMemo(() => {
     const width = 500;
-    const height = 115;
+    const height = 180;
     const padding = 8;
     const chartWidth = width;
-    const chartHeight = 87; // drawing height range (95 - 8)
+    const chartHeight = 152; // drawing height range (160 - 8)
 
-    if (salesTrendData.length === 0) {
-      return { 
-        barPaths: [],
-        maxVal: 0,
-        minVal: 0
-      };
+    if (salesCardData.points.length === 0) {
+      return { barPaths: [], maxVal: 0, minVal: 0 };
     }
 
-    const values = salesTrendData.map(p => p.value);
+    const values = salesCardData.points.map(p => p.value);
     const maxVal = Math.max(...values);
     const minVal = Math.min(...values);
     const range = maxVal - minVal;
 
-    const slotWidth = chartWidth / salesTrendData.length;
+    const slotWidth = chartWidth / salesCardData.points.length;
     const barWidth = Math.min(24, Math.max(6, slotWidth * 0.45));
     const r = Math.min(5, barWidth / 2);
-    const baseline = 95;
+    const baseline = 160;
 
-    const barPaths = salesTrendData.map((point, idx) => {
+    const barPaths = salesCardData.points.map((point, idx) => {
       const x = (idx + 0.5) * slotWidth;
       const y = range === 0 
         ? 8 + chartHeight / 2 
@@ -593,7 +605,7 @@ export default function Dashboard() {
     });
 
     return { barPaths, maxVal, minVal };
-  }, [salesTrendData]);
+  }, [salesCardData]);
 
   const salesTrendPercentage = React.useMemo(() => {
     const now = new Date();
@@ -629,6 +641,7 @@ export default function Dashboard() {
 
     const currentSales = orders
       .filter(o => {
+        if (o.status === 'cancelled' || o.status === 'deleted' || o.isDeleted === true) return false;
         const isSettledOrPartial = o.is_settled === true || o.paymentStatus === 'partially_settled';
         if (!isSettledOrPartial || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
@@ -638,6 +651,7 @@ export default function Dashboard() {
 
     const prevSales = orders
       .filter(o => {
+        if (o.status === 'cancelled' || o.status === 'deleted' || o.isDeleted === true) return false;
         const isSettledOrPartial = o.is_settled === true || o.paymentStatus === 'partially_settled';
         if (!isSettledOrPartial || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
@@ -723,17 +737,45 @@ export default function Dashboard() {
   }, [orders, gaugeFilter, gaugeStartDate, gaugeEndDate]);
 
   const gaugeStats = React.useMemo(() => {
-    const activeOrders = gaugeFilteredOrders.filter(o => o.status !== 'cancelled');
-    const total = activeOrders.length;
-    if (total === 0) return { activeOrdersCount: 0, deliveryRate: 0, returnRate: 0 };
-    const delivered = gaugeFilteredOrders.filter(o => o.status === 'delivered' || o.status === 'partial').length;
-    const returned = gaugeFilteredOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse' || o.returnStatus === 'in_warehouse').length;
-    const delRate = Math.round((delivered / total) * 100);
-    const retRate = Math.round((returned / total) * 100);
+    const total = gaugeFilteredOrders.length;
+    let delivered = 0;
+    let returned = 0;
+    let cancelled = 0;
+    let inProgress = 0;
+
+    gaugeFilteredOrders.forEach(o => {
+      if (o.status === 'cancelled' || o.status === 'deleted' || o.isDeleted === true) {
+        cancelled++;
+      } else if (o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse' || o.returnStatus === 'in_warehouse') {
+        returned++;
+      } else if (o.status === 'delivered' || o.status === 'completed' || o.is_settled === true || o.paymentStatus === 'partially_settled' || o.status === 'partial') {
+        delivered++;
+      } else {
+        inProgress++;
+      }
+    });
+    
+    // For rate calculation, we can use total active orders (excluding cancelled/deleted) or all orders.
+    // The previous logic excluded cancelled for rates.
+    const activeOrders = total - cancelled;
+
+    if (total === 0) return { totalOrdersCount: 0, activeOrdersCount: 0, deliveredCount: 0, returnedCount: 0, inProgressCount: 0, cancelledCount: 0, deliveryRate: 0, returnRate: 0, inProgressRate: 0, cancelledRate: 0 };
+    const delRate = total > 0 ? Math.round((delivered / total) * 100) : 0;
+    const retRate = total > 0 ? Math.round((returned / total) * 100) : 0;
+    const progRate = total > 0 ? Math.round((inProgress / total) * 100) : 0;
+    const cancRate = total > 0 ? Math.round((cancelled / total) * 100) : 0;
+    
     return {
-      activeOrdersCount: total,
+      totalOrdersCount: total,
+      activeOrdersCount: activeOrders,
+      deliveredCount: delivered,
+      returnedCount: returned,
+      inProgressCount: inProgress,
+      cancelledCount: cancelled,
       deliveryRate: delRate,
-      returnRate: retRate
+      returnRate: retRate,
+      inProgressRate: progRate,
+      cancelledRate: cancRate
     };
   }, [gaugeFilteredOrders]);
 
@@ -754,8 +796,17 @@ export default function Dashboard() {
         return exp.date === todayStr;
       } else if (filter === 'الأسبوع') {
         return exp.date >= getDaysAgo(7);
-      } else if (filter === 'الشهر' || filter === 'مخصص') {
+      } else if (filter === 'الشهر') {
         return exp.date >= getDaysAgo(30);
+      } else if (filter === 'مخصص') {
+        let isValid = true;
+        if (filterStartDate) {
+          isValid = isValid && exp.date >= filterStartDate;
+        }
+        if (filterEndDate) {
+          isValid = isValid && exp.date <= filterEndDate;
+        }
+        return isValid;
       } else if (filter === 'الحد الأقصى') {
         return exp.date >= getDaysAgo(365);
       }
@@ -1026,35 +1077,70 @@ export default function Dashboard() {
     let totalExpenses = 0;
     let totalNetProfit = 0;
 
+    let deliveredCount = 0;
+    let deliveredAmount = 0;
+    let returnedCount = 0;
+    let returnedAmount = 0;
+
+    filteredOrders.forEach((o: any) => {
+      const isDelivered = o.status === 'delivered' || o.status === 'completed' || o.is_settled === true || o.paymentStatus === 'partially_settled';
+      const isReturned = o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse' || o.returnStatus === 'in_warehouse';
+      
+      const amt = Number(o.totalAmount) || 0;
+      if (isDelivered) {
+        deliveredCount++;
+        deliveredAmount += amt;
+      }
+      if (isReturned) {
+        returnedCount++;
+        returnedAmount += amt;
+      }
+    });
+
     Object.values(analysisStats).forEach((page: any) => {
       totalRevenue += page.revenue || 0;
       totalExpenses += page.expenses || 0;
       totalNetProfit += page.netProfit || 0;
     });
 
+    const activeTotal = deliveredCount + returnedCount;
+    const deliveredPct = activeTotal > 0 ? Math.round((deliveredCount / activeTotal) * 100) : (filteredOrders.length > 0 ? 100 : 0);
+    const returnedPct = activeTotal > 0 ? Math.round((returnedCount / activeTotal) * 100) : 0;
+
     return {
       totalRevenue,
       totalExpenses,
-      totalNetProfit
+      totalNetProfit,
+      deliveredCount,
+      deliveredAmount,
+      deliveredPct,
+      returnedCount,
+      returnedAmount,
+      returnedPct,
+      totalOrders: filteredOrders.length
     };
-  }, [analysisStats]);
+  }, [analysisStats, filteredOrders]);
 
   const [animatedRate, setAnimatedRate] = useState(0);
-
-
   const [animatedReturnRate, setAnimatedReturnRate] = useState(0);
+  const [animatedProgressRate, setAnimatedProgressRate] = useState(0);
+  const [animatedCancelledRate, setAnimatedCancelledRate] = useState(0);
 
   useEffect(() => {
     if (!loading) {
       setAnimatedRate(0);
       setAnimatedReturnRate(0);
+      setAnimatedProgressRate(0);
+      setAnimatedCancelledRate(0);
       const timer = setTimeout(() => {
         setAnimatedRate(gaugeStats.deliveryRate);
         setAnimatedReturnRate(gaugeStats.returnRate);
+        setAnimatedProgressRate(gaugeStats.inProgressRate);
+        setAnimatedCancelledRate(gaugeStats.cancelledRate);
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [gaugeStats.deliveryRate, gaugeStats.returnRate, loading]);
+  }, [gaugeStats.deliveryRate, gaugeStats.returnRate, gaugeStats.inProgressRate, gaugeStats.cancelledRate, loading]);
 
   if (loading) {
     return (
@@ -1122,6 +1208,69 @@ export default function Dashboard() {
                       </button>
                     </div>
                     
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                      <select 
+                        className={styles.teamDateInput} 
+                        style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                        value={
+                          tempMainStart && tempMainEnd && 
+                          new Date(tempMainStart).getDate() === 1 && 
+                          new Date(tempMainEnd).getDate() === new Date(new Date(tempMainStart).getFullYear(), new Date(tempMainStart).getMonth() + 1, 0).getDate() && 
+                          new Date(tempMainStart).getMonth() === new Date(tempMainEnd).getMonth() &&
+                          new Date(tempMainStart).getFullYear() === new Date(tempMainEnd).getFullYear() 
+                          ? new Date(tempMainStart).getMonth() + 1 : ""
+                        }
+                        onChange={(e) => {
+                          const year = tempMainStart ? new Date(tempMainStart).getFullYear() : new Date().getFullYear();
+                          const month = parseInt(e.target.value);
+                          if (isNaN(month)) return;
+                          const start = new Date(year, month - 1, 1);
+                          const end = new Date(year, month, 0);
+                          
+                          const formatObj = (d: Date) => {
+                            const y = d.getFullYear();
+                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            return `${y}-${m}-${day}`;
+                          };
+                          setTempMainFilter('مخصص');
+                          handleCustomMainDateChange('start', formatObj(start));
+                          handleCustomMainDateChange('end', formatObj(end));
+                        }}
+                      >
+                        <option value="" style={{ color: 'black' }}>اختر الشهر...</option>
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                          <option key={m} value={m} style={{ color: 'black' }}>شهر {m}</option>
+                        ))}
+                      </select>
+
+                      <select 
+                        className={styles.teamDateInput} 
+                        style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                        value={tempMainStart ? new Date(tempMainStart).getFullYear() : new Date().getFullYear()}
+                        onChange={(e) => {
+                          const year = parseInt(e.target.value);
+                          const month = tempMainStart ? new Date(tempMainStart).getMonth() : new Date().getMonth();
+                          const start = new Date(year, month, 1);
+                          const end = new Date(year, month + 1, 0);
+                          
+                          const formatObj = (d: Date) => {
+                            const y = d.getFullYear();
+                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            return `${y}-${m}-${day}`;
+                          };
+                          setTempMainFilter('مخصص');
+                          handleCustomMainDateChange('start', formatObj(start));
+                          handleCustomMainDateChange('end', formatObj(end));
+                        }}
+                      >
+                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                          <option key={y} value={y} style={{ color: 'black' }}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className={styles.teamDateInputs}>
                       <div className={styles.teamDateInputGroup}>
                         <label>من تاريخ:</label>
@@ -1165,14 +1314,37 @@ export default function Dashboard() {
 
         <div className={styles.dashboardGrid}>
           {/* Card 1 */}
-          <div className={`${styles.card} ${styles.colSpan2} ${styles.salesCard}`}>
+          <div className={`${styles.card} ${styles.colSpan5} ${styles.salesCard}`}>
             <div className={styles.salesHeader}>
-              <div className={styles.salesTitleContainer}>
-                <div className={styles.salesTitle}>إجمالي المبيعات (الواصلة)</div>
-                <div className={styles.salesSub}>Mansa Sales</div>
-              </div>
-              <div className={styles.salesFiltersContainer}>
-                {/* Replaced by main date picker */}
+              <div className={styles.salesTitleContainer} style={{ flexDirection: 'row', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                <select 
+                  style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                  value={salesCardViewType} 
+                  onChange={(e) => setSalesCardViewType(e.target.value as 'sales' | 'orders')}
+                >
+                  <option value="sales">المبيعات</option>
+                  <option value="orders">عدد الطلبات</option>
+                </select>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select 
+                    style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                    value={salesCardYear} 
+                    onChange={(e) => setSalesCardYear(Number(e.target.value))}
+                  >
+                    {[2024, 2025, 2026, 2027].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <select 
+                    style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                    value={salesCardMonth} 
+                    onChange={(e) => setSalesCardMonth(Number(e.target.value))}
+                  >
+                    {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                      <option key={m} value={m}>شهر {m}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1182,7 +1354,7 @@ export default function Dashboard() {
                 <span>{yAxisLabels.mid}</span>
                 <span>{yAxisLabels.bottom}</span>
               </div>
-              <svg className={styles.salesChartSvg} viewBox="0 0 500 115" preserveAspectRatio="none">
+              <svg className={styles.salesChartSvg} viewBox="0 0 500 180" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id="salesBarGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                     <stop offset="0%" stopColor="#c084fc" />
@@ -1193,25 +1365,50 @@ export default function Dashboard() {
 
                 {/* Apple-style horizontal dashed gridlines corresponding to Top, Mid, Bottom */}
                 <line x1="0" y1="8" x2="500" y2="8" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
-                <line x1="0" y1="51.5" x2="500" y2="51.5" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
-                <line x1="0" y1="95" x2="500" y2="95" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+                <line x1="0" y1="84" x2="500" y2="84" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
+                <line x1="0" y1="160" x2="500" y2="160" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
 
                 {/* Render the bars */}
                 {svgChartPath.barPaths.map((bar, i) => bar.path && (
                   <path
-                    key={i}
+                    key={`path-${i}`}
                     d={bar.path}
                     fill="url(#salesBarGradient)"
                     className={styles.chartBarPath}
                   />
                 ))}
 
+                {/* Render Values on top of bars */}
+                {svgChartPath.barPaths.map((bar, i) => {
+                  if (bar.val === 0) return null;
+                  
+                  const displayVal = bar.val >= 1000000 
+                    ? (bar.val / 1000000).toFixed(1) + 'm' 
+                    : bar.val >= 1000 
+                    ? (bar.val / 1000).toFixed(1) + 'k' 
+                    : bar.val.toString();
+
+                  return (
+                    <text
+                      key={`val-${i}`}
+                      x={bar.x}
+                      y={bar.y - 4}
+                      textAnchor="middle"
+                      fill="rgba(255, 255, 255, 0.6)"
+                      fontSize="8"
+                      fontWeight="600"
+                    >
+                      {displayVal}
+                    </text>
+                  );
+                })}
+
                 {/* Render X-Axis weekday/period labels */}
                 {svgChartPath.barPaths.map((bar, i) => (
                   <text
                     key={`lbl-${i}`}
                     x={bar.x}
-                    y="108"
+                    y="173"
                     textAnchor="middle"
                     fill="rgba(255, 255, 255, 0.3)"
                      fontSize="9"
@@ -1226,13 +1423,22 @@ export default function Dashboard() {
             <div className={styles.salesFooter}>
               <div className={styles.salesValueContainer}>
                 <div className={styles.salesValueRow}>
-                  <span className={styles.salesValueText}>{stats.totalSales.toLocaleString()} د.ع</span>
-                  <span className={`${styles.salesTrendBadge} ${salesTrendPercentage >= 0 ? styles.salesTrendUp : styles.salesTrendDown}`}>
-                    {salesTrendPercentage >= 0 ? '▲' : '▼'} {salesTrendPercentage >= 0 ? '+' : ''}{Math.abs(salesTrendPercentage)}%
+                  <span className={styles.salesValueText}>
+                    {salesCardViewType === 'sales' ? `${salesCardData.total.toLocaleString()} د.ع` : `${salesCardData.total.toLocaleString()} طلب`}
                   </span>
+                  {(() => {
+                    const trend = salesCardData.prevTotal === 0 
+                      ? (salesCardData.total > 0 ? 100 : 0)
+                      : Math.round(((salesCardData.total - salesCardData.prevTotal) / salesCardData.prevTotal) * 10000) / 100;
+                    return (
+                      <span className={`${styles.salesTrendBadge} ${trend >= 0 ? styles.salesTrendUp : styles.salesTrendDown}`}>
+                        {trend >= 0 ? '▲' : '▼'} {trend >= 0 ? '+' : ''}{Math.abs(trend)}%
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className={styles.salesStatusLabel}>
-                  <span>حركات مستلمة ومكتملة</span>
+                  <span>{salesCardViewType === 'sales' ? 'إجمالي المبيعات الواصلة' : 'إجمالي عدد الطلبات'} في شهر {salesCardMonth}</span>
                   <svg className={styles.checkboxIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                     <rect x="3" y="3" width="18" height="18" rx="4" fill="rgba(16, 185, 129, 0.1)" stroke="#10b981" />
                     <path d="M9 12l2 2 4-4" stroke="#10b981" strokeLinecap="round" strokeLinejoin="round" />
@@ -1247,10 +1453,10 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Card 2 */}
-          <div className={`${styles.card} ${styles.gaugeCard} ${isGaugeCalOpen ? styles.elevatedCard : ''}`}>
-            <div className={`${styles.cardHeader} ${styles.gaugeCardHeader}`}>
-              <span>الطلبات النشطة (نسبة التوصيل)</span>
+          {/* Card 2 & 2.5 Combined: Delivery and Return Rates */}
+          <div className={`${styles.card} ${styles.colSpan2} ${isGaugeCalOpen ? styles.elevatedCard : ''}`} style={{ display: 'flex', flexDirection: 'column', minHeight: '220px', padding: '1.5rem', justifyContent: 'space-between' }}>
+            <div className={`${styles.cardHeader} ${styles.gaugeCardHeader}`} style={{ marginBottom: '1rem' }}>
+              <span style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>إحصائيات التوصيل والراجع</span>
               
               <div className={styles.teamDatePickerContainer} ref={gaugeCalRef}>
                 <button 
@@ -1328,166 +1534,263 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-            
-            <div className={styles.gaugeContainer}>
-              <svg viewBox="0 0 200 130" className={styles.gaugeSvg}>
-                <defs>
-                  <linearGradient id="purpleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#f3e8ff" />
-                    <stop offset="50%" stopColor="#a435e8" />
-                    <stop offset="100%" stopColor="#49159e" />
-                  </linearGradient>
-                  
-                  <filter id="glow-soft" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="3" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                  </filter>
-                  
-                  <filter id="glow-strong" x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur stdDeviation="6" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                  </filter>
-                </defs>
 
-                {/* Track path */}
-                <path d="M 25 100 A 75 75 0 0 1 175 100" 
-                      fill="none" stroke="#2a2a35" strokeWidth="16" strokeLinecap="butt" />
+            <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '1rem' }}>
+              
+              {/* Green Gauge */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
+                  <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+                    <defs>
+                      <linearGradient id="greenGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#d1fae5" />
+                        <stop offset="50%" stopColor="#10b981" />
+                        <stop offset="100%" stopColor="#6ee7b7" />
+                      </linearGradient>
+                      
+                      <filter id="glow-soft" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                      
+                      <filter id="glow-strong" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="6" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                    </defs>
 
-                {/* Active progress path */}
-                <path 
-                  className={styles.progressBar} 
-                  d="M 25 100 A 75 75 0 0 1 175 100" 
-                  fill="none" 
-                  stroke="url(#purpleGradient)" 
-                  strokeWidth="16" 
-                  strokeLinecap="butt" 
-                  strokeDasharray="235.62" 
-                  strokeDashoffset={235.62 - (235.62 * animatedRate) / 100} 
-                  filter="url(#glow-soft)" 
-                />
+                    {/* Track path */}
+                    <path d="M 25 100 A 75 75 0 0 1 175 100" 
+                          fill="none" stroke="#2a2a35" strokeWidth="16" strokeLinecap="butt" />
 
-                {/* Concentric rings */}
-                <circle cx="100" cy="100" r="40" fill="none" stroke="#a855f7" strokeWidth="1" opacity="0.3" />
-                <circle cx="100" cy="100" r="30" fill="none" stroke="#a855f7" strokeWidth="1" opacity="0.5" />
-                <circle cx="100" cy="100" r="20" fill="none" stroke="#a855f7" strokeWidth="1.5" opacity="0.8" />
+                    {/* Active progress path */}
+                    <path 
+                      className={styles.progressBar} 
+                      d="M 25 100 A 75 75 0 0 1 175 100" 
+                      fill="none" 
+                      stroke="url(#greenGradient)" 
+                      strokeWidth="16" 
+                      strokeLinecap="butt" 
+                      pathLength="100"
+                      strokeDasharray="100" 
+                      strokeDashoffset={100 - animatedRate} 
+                      filter="url(#glow-soft)" 
+                    />
 
-                {/* Needle group */}
-                <g 
-                  className={styles.needleGroup} 
-                  style={{ 
-                    transform: `translate(100px, 100px) rotate(${(animatedRate / 100) * 180 - 90}deg)`
-                  }}
-                >
-                  <polygon points="-9,0 9,0 0,-83" 
-                           fill="rgba(192, 132, 252, 0.4)" 
-                           stroke="#f3e8ff" strokeWidth="1.5" 
-                           filter="drop-shadow(0 0 5px rgba(168, 85, 247, 0.9))" />
-                </g>
+                    {/* Concentric rings */}
+                    <circle cx="100" cy="100" r="40" fill="none" stroke="#10b981" strokeWidth="1" opacity="0.3" />
+                    <circle cx="100" cy="100" r="30" fill="none" stroke="#10b981" strokeWidth="1" opacity="0.5" />
+                    <circle cx="100" cy="100" r="20" fill="none" stroke="#10b981" strokeWidth="1.5" opacity="0.8" />
 
-                {/* Pivot center */}
-                <circle cx="100" cy="100" r="12" fill="#4b04b5" stroke="#d8b4fe" strokeWidth="3" filter="url(#glow-strong)" />
-                <circle cx="100" cy="100" r="4" fill="#ffffff" filter="url(#glow-strong)" />
-              </svg>
+                    {/* Needle group */}
+                    <g 
+                      className={styles.needleGroup} 
+                      style={{ 
+                        transform: `translate(100px, 100px) rotate(${(animatedRate / 100) * 180 - 90}deg)`
+                      }}
+                    >
+                      <polygon points="-9,0 9,0 0,-83" 
+                               fill="rgba(16, 185, 129, 0.4)" 
+                               stroke="#d1fae5" strokeWidth="1.5" 
+                               filter="drop-shadow(0 0 5px rgba(16, 185, 129, 0.9))" />
+                    </g>
+
+                    {/* Pivot center */}
+                    <circle cx="100" cy="100" r="12" fill="#064e3b" stroke="#6ee7b7" strokeWidth="3" filter="url(#glow-strong)" />
+                    <circle cx="100" cy="100" r="4" fill="#ffffff" filter="url(#glow-strong)" />
+                  </svg>
+                </div>
+                <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(16,185,129,0.4)', lineHeight: 1 }}>
+                    {gaugeStats.deliveredCount.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 700, marginTop: '4px' }}>طلب واصل</div>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', fontWeight: 600 }}>
+                  نسبة التوصيل {animatedRate}%
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ width: '1px', height: '110px', backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+
+              {/* Red Gauge */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
+                  <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+                    <defs>
+                      <linearGradient id="redGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#fee2e2" />
+                        <stop offset="50%" stopColor="#ef4444" />
+                        <stop offset="100%" stopColor="#f87171" />
+                      </linearGradient>
+                      
+                      <filter id="glow-soft-red" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                      
+                      <filter id="glow-strong-red" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="6" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                    </defs>
+
+                    {/* Track path */}
+                    <path d="M 25 100 A 75 75 0 0 1 175 100" 
+                          fill="none" stroke="#2a2a35" strokeWidth="16" strokeLinecap="butt" />
+
+                    {/* Active progress path */}
+                    <path 
+                      className={styles.progressBar} 
+                      d="M 25 100 A 75 75 0 0 1 175 100" 
+                      fill="none" 
+                      stroke="url(#redGradient)" 
+                      strokeWidth="16" 
+                      strokeLinecap="butt" 
+                      pathLength="100"
+                      strokeDasharray="100" 
+                      strokeDashoffset={100 - animatedReturnRate} 
+                      filter="url(#glow-soft-red)" 
+                    />
+
+                    {/* Concentric rings */}
+                    <circle cx="100" cy="100" r="40" fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.3" />
+                    <circle cx="100" cy="100" r="30" fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.5" />
+                    <circle cx="100" cy="100" r="20" fill="none" stroke="#ef4444" strokeWidth="1.5" opacity="0.8" />
+
+                    {/* Needle group */}
+                    <g 
+                      className={styles.needleGroup} 
+                      style={{ 
+                        transform: `translate(100px, 100px) rotate(${(animatedReturnRate / 100) * 180 - 90}deg)`
+                      }}
+                    >
+                      <polygon points="-9,0 9,0 0,-83" 
+                               fill="rgba(239, 68, 68, 0.4)" 
+                               stroke="#fee2e2" strokeWidth="1.5" 
+                               filter="drop-shadow(0 0 5px rgba(239, 68, 68, 0.9))" />
+                    </g>
+
+                    {/* Pivot center */}
+                    <circle cx="100" cy="100" r="12" fill="#7f1d1d" stroke="#fca5a5" strokeWidth="3" filter="url(#glow-strong-red)" />
+                    <circle cx="100" cy="100" r="4" fill="#ffffff" filter="url(#glow-strong-red)" />
+                  </svg>
+                </div>
+                <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(239,68,68,0.4)', lineHeight: 1 }}>
+                    {gaugeStats.returnedCount.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 700, marginTop: '4px' }}>طلب راجع</div>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', fontWeight: 600 }}>
+                  نسبة الراجع {animatedReturnRate}%
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '1rem', marginTop: '1.5rem' }}>
+              {/* Yellow Gauge (In Progress) */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
+                  <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+                    <defs>
+                      <linearGradient id="yellowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#fef3c7" />
+                        <stop offset="50%" stopColor="#f59e0b" />
+                        <stop offset="100%" stopColor="#fbbf24" />
+                      </linearGradient>
+                      <filter id="glow-soft-yellow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                      <filter id="glow-strong-yellow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="6" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                    </defs>
+                    <path d="M 25 100 A 75 75 0 0 1 175 100" fill="none" stroke="#2a2a35" strokeWidth="16" strokeLinecap="butt" />
+                    <path className={styles.progressBar} d="M 25 100 A 75 75 0 0 1 175 100" fill="none" stroke="url(#yellowGradient)" strokeWidth="16" strokeLinecap="butt" pathLength="100" strokeDasharray="100" strokeDashoffset={100 - animatedProgressRate} filter="url(#glow-soft-yellow)" />
+                    <circle cx="100" cy="100" r="40" fill="none" stroke="#f59e0b" strokeWidth="1" opacity="0.3" />
+                    <circle cx="100" cy="100" r="30" fill="none" stroke="#f59e0b" strokeWidth="1" opacity="0.5" />
+                    <circle cx="100" cy="100" r="20" fill="none" stroke="#f59e0b" strokeWidth="1.5" opacity="0.8" />
+                    <g className={styles.needleGroup} style={{ transform: `translate(100px, 100px) rotate(${(animatedProgressRate / 100) * 180 - 90}deg)` }}>
+                      <polygon points="-9,0 9,0 0,-83" fill="rgba(245, 158, 11, 0.4)" stroke="#fef3c7" strokeWidth="1.5" filter="drop-shadow(0 0 5px rgba(245, 158, 11, 0.9))" />
+                    </g>
+                    <circle cx="100" cy="100" r="12" fill="#78350f" stroke="#fcd34d" strokeWidth="3" filter="url(#glow-strong-yellow)" />
+                    <circle cx="100" cy="100" r="4" fill="#ffffff" filter="url(#glow-strong-yellow)" />
+                  </svg>
+                </div>
+                <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(245,158,11,0.4)', lineHeight: 1 }}>{gaugeStats.inProgressCount.toLocaleString()}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 700, marginTop: '4px' }}>قيد التوصيل ومؤجل</div>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', fontWeight: 600 }}>النسبة {animatedProgressRate}%</div>
+              </div>
+
+              <div style={{ width: '1px', height: '110px', backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+
+              {/* Gray Gauge (Cancelled) */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
+                  <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+                    <defs>
+                      <linearGradient id="grayGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#f3f4f6" />
+                        <stop offset="50%" stopColor="#9ca3af" />
+                        <stop offset="100%" stopColor="#d1d5db" />
+                      </linearGradient>
+                      <filter id="glow-soft-gray" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                      <filter id="glow-strong-gray" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="6" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                    </defs>
+                    <path d="M 25 100 A 75 75 0 0 1 175 100" fill="none" stroke="#2a2a35" strokeWidth="16" strokeLinecap="butt" />
+                    <path className={styles.progressBar} d="M 25 100 A 75 75 0 0 1 175 100" fill="none" stroke="url(#grayGradient)" strokeWidth="16" strokeLinecap="butt" pathLength="100" strokeDasharray="100" strokeDashoffset={100 - animatedCancelledRate} filter="url(#glow-soft-gray)" />
+                    <circle cx="100" cy="100" r="40" fill="none" stroke="#9ca3af" strokeWidth="1" opacity="0.3" />
+                    <circle cx="100" cy="100" r="30" fill="none" stroke="#9ca3af" strokeWidth="1" opacity="0.5" />
+                    <circle cx="100" cy="100" r="20" fill="none" stroke="#9ca3af" strokeWidth="1.5" opacity="0.8" />
+                    <g className={styles.needleGroup} style={{ transform: `translate(100px, 100px) rotate(${(animatedCancelledRate / 100) * 180 - 90}deg)` }}>
+                      <polygon points="-9,0 9,0 0,-83" fill="rgba(156, 163, 175, 0.4)" stroke="#f3f4f6" strokeWidth="1.5" filter="drop-shadow(0 0 5px rgba(156, 163, 175, 0.9))" />
+                    </g>
+                    <circle cx="100" cy="100" r="12" fill="#374151" stroke="#d1d5db" strokeWidth="3" filter="url(#glow-strong-gray)" />
+                    <circle cx="100" cy="100" r="4" fill="#ffffff" filter="url(#glow-strong-gray)" />
+                  </svg>
+                </div>
+                <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(156,163,175,0.4)', lineHeight: 1 }}>{gaugeStats.cancelledCount.toLocaleString()}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontWeight: 700, marginTop: '4px' }}>حذف وإلغاء</div>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', fontWeight: 600 }}>النسبة {animatedCancelledRate}%</div>
+              </div>
             </div>
 
-            <div className={styles.gaugeValue}>{animatedRate}%</div>
-
-            <div className={styles.gaugeDescription}>
-              📦 {gaugeStats.activeOrdersCount} طلب نشط {getGaugeDescriptionLabel()}
+            <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '0.75rem' }}>
+              إجمالي الطلبات في هذه الفترة: <strong style={{ color: '#fff' }}>{gaugeStats.totalOrdersCount.toLocaleString()} طلب</strong>
             </div>
           </div>
 
-          {/* Card 2.5: Return Rate Gauge */}
-          <div className={`${styles.card} ${styles.gaugeCard}`}>
-            <div className={`${styles.cardHeader} ${styles.gaugeCardHeader}`}>
-              <span>نسبة الراجع</span>
-            </div>
-            
-            <div className={styles.gaugeContainer} style={{ marginTop: 'auto' }}>
-              <svg viewBox="0 0 200 130" className={styles.gaugeSvg}>
-                <defs>
-                  <linearGradient id="redGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#fee2e2" />
-                    <stop offset="50%" stopColor="#ef4444" />
-                    <stop offset="100%" stopColor="#991b1b" />
-                  </linearGradient>
-                  
-                  <filter id="glow-soft-red" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="3" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                  </filter>
-                  
-                  <filter id="glow-strong-red" x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur stdDeviation="6" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                  </filter>
-                </defs>
 
-                {/* Track path */}
-                <path d="M 25 100 A 75 75 0 0 1 175 100" 
-                      fill="none" stroke="#2a2a35" strokeWidth="16" strokeLinecap="butt" />
-
-                {/* Active progress path */}
-                <path 
-                  className={styles.progressBar} 
-                  d="M 25 100 A 75 75 0 0 1 175 100" 
-                  fill="none" 
-                  stroke="url(#redGradient)" 
-                  strokeWidth="16" 
-                  strokeLinecap="butt" 
-                  strokeDasharray="235.62" 
-                  strokeDashoffset={235.62 - (235.62 * animatedReturnRate) / 100} 
-                  filter="url(#glow-soft-red)" 
-                />
-
-                {/* Concentric rings */}
-                <circle cx="100" cy="100" r="40" fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.3" />
-                <circle cx="100" cy="100" r="30" fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.5" />
-                <circle cx="100" cy="100" r="20" fill="none" stroke="#ef4444" strokeWidth="1.5" opacity="0.8" />
-
-                {/* Needle group */}
-                <g 
-                  className={styles.needleGroup} 
-                  style={{ 
-                    transform: `translate(100px, 100px) rotate(${(animatedReturnRate / 100) * 180 - 90}deg)`
-                  }}
-                >
-                  <polygon points="-9,0 9,0 0,-83" 
-                           fill="rgba(239, 68, 68, 0.4)" 
-                           stroke="#fee2e2" strokeWidth="1.5" 
-                           filter="drop-shadow(0 0 5px rgba(239, 68, 68, 0.9))" />
-                </g>
-
-                {/* Pivot center */}
-                <circle cx="100" cy="100" r="12" fill="#7f1d1d" stroke="#fca5a5" strokeWidth="3" filter="url(#glow-strong-red)" />
-                <circle cx="100" cy="100" r="4" fill="#ffffff" filter="url(#glow-strong-red)" />
-              </svg>
-            </div>
-
-            <div className={styles.gaugeValue}>{animatedReturnRate}%</div>
-
-            <div className={styles.gaugeDescription}>
-              📦 {gaugeStats.activeOrdersCount} طلب نشط {getGaugeDescriptionLabel()}
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <span>المنتجات النشطة</span>
-            </div>
-            <div className={styles.cardValue}>{productsCount.toLocaleString()}</div>
-            <div className={`${styles.trend} ${styles.up}`} style={{ color: '#a855f7' }}>
-              <span>🛍️ في الكتالوج</span>
-            </div>
-          </div>
 
           {/* Team Performance */}
-          <div className={`${styles.card} ${styles.colSpan3} ${styles.rowSpan2} ${isTeamCalOpen ? styles.elevatedCard : ''}`}>
+          <div className={`${styles.card} ${styles.colSpan7} ${styles.rowSpan2} ${isTeamCalOpen ? styles.elevatedCard : ''}`}>
             <div className={styles.cardHeader}>
-              <span>أداء الفريق ({teamStats.length} موظف نشط)</span>
+              <span>{teamViewMode === 'team' ? `أداء الفريق (${teamStats.length} موظف نشط)` : `أداء صفحات الهبوط (${teamStats.length} صفحة نشطة)`}</span>
               
-              <div className={styles.teamDatePickerContainer} ref={teamCalRef}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <select 
+                  style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem' }}
+                  value={teamViewMode} 
+                  onChange={(e) => setTeamViewMode(e.target.value as 'team' | 'landing_pages')}
+                >
+                  <option value="team">أداء الفريق</option>
+                  <option value="landing_pages">أداء صفحات الهبوط</option>
+                </select>
+
+                <div className={styles.teamDatePickerContainer} ref={teamCalRef}>
                 <button 
                   className={styles.teamDateRangeBtn} 
                   onClick={toggleTeamCal}
@@ -1562,6 +1865,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                 )}
+              </div>
               </div>
             </div>
             
@@ -1669,30 +1973,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Inventory Status */}
-          <div className={`${styles.card} ${styles.colSpan2} ${styles.rowSpan2}`}>
-            <div className={styles.cardHeader}>
-              <span>حالة المخزون الكلي</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', height: '100%', justifyContent: 'center', marginTop: '1rem' }}>
-              <div className={styles.donutContainer}>
-                <div className={styles.donutText}>
-                  <div className={styles.donutValue}>{stockPercent}%</div>
-                  <div className={styles.donutLabel}>متوفر بالمخزن</div>
-                </div>
-                <svg width="120" height="120" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="50" fill="none" stroke="var(--surface-hover)" strokeWidth="10" />
-                  <circle cx="60" cy="60" r="50" fill="none" stroke="#10B981" strokeWidth="10" strokeDasharray="314" strokeDashoffset={314 - (314 * stockPercent) / 100} strokeLinecap="round" transform="rotate(-90 60 60)" />
-                </svg>
-              </div>
-            </div>
-            <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
-              عدد المنتجات المتوفرة: <strong>{inStockCount}</strong> من أصل <strong>{productsCount}</strong> منتج
-            </div>
-          </div>
-
           {/* Card 4: Product Profit & Loss Analysis */}
-          <div className={`${styles.card} ${styles.colSpan5}`} style={{ marginTop: '1rem' }}>
+          <div className={`${styles.card} ${styles.colSpan7}`} style={{ marginTop: '1rem' }}>
             <div className={styles.cardHeader}>
               <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>📊 شجرة تحليل الأرباح والخسائر والأداء (البيج ⬅️ الفئة ⬅️ الصنف)</span>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>صافي الربح = الإيرادات من الكشوفات - المصاريف المباشرة</span>
@@ -1700,20 +1982,67 @@ export default function Dashboard() {
 
             <div className={styles.treeSection} style={{ border: 'none', paddingTop: 0 }}>
               {/* Overall Summary Panel */}
-              <div className={styles.summaryStatsRow} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                <div className={styles.summaryStatCard}>
-                  <span className={styles.summaryStatLabel}>💰 إجمالي المبيعات (الواصلة)</span>
-                  <span className={styles.summaryStatValue} style={{ color: '#60a5fa' }}>{overallStats.totalRevenue.toLocaleString()} د.ع</span>
+              <div className={styles.summaryStatsRow} style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                {/* 1. الواصل */}
+                <div className={styles.summaryStatCard} style={{ borderRight: '3px solid #10b981', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(0,0,0,0.2) 100%)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className={styles.summaryStatLabel}>🟢 الواصل (الطلبات المقبوضة)</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#10b981', background: 'rgba(16,185,129,0.15)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                      ↗️ {overallStats.deliveredPct}%
+                    </span>
+                  </div>
+                  <span className={styles.summaryStatValue} style={{ color: '#10b981', marginTop: '0.3rem' }}>
+                    {overallStats.totalRevenue.toLocaleString()} د.ع
+                  </span>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
+                    📦 {overallStats.deliveredCount} طلب واصل ومستلم
+                  </div>
                 </div>
-                <div className={styles.summaryStatCard}>
-                  <span className={styles.summaryStatLabel}>💸 إجمالي المصاريف المباشرة</span>
-                  <span className={styles.summaryStatValue} style={{ color: '#c084fc' }}>{overallStats.totalExpenses.toLocaleString()} د.ع</span>
+
+                {/* 2. الراجع */}
+                <div className={styles.summaryStatCard} style={{ borderRight: '3px solid #ef4444', background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(0,0,0,0.2) 100%)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className={styles.summaryStatLabel}>🔴 الراجع (المرتجع)</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#ef4444', background: 'rgba(239,68,68,0.15)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                      ↘️ {overallStats.returnedPct}%
+                    </span>
+                  </div>
+                  <span className={styles.summaryStatValue} style={{ color: '#ef4444', marginTop: '0.3rem' }}>
+                    {overallStats.returnedAmount.toLocaleString()} د.ع
+                  </span>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
+                    ↩️ {overallStats.returnedCount} طلب مرتجع
+                  </div>
                 </div>
-                <div className={styles.summaryStatCard}>
-                  <span className={styles.summaryStatLabel}>📈 صافي الأرباح الكلية</span>
-                  <span className={styles.summaryStatValue} style={{ color: overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444' }}>
+
+                {/* 3. المصاريف المباشرة */}
+                <div className={styles.summaryStatCard} style={{ borderRight: '3px solid #c084fc', background: 'linear-gradient(135deg, rgba(192,132,252,0.08) 0%, rgba(0,0,0,0.2) 100%)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className={styles.summaryStatLabel}>💸 المصاريف المباشرة</span>
+                    <span style={{ fontSize: '0.75rem', color: '#c084fc' }}>تكاليف</span>
+                  </div>
+                  <span className={styles.summaryStatValue} style={{ color: '#c084fc', marginTop: '0.3rem' }}>
+                    {overallStats.totalExpenses.toLocaleString()} د.ع
+                  </span>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
+                    🧾 إجمالي التكاليف التشغيلية
+                  </div>
+                </div>
+
+                {/* 4. صافي الأرباح الكلية */}
+                <div className={styles.summaryStatCard} style={{ borderRight: `3px solid ${overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444'}`, background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.2) 100%)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className={styles.summaryStatLabel}>📈 صافي الأرباح الكلية</span>
+                    <span style={{ fontSize: '0.75rem', color: overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444' }}>
+                      {overallStats.totalNetProfit >= 0 ? 'ربح صافي 💎' : 'خسارة ⚠️'}
+                    </span>
+                  </div>
+                  <span className={styles.summaryStatValue} style={{ color: overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444', marginTop: '0.3rem' }}>
                     {overallStats.totalNetProfit >= 0 ? '+' : ''}{overallStats.totalNetProfit.toLocaleString()} د.ع
                   </span>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
+                    الإيرادات - المصاريف المباشرة
+                  </div>
                 </div>
               </div>
 

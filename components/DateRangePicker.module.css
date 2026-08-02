@@ -39,7 +39,7 @@
   border-radius: var(--radius-md);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
   z-index: 50;
-  width: 500px;
+  width: 580px;
   animation: fadeIn 0.2s ease-out;
   overflow: hidden;
 }
@@ -105,7 +105,7 @@
 }
 
 .presetsPanel {
-  width: 180px;
+  width: 220px;
   border-right: 1px solid var(--border);
   padding: 1.5rem;
   background-color: rgba(255, 255, 255, 0.02);
@@ -136,6 +136,7 @@
   transition: all 0.2s;
   background-color: rgba(255, 255, 255, 0.03);
   border: 1px solid transparent;
+  white-space: nowrap;
 }
 
 .presetItem:hover {

@@ -12,22 +12,25 @@ interface DateRangePickerProps {
 
 export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyDates, initialPreset = 'اليوم' }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [preset, setPreset] = useState(initialPreset);
+  const [preset, setPreset] = useState(initialPreset === 'الكل' ? 'فترة مطلقة' : initialPreset);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Date States
-  const [selectedStartDate, setSelectedStartDate] = useState<Date>(() => {
+  const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(() => {
+    if (initialPreset === 'الكل' || initialPreset === 'فترة مطلقة') return null;
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   });
-  const [selectedEndDate, setSelectedEndDate] = useState<Date>(() => {
+  const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(() => {
+    if (initialPreset === 'الكل' || initialPreset === 'فترة مطلقة') return null;
     const d = new Date();
     d.setHours(23, 59, 59, 999);
     return d;
   });
 
   const presets = [
+    'فترة مطلقة',
     'اليوم',
     'أمس',
     'آخر 7 أيام',
@@ -70,6 +73,11 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
         break;
       case 'تاريخ مخصص':
         return; // Don't reset if custom
+      case 'فترة مطلقة':
+      case 'الكل':
+        setSelectedStartDate(null);
+        setSelectedEndDate(null);
+        return; 
     }
     
     setSelectedStartDate(start);
@@ -91,6 +99,8 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
     let output = preset;
     if (preset === 'تاريخ مخصص') {
       output = `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
+    } else if (preset === 'فترة مطلقة') {
+      output = 'الكل';
     }
     onApply(output);
     if (onApplyDates) {
@@ -103,6 +113,8 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
     let output = preset;
     if (preset === 'تاريخ مخصص') {
       output = `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
+    } else if (preset === 'فترة مطلقة') {
+      output = 'الكل';
     }
     if (onApplyWithArchived) {
       onApplyWithArchived(output);
@@ -119,11 +131,15 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
     if (preset === 'تاريخ مخصص') {
       return `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
     }
+    if (preset === 'فترة مطلقة' || preset === 'الكل') {
+      return 'فترة مطلقة (الكل)';
+    }
     return `${preset}: ${selectedStartDate.toLocaleDateString('en-GB')}`;
   };
 
   // Convert Date object to YYYY-MM-DD for input[type="date"]
-  const toISODate = (date: Date) => {
+  const toISODate = (date: Date | null) => {
+    if (!date) return "";
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const dd = String(date.getDate()).padStart(2, '0');
@@ -131,7 +147,14 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
   };
 
   const handleDateChange = (type: 'start' | 'end', val: string) => {
+    if (!val) {
+      if (type === 'start') setSelectedStartDate(null);
+      else setSelectedEndDate(null);
+      return;
+    }
     const newDate = new Date(val);
+    if (isNaN(newDate.getTime())) return;
+    
     if (type === 'start') {
       newDate.setHours(0, 0, 0, 0);
       setSelectedStartDate(newDate);
@@ -157,28 +180,87 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
           <div className={styles.dropdownContent}>
             
             <div className={styles.mainPanel}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', width: '100%' }}>
+                <select 
+                  className={styles.dateInputNative} 
+                  style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                  value={
+                    selectedStartDate && selectedEndDate && 
+                    selectedStartDate.getDate() === 1 && 
+                    selectedEndDate.getDate() === new Date(selectedStartDate.getFullYear(), selectedStartDate.getMonth() + 1, 0).getDate() && 
+                    selectedStartDate.getMonth() === selectedEndDate.getMonth() &&
+                    selectedStartDate.getFullYear() === selectedEndDate.getFullYear() 
+                    ? selectedStartDate.getMonth() + 1 : ""
+                  }
+                  onChange={(e) => {
+                    const year = selectedStartDate ? selectedStartDate.getFullYear() : new Date().getFullYear();
+                    const month = parseInt(e.target.value);
+                    if (isNaN(month)) return;
+                    const start = new Date(year, month - 1, 1);
+                    const end = new Date(year, month, 0);
+                    start.setHours(0, 0, 0, 0);
+                    end.setHours(23, 59, 59, 999);
+                    setSelectedStartDate(start);
+                    setSelectedEndDate(end);
+                    setPreset('تاريخ مخصص');
+                  }}
+                >
+                  <option value="" style={{ color: 'black' }}>اختر الشهر...</option>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                    <option key={m} value={m} style={{ color: 'black' }}>شهر {m}</option>
+                  ))}
+                </select>
+
+                <select 
+                  className={styles.dateInputNative} 
+                  style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                  value={selectedStartDate ? selectedStartDate.getFullYear() : new Date().getFullYear()}
+                  onChange={(e) => {
+                    const year = parseInt(e.target.value);
+                    const month = selectedStartDate ? selectedStartDate.getMonth() : new Date().getMonth();
+                    const start = new Date(year, month, 1);
+                    const end = new Date(year, month + 1, 0);
+                    start.setHours(0, 0, 0, 0);
+                    end.setHours(23, 59, 59, 999);
+                    setSelectedStartDate(start);
+                    setSelectedEndDate(end);
+                    setPreset('تاريخ مخصص');
+                  }}
+                >
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                    <option key={y} value={y} style={{ color: 'black' }}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className={styles.inputsGrid}>
                 <div className={styles.inputGroup}>
                   <label className={styles.fieldLabel}>من (تاريخ البدء)</label>
-                  <div lang="en" dir="ltr" style={{ width: '100%' }}>
+                  <div lang={selectedStartDate ? "en" : "ar"} dir={selectedStartDate ? "ltr" : "rtl"} style={{ width: '100%' }}>
                     <input 
-                      type="date" 
+                      type={selectedStartDate ? "date" : "text"} 
+                      placeholder="غير محدد"
+                      onFocus={(e) => { e.target.type = 'date'; e.target.showPicker && setTimeout(() => e.target.showPicker(), 10); }}
+                      onBlur={(e) => { if (!e.target.value) e.target.type = 'text'; }}
                       className={styles.dateInputNative} 
-                      value={toISODate(selectedStartDate)} 
+                      value={selectedStartDate ? toISODate(selectedStartDate) : ""} 
                       onChange={(e) => handleDateChange('start', e.target.value)}
-                      style={{ width: '100%', textAlign: 'right', fontFamily: 'Arial, sans-serif' }}
+                      style={{ width: '100%', textAlign: 'right', fontFamily: 'inherit' }}
                     />
                   </div>
                 </div>
                 <div className={styles.inputGroup}>
                   <label className={styles.fieldLabel}>إلى (تاريخ الانتهاء)</label>
-                  <div lang="en" dir="ltr" style={{ width: '100%' }}>
+                  <div lang={selectedEndDate ? "en" : "ar"} dir={selectedEndDate ? "ltr" : "rtl"} style={{ width: '100%' }}>
                     <input 
-                      type="date" 
+                      type={selectedEndDate ? "date" : "text"} 
+                      placeholder="غير محدد"
+                      onFocus={(e) => { e.target.type = 'date'; e.target.showPicker && setTimeout(() => e.target.showPicker(), 10); }}
+                      onBlur={(e) => { if (!e.target.value) e.target.type = 'text'; }}
                       className={styles.dateInputNative} 
-                      value={toISODate(selectedEndDate)} 
+                      value={selectedEndDate ? toISODate(selectedEndDate) : ""} 
                       onChange={(e) => handleDateChange('end', e.target.value)}
-                      style={{ width: '100%', textAlign: 'right', fontFamily: 'Arial, sans-serif' }}
+                      style={{ width: '100%', textAlign: 'right', fontFamily: 'inherit' }}
                     />
                   </div>
                 </div>
@@ -195,7 +277,20 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
                     إظهار مع المؤرشف
                   </button>
                 )}
-                <button className={styles.cancelBtn} onClick={() => setIsOpen(false)}>إلغاء</button>
+                <button 
+                  className={styles.cancelBtn} 
+                  onClick={() => {
+                    setPreset('فترة مطلقة');
+                    setSelectedStartDate(null);
+                    setSelectedEndDate(null);
+                    onApply('الكل');
+                    setIsOpen(false);
+                  }}
+                  style={{ marginRight: '8px', backgroundColor: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
+                >
+                  تحديث
+                </button>
+                <button className={styles.cancelBtn} onClick={() => setIsOpen(false)} style={{ marginRight: '8px' }}>إلغاء</button>
                 <span className={styles.timezoneText}>توقيت بغداد</span>
               </div>
             </div>

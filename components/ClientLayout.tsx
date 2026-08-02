@@ -355,8 +355,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   return (
     <div className={styles.layoutContainer}>
       {/* Sidebar */}
-      <aside className={`${styles.sidebar} ${isSidebarOpen ? '' : styles.closed}`}>
-        
+      <aside 
+        className={`${styles.sidebar} ${isSidebarOpen ? '' : styles.closed}`}
+        onMouseEnter={() => setIsSidebarOpen(true)}
+        onMouseLeave={() => setIsSidebarOpen(false)}
+      >
         {/* Sidebar Header with Toggle */}
         <div className={styles.sidebarHeader}>
           <div className={styles.logoText} style={{ fontWeight: 'bold', color: '#fff', paddingRight: '0.5rem' }}>
