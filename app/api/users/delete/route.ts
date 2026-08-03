@@ -13,12 +13,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing UID' }, { status: 400 });
     }
 
-    await adminAuth.deleteUser(uid);
+    try {
+      await adminAuth.deleteUser(uid);
+    } catch (authError: any) {
+      if (authError.code === 'auth/user-not-found') {
+        console.log(`User ${uid} not found in Auth, skipping auth deletion.`);
+      } else {
+        throw authError; // Re-throw other errors
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting user:', error);
-    // Even if it fails (e.g. user not found), we should probably let the client delete the firestore doc
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

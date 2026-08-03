@@ -76,10 +76,15 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
     setIsSubmitting(true);
     try {
+      let finalEmail = email.trim();
+      if (!finalEmail.includes('@')) {
+        finalEmail = `${finalEmail}@mansa.app`;
+      }
+
       if (authMode === 'login') {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        await signInWithEmailAndPassword(auth, finalEmail, password);
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const userCredential = await createUserWithEmailAndPassword(auth, finalEmail, password);
         const userId = userCredential.user.uid;
 
         // Initialize user database

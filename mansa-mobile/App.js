@@ -236,6 +236,9 @@ export default function App() {
   const [customEndDate, setCustomEndDate] = useState(new Date());
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [dateFilterModalVisible, setDateFilterModalVisible] = useState(false);
+  const [filterMonth, setFilterMonth] = useState(new Date().getMonth());
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
 
   const [displayedOrdersCount, setDisplayedOrdersCount] = useState(100);
   const [phoneSearchMatches, setPhoneSearchMatches] = useState([]);
@@ -311,6 +314,10 @@ export default function App() {
         break;
       case 'all_time':
         return null;
+      case 'specific_month':
+        start = new Date(filterYear, filterMonth, 1, 0, 0, 0, 0);
+        end = new Date(filterYear, filterMonth + 1, 0, 23, 59, 59, 999);
+        break;
       case 'custom':
         // set start to start of the day of customStartDate
         start = new Date(customStartDate.getFullYear(), customStartDate.getMonth(), customStartDate.getDate(), 0, 0, 0, 0);
@@ -1212,27 +1219,16 @@ export default function App() {
       <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 3 }}>
         {active && (
           <>
-            <Path d="M2 9h3" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            <Path d="M1 13h3" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            <Path d="M6 6h9v9H6z" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            <Path d="M15 9h4l3 3v3h-7z" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            <Circle cx="9" cy="17.5" r="2" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            <Circle cx="18" cy="17.5" r="2" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            
-            <Path d="M2 9h3" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
-            <Path d="M1 13h3" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
-            <Path d="M6 6h9v9H6z" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
-            <Path d="M15 9h4l3 3v3h-7z" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
-            <Circle cx="9" cy="17.5" r="2" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
-            <Circle cx="18" cy="17.5" r="2" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
+            <Path d="M9 2H15A1 1 0 0 1 16 3V5H8V3A1 1 0 0 1 9 2Z" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+            <Path d="M8 4H5A2 2 0 0 0 3 6V20A2 2 0 0 0 5 22H19A2 2 0 0 0 21 20V6A2 2 0 0 0 19 4H16" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+            <Path d="M8 11H16" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+            <Path d="M8 15H16" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
           </>
         )}
-        <Path d="M2 9h3" stroke={strokeColor} strokeWidth={2} />
-        <Path d="M1 13h3" stroke={strokeColor} strokeWidth={2} />
-        <Path d="M6 6h9v9H6z" stroke={strokeColor} strokeWidth={2} />
-        <Path d="M15 9h4l3 3v3h-7z" stroke={strokeColor} strokeWidth={2} />
-        <Circle cx="9" cy="17.5" r="2" stroke={strokeColor} strokeWidth={2} />
-        <Circle cx="18" cy="17.5" r="2" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M9 2H15A1 1 0 0 1 16 3V5H8V3A1 1 0 0 1 9 2Z" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M8 4H5A2 2 0 0 0 3 6V20A2 2 0 0 0 5 22H19A2 2 0 0 0 21 20V6A2 2 0 0 0 19 4H16" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M8 11H16" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M8 15H16" stroke={strokeColor} strokeWidth={2} />
       </Svg>
     );
   };
@@ -1248,6 +1244,21 @@ export default function App() {
           </>
         )}
         <Path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" stroke={strokeColor} strokeWidth={2} />
+      </Svg>
+    );
+  };
+
+  
+  const renderProductsIcon = (active) => {
+    const strokeColor = active ? '#e9d5ff' : '#64748b';
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 3 }}>
+        {active && (
+          <Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+        )}
+        <Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M3.27 6.96L12 12.01l8.73-5.05" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M12 22.08V12" stroke={strokeColor} strokeWidth={2} />
       </Svg>
     );
   };
@@ -1470,90 +1481,64 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#0d0d12" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>منصة منسا - الجوال</Text>
-      </View>
+      
+      {/* Global Header & Search */}
+      {activeTab !== 'settings' && (
+      <View style={{ backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12', paddingBottom: 10 }}>
+        {/* Top Row: Profile & Notifications */}
+        <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingHorizontal: 16, marginTop: 15 }}>
+          {/* Right: Profile Info */}
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginLeft: 12 }}>
+              <Text style={{ color: '#a855f7', fontWeight: 'bold', fontSize: 18 }}>
+                {selectedEmployeeName ? selectedEmployeeName.split(' ').slice(0,2).map(n => n[0]).join(' ') : '👤'}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc' }}>
+              {selectedEmployeeName}
+            </Text>
+          </View>
 
-      {/* Date Filter Bar */}
-      {(activeTab === 'dashboard' || activeTab === 'orders' || activeTab === 'completed_shipments') && (
-        <View style={{ backgroundColor: '#1e1e24', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#333' }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
-          {[
-            { id: 'today', label: 'اليوم' },
-            { id: 'yesterday', label: 'أمس' },
-            { id: 'today_and_yesterday', label: 'اليوم وأمس' },
-            { id: 'last_7_days', label: 'آخر 7 أيام' },
-            { id: 'last_30_days', label: 'آخر 30 يوم' },
-            { id: 'last_60_days', label: 'آخر 60 يوم' },
-            { id: 'last_90_days', label: 'آخر 90 يوم' },
-            { id: 'year', label: 'سنة' },
-            { id: 'all_time', label: 'فترة مطلقة' },
-            { id: 'custom', label: 'تاريخ مخصص' }
-          ].reverse().map(filter => (
+          {/* Left: Action Icons */}
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+            {/* User Icon */}
             <TouchableOpacity 
-              key={filter.id}
-              onPress={() => setGlobalDateFilter(filter.id)}
-              style={{
-                paddingHorizontal: 16,
-                paddingVertical: 8,
-                borderRadius: 20,
-                backgroundColor: globalDateFilter === filter.id ? 'rgba(168, 85, 247, 0.2)' : 'transparent',
-                borderWidth: 1,
-                borderColor: globalDateFilter === filter.id ? '#a855f7' : '#475569',
-                marginHorizontal: 4
-              }}
+              style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 8, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
+              onPress={() => setEmpModalVisible(true)}
             >
-              <Text style={{ 
-                color: globalDateFilter === filter.id ? '#e9d5ff' : '#cbd5e1',
-                fontWeight: globalDateFilter === filter.id ? 'bold' : 'normal',
-                fontSize: 13
-              }}>{filter.label}</Text>
+              <Svg width={22} height={22} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2.5}>
+                <Path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+                <Circle cx='12' cy='7' r='4' />
+              </Svg>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-        {globalDateFilter === 'custom' && (
-          <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 10 }}>
+
+            {/* Notification Bell */}
             <TouchableOpacity 
-              style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
-              onPress={() => setShowStartDatePicker(true)}
+              style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 8, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
+              onPress={() => setAlertModal({ visible: true, message: 'لا توجد إشعارات جديدة حالياً.' })}
             >
-              <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>من تاريخ</Text>
-              <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customStartDate.toISOString().split('T')[0]}</Text>
+              <Svg width={24} height={24} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2}>
+                <Path d='M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9' />
+                <Path d='M13.73 21a2 2 0 0 1-3.46 0' />
+              </Svg>
+              <View style={{ position: 'absolute', top: -4, right: -4, backgroundColor: '#ef4444', borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: isLightMode ? '#f8fafc' : '#0f172a' }}>
+                <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>52</Text>
+              </View>
             </TouchableOpacity>
             
+            {/* Date Filter Icon */}
             <TouchableOpacity 
-              style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
-              onPress={() => setShowEndDatePicker(true)}
+              style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 12, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
+              onPress={() => setDateFilterModalVisible(true)}
             >
-              <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>إلى تاريخ</Text>
-              <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customEndDate.toISOString().split('T')[0]}</Text>
+              <Svg width={22} height={22} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2.5}>
+                <Rect x='3' y='4' width='18' height='18' rx='2' ry='2' />
+                <Path d='M16 2v4M8 2v4M3 10h18' />
+              </Svg>
             </TouchableOpacity>
 
-            {showStartDatePicker && (
-              <DateTimePicker
-                value={customStartDate}
-                mode="date"
-                display="default"
-                onChange={(event, selectedDate) => {
-                  setShowStartDatePicker(false);
-                  if (selectedDate) setCustomStartDate(selectedDate);
-                }}
-              />
-            )}
-            {showEndDatePicker && (
-              <DateTimePicker
-                value={customEndDate}
-                mode="date"
-                display="default"
-                onChange={(event, selectedDate) => {
-                  setShowEndDatePicker(false);
-                  if (selectedDate) setCustomEndDate(selectedDate);
-                }}
-              />
-            )}
           </View>
-        )}
+        </View>
       </View>
       )}
 
@@ -2388,46 +2373,45 @@ export default function App() {
 
       {/* Bottom Tabs Navigation */}
       <View style={styles.bottomNav}>
-        {/* Tab 1: التقارير */}
+        {/* Right: بياناتي (dashboard) */}
         <TouchableOpacity 
           style={[styles.navItem, activeTab === 'dashboard' && styles.navItemActive]}
           onPress={() => setActiveTab('dashboard')}
         >
           {renderReportsIcon(activeTab === 'dashboard')}
-          <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>التقارير</Text>
+          <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>بياناتي</Text>
         </TouchableOpacity>
-        
 
-        
-        {/* Tab 3: إضافة طلب (الزر العائم بالمنتصف) */}
-        <View style={styles.centerNavWrapper}>
-          <TouchableOpacity 
-            style={[styles.centerNavBtn, activeTab === 'entry' && styles.centerNavBtnActive]}
-            onPress={() => setActiveTab('entry')}
-          >
-            <Text style={styles.centerNavIcon}>+</Text>
-          </TouchableOpacity>
-          <Text style={[styles.navText, { marginTop: 4 }, activeTab === 'entry' && styles.navTextActive]}>
-            {editingOrderId ? 'تعديل طلب' : 'إضافة طلب'}
-          </Text>
-        </View>
-
-        {/* Tab 4: طلبات */}
+        {/* Center-Right: طلبيات (orders) */}
         <TouchableOpacity 
           style={[styles.navItem, activeTab === 'orders' && styles.navItemActive]}
           onPress={() => setActiveTab('orders')}
         >
           {renderOrdersIcon(activeTab === 'orders')}
-          <Text style={[styles.navText, activeTab === 'orders' && styles.navTextActive]}>طلبات</Text>
+          <Text style={[styles.navText, activeTab === 'orders' && styles.navTextActive]}>طلبيات</Text>
         </TouchableOpacity>
 
-        {/* Tab 5: الإعدادات */}
+        {/* Center-Left: Floating + (entry) */}
+        <View style={[styles.centerNavWrapper, { marginTop: -40, flex: 1.2 }]}>
+          <TouchableOpacity 
+            style={[styles.centerNavBtn, { backgroundColor: 'transparent', borderWidth: 0, width: 68, height: 68, shadowColor: 'transparent', elevation: 0 }, activeTab === 'entry' && styles.centerNavBtnActive]}
+            onPress={() => setActiveTab('entry')}
+          >
+            <Svg width="76" height="76" viewBox="0 0 100 100" style={{ position: 'absolute' }}>
+              <Polygon points="50 5, 93 30, 93 70, 50 95, 7 70, 7 30" fill="#a855f7" stroke="#8b5cf6" strokeWidth="6" />
+              <Polygon points="50 12, 85 32, 85 68, 50 88, 15 68, 15 32" fill="transparent" stroke="#d8b4fe" strokeWidth="3" />
+            </Svg>
+            <Text style={[styles.centerNavIcon, { zIndex: 2, fontSize: 34, color: 'white', marginTop: -4, fontWeight: '500' }]}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Left: المنتجات (settings) */}
         <TouchableOpacity 
           style={[styles.navItem, activeTab === 'settings' && styles.navItemActive]}
           onPress={() => setActiveTab('settings')}
         >
-          {renderSettingsIcon(activeTab === 'settings')}
-          <Text style={[styles.navText, activeTab === 'settings' && styles.navTextActive]}>الإعدادات</Text>
+          {renderProductsIcon(activeTab === 'settings')}
+          <Text style={[styles.navText, activeTab === 'settings' && styles.navTextActive]}>المنتجات</Text>
         </TouchableOpacity>
       </View>
 
@@ -2552,6 +2536,133 @@ export default function App() {
         </View>
       </Modal>
 
+    
+      {/* 5. Date Filter Modal */}
+      <Modal visible={dateFilterModalVisible} transparent animationType="slide">
+        <View style={styles.modalBg}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>تصفية التاريخ</Text>
+            
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginBottom: 15 }}>
+              {[
+                { id: 'today', label: 'اليوم' },
+                { id: 'yesterday', label: 'أمس' },
+                { id: 'today_and_yesterday', label: 'اليوم وأمس' },
+                { id: 'last_7_days', label: 'آخر 7 أيام' },
+                { id: 'last_30_days', label: 'آخر 30 يوم' },
+                { id: 'last_60_days', label: 'آخر 60 يوم' },
+                { id: 'last_90_days', label: 'آخر 90 يوم' },
+                { id: 'year', label: 'سنة' },
+                { id: 'all_time', label: 'فترة مطلقة' }
+              ].map(filter => (
+                <TouchableOpacity 
+                  key={filter.id}
+                  onPress={() => {
+                    setGlobalDateFilter(filter.id);
+                    setDateFilterModalVisible(false);
+                  }}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    backgroundColor: globalDateFilter === filter.id ? 'rgba(168, 85, 247, 0.2)' : 'rgba(30, 30, 40, 0.65)',
+                    borderWidth: 1,
+                    borderColor: globalDateFilter === filter.id ? '#a855f7' : '#475569',
+                  }}
+                >
+                  <Text style={{ 
+                    color: globalDateFilter === filter.id ? '#e9d5ff' : '#cbd5e1',
+                    fontWeight: globalDateFilter === filter.id ? 'bold' : 'normal',
+                    fontSize: 13
+                  }}>{filter.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={{ color: '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تاريخ مخصص:</Text>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 }}>
+              <TouchableOpacity 
+                style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
+                onPress={() => setShowStartDatePicker(true)}
+              >
+                <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>من تاريخ</Text>
+                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customStartDate.toISOString().split('T')[0]}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
+                onPress={() => setShowEndDatePicker(true)}
+              >
+                <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>إلى تاريخ</Text>
+                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customEndDate.toISOString().split('T')[0]}</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity 
+              style={{ backgroundColor: '#a855f7', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 20 }}
+              onPress={() => {
+                setGlobalDateFilter('custom');
+                setDateFilterModalVisible(false);
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>تطبيق التاريخ المخصص</Text>
+            </TouchableOpacity>
+
+            <Text style={{ color: '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تحديد شهر وسنة:</Text>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 }}>
+              <View style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', borderRadius: 8, alignItems: 'center', flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 10 }}>
+                  <TouchableOpacity onPress={() => setFilterMonth(prev => prev === 11 ? 0 : prev + 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
+                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{filterMonth + 1}</Text>
+                  <TouchableOpacity onPress={() => setFilterMonth(prev => prev === 0 ? 11 : prev - 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
+              </View>
+              
+              <View style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', borderRadius: 8, alignItems: 'center', flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 10 }}>
+                  <TouchableOpacity onPress={() => setFilterYear(prev => prev + 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
+                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{filterYear}</Text>
+                  <TouchableOpacity onPress={() => setFilterYear(prev => prev - 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={{ backgroundColor: '#a855f7', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 10 }}
+              onPress={() => {
+                setGlobalDateFilter('specific_month');
+                setDateFilterModalVisible(false);
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>تطبيق شهر وسنة محددين</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.modalCloseBtn}
+              onPress={() => setDateFilterModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>إغلاق</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {showStartDatePicker && (
+        <DateTimePicker
+          value={customStartDate}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowStartDatePicker(false);
+            if (selectedDate) setCustomStartDate(selectedDate);
+          }}
+        />
+      )}
+      {showEndDatePicker && (
+        <DateTimePicker
+          value={customEndDate}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowEndDatePicker(false);
+            if (selectedDate) setCustomEndDate(selectedDate);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

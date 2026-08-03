@@ -155,8 +155,13 @@ export default function UsersPage() {
           linkedEmployeeId: formData.linkedEmployeeId
         };
         
+        let finalEmail = formData.email.trim();
+        if (finalEmail && !finalEmail.includes('@')) {
+          finalEmail = `${finalEmail}@mansa.app`;
+        }
+
         if (formData.email) {
-          updateData.email = formData.email.trim();
+          updateData.email = finalEmail;
         }
         if (formData.password) {
           updateData.password = formData.password;
@@ -169,7 +174,7 @@ export default function UsersPage() {
           employeeId: formData.linkedEmployeeId
         };
         if (formData.email) {
-          mappingData.email = formData.email.trim();
+          mappingData.email = finalEmail;
         }
         batch.update(mappingRef, mappingData);
         
@@ -181,7 +186,7 @@ export default function UsersPage() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
                 uid: editingId, 
-                email: formData.email.trim() || undefined,
+                email: finalEmail || undefined,
                 password: formData.password || undefined
               })
             });
@@ -199,26 +204,37 @@ export default function UsersPage() {
         showToastMsg("تم تحديث بيانات المستخدم بنجاح");
       } else {
         if (!formData.email || !formData.password) {
-          showToastMsg("يرجى ملء الإيميل وكلمة المرور", "error");
+          showToastMsg("يرجى ملء الإيميل/الهاتف وكلمة المرور", "error");
           return;
         }
         let employeeAuthUid = null;
         let employeeEmail = formData.email.trim();
+        if (!employeeEmail.includes('@')) {
+          employeeEmail = `${employeeEmail}@mansa.app`;
+        }
 
-        // Initialize Secondary App
-        const apps = getApps();
-        const secondaryApp = apps.find(app => app.name === 'Secondary') || initializeApp(firebaseConfig, 'Secondary');
-        const secondaryAuth = getAuth(secondaryApp);
-        
         try {
-          const userCred = await createUserWithEmailAndPassword(secondaryAuth, employeeEmail, formData.password);
-          employeeAuthUid = userCred.user.uid;
-        } catch (authErr: any) {
-          console.error("Auth creation error", authErr);
-          let errStr = "حدث خطأ أثناء إنشاء حساب المستخدم (ربما البريد مستخدم مسبقاً).";
-          if (authErr.code === 'auth/email-already-in-use') errStr = 'البريد الإلكتروني مستخدم بالفعل.';
-          else if (authErr.code === 'auth/weak-password') errStr = 'كلمة المرور ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل).';
-          showToastMsg(errStr, "error");
+          const res = await fetch('/api/users/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              email: employeeEmail, 
+              password: formData.password 
+            })
+          });
+          const data = await res.json();
+          
+          if (data.error) {
+            let errStr = "حدث خطأ أثناء إنشاء حساب المستخدم.";
+            if (data.code === 'auth/email-already-exists') errStr = 'البريد الإلكتروني أو رقم الهاتف مستخدم بالفعل.';
+            else if (data.code === 'auth/invalid-password') errStr = 'كلمة المرور ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل).';
+            showToastMsg(errStr, "error");
+            return;
+          }
+          employeeAuthUid = data.uid;
+        } catch (apiErr: any) {
+          console.error("Auth creation API error", apiErr);
+          showToastMsg("حدث خطأ في الاتصال بالخادم", "error");
           return;
         }
 
@@ -357,8 +373,16 @@ export default function UsersPage() {
                     <input type="text" className={styles.input} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
                   </div>
                   <div className={`${styles.formGroup} ${styles.fullWidth}`}>
-                    <label className={styles.label}>البريد الإلكتروني *</label>
-                    <input type="email" className={styles.input} value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="example@mansa.com" required />
+                    <label className={styles.label}>البريد الإلكتروني / رقم الهاتف *</label>
+                    <input 
+                      type="text" 
+                      className={styles.input} 
+                      placeholder="name@example.com أو 078..." 
+                      value={formData.email}
+                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                      dir="ltr"
+                      required 
+                    />
                   </div>
                   <div className={`${styles.formGroup} ${styles.fullWidth}`}>
                     <label className={styles.label}>كلمة المرور {!editingId && '*'}</label>
