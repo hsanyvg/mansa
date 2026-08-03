@@ -75,6 +75,11 @@ export default function App() {
   const [returnedSubTab, setReturnedSubTab] = useState('agent');
   const [postponedSearchQuery, setPostponedSearchQuery] = useState('');
   const [returnedSearchQuery, setReturnedSearchQuery] = useState('');
+  const [pendingSearchQuery, setPendingSearchQuery] = useState('');
+  const [todaySearchQuery, setTodaySearchQuery] = useState('');
+  const [partialSearchQuery, setPartialSearchQuery] = useState('');
+  const [processedSearchQuery, setProcessedSearchQuery] = useState('');
+  const [ofdSearchQuery, setOfdSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Authentication State
@@ -235,6 +240,11 @@ export default function App() {
   
   // Global Date Filter
   const [globalDateFilter, setGlobalDateFilter] = useState('last_7_days');
+  const [tempGlobalDateFilter, setTempGlobalDateFilter] = useState('last_7_days');
+  const [tempCustomStartDate, setTempCustomStartDate] = useState(new Date());
+  const [tempCustomEndDate, setTempCustomEndDate] = useState(new Date());
+  const [tempFilterMonth, setTempFilterMonth] = useState(new Date().getMonth());
+  const [tempFilterYear, setTempFilterYear] = useState(new Date().getFullYear());
   const [customStartDate, setCustomStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 7)));
   const [customEndDate, setCustomEndDate] = useState(new Date());
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
@@ -1174,7 +1184,7 @@ export default function App() {
   const completedCount = orders.filter(o => o.status === 'delivered').length;
   const activeOrdersCountForTab = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled' && o.status !== 'returned').length;
   const cancelledCount = orders.filter(o => o.status === 'cancelled').length;
-  const returnedCountCard = orders.filter(o => o.status === 'returned' || o.status === 'returned_warehouse').length;
+  const returnedCountCard = orders.filter(o => o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse').length;
 
   const renderReportsIcon = (active) => {
     const strokeColor = active ? '#e9d5ff' : '#64748b';
@@ -1292,8 +1302,8 @@ export default function App() {
   const postponedCount = orders.filter(o => o.status === 'postponed').length;
   const partialCount = orders.filter(o => o.status === 'partial' || o.status === 'replaced').length;
   const processedCount = orders.filter(o => o.status === 'processed' || o.status === 'confirmed').length;
-  const newCount = orders.filter(o => o.status === 'pending' || o.status === 'new').length;
-  const totalCompletedCount = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status)).length;
+  const newCount = orders.filter(o => o.status === 'pending' || o.status === 'pending_warehouse' || o.status === 'new').length;
+  const totalCompletedCount = orders.filter(o => (o.status === 'delivered' || o.status === 'delivered_settled')).length;
 
   const renderCustomCard = (label, value, bgColor, textColor, svgContent, isWhite, onPress = null) => {
     const CardContent = (
@@ -1533,7 +1543,14 @@ export default function App() {
             {/* Date Filter Icon */}
             <TouchableOpacity 
               style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 12, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
-              onPress={() => setDateFilterModalVisible(true)}
+              onPress={() => {
+              setTempGlobalDateFilter(globalDateFilter);
+              setTempCustomStartDate(customStartDate);
+              setTempCustomEndDate(customEndDate);
+              setTempFilterMonth(filterMonth);
+              setTempFilterYear(filterYear);
+              setDateFilterModalVisible(true);
+            }}
             >
               <Svg width={22} height={22} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2.5}>
                 <Rect x='3' y='4' width='18' height='18' rx='2' ry='2' />
@@ -1582,9 +1599,7 @@ export default function App() {
                        <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
                        <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? item.totalAmount.toLocaleString() + ' د.ع' : '-'}</Text>
                        {item.postponeReason && <Text style={{ textAlign: 'right', color: '#f97316', marginTop: 5 }}>السبب: {item.postponeReason}</Text>}
-                       <TouchableOpacity style={{ marginTop: 10, backgroundColor: '#f97316', paddingVertical: 8, borderRadius: 5, alignItems: 'center' }} onPress={() => { setSelectedOrderForDetails(item); setOrderDetailsModalVisible(true); }}>
-                         <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض التفاصيل</Text>
-                       </TouchableOpacity>
+                       
                     </View>
                   ))}
                   {filtered.length > displayedOrdersCount && (
@@ -1607,8 +1622,8 @@ export default function App() {
               <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>
                 المرتجعات ({(() => {
-                  let fc = orders.filter(o => o.status === 'returned' || o.status === 'returned_warehouse');
-                  if (returnedSubTab === 'agent') fc = fc.filter(o => o.status === 'returned');
+                  let fc = orders.filter(o => o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse');
+                  if (returnedSubTab === 'agent') fc = fc.filter(o => o.status === 'returned' || o.status === 'returned_agent');
                   else fc = fc.filter(o => o.status === 'returned_warehouse');
                   if (returnedSearchQuery.trim()) {
                     const q = returnedSearchQuery.toLowerCase();
@@ -1625,8 +1640,8 @@ export default function App() {
             </View>
             <View style={{ flexDirection: 'row', marginTop: 15, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden' }}>
                {(() => {
-                  const allR = orders.filter(o => o.status === 'returned' || o.status === 'returned_warehouse');
-                  const agentC = allR.filter(o => o.status === 'returned').length;
+                  const allR = orders.filter(o => o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse');
+                  const agentC = allR.filter(o => o.status === 'returned' || o.status === 'returned_agent').length;
                   const warehouseC = allR.filter(o => o.status === 'returned_warehouse').length;
                   return (
                     <>
@@ -1643,8 +1658,8 @@ export default function App() {
           </View>
           <ScrollView style={{ flex: 1, padding: 15 }}>
             {(() => {
-              let filtered = orders.filter(o => o.status === 'returned' || o.status === 'returned_warehouse');
-              if (returnedSubTab === 'agent') filtered = filtered.filter(o => o.status === 'returned');
+              let filtered = orders.filter(o => o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse');
+              if (returnedSubTab === 'agent') filtered = filtered.filter(o => o.status === 'returned' || o.status === 'returned_agent');
               else filtered = filtered.filter(o => o.status === 'returned_warehouse');
               
               if (returnedSearchQuery.trim()) {
@@ -1663,13 +1678,247 @@ export default function App() {
                        <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
                        <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
                        <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? item.totalAmount.toLocaleString() + ' د.ع' : '-'}</Text>
-                       <TouchableOpacity style={{ marginTop: 10, backgroundColor: '#ef4444', paddingVertical: 8, borderRadius: 5, alignItems: 'center' }} onPress={() => { setSelectedOrderForDetails(item); setOrderDetailsModalVisible(true); }}>
-                         <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض التفاصيل</Text>
-                       </TouchableOpacity>
+                       
                     </View>
                   ))}
                   {filtered.length > displayedOrdersCount && (
                     <TouchableOpacity style={{ padding: 15, backgroundColor: '#ef4444', borderRadius: 8, alignItems: 'center', marginBottom: 30 }} onPress={() => setDisplayedOrdersCount(prev => prev + 20)}>
+                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض المزيد</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
+          </ScrollView>
+        </View>
+      )}
+
+      
+      {/* قيد الإنتظار Screen */}
+      {activeTab === 'pending_shipments' && (
+        <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+          <View style={{ backgroundColor: '#27272a', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>قيد الإنتظار ({orders.filter(o => o.status === 'pending' || o.status === 'pending_warehouse' || o.status === 'new').length})</Text>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
+               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
+               <TextInput style={{ flex: 1, marginLeft: 10, textAlign: 'right', color: '#333' }} placeholder="بحث (رقم الوصل، اسم الزبون، الهاتف...)" value={pendingSearchQuery} onChangeText={setPendingSearchQuery} />
+            </View>
+          </View>
+          <ScrollView style={{ flex: 1, padding: 15 }}>
+            {(() => {
+              let filtered = orders.filter(o => o.status === 'pending' || o.status === 'pending_warehouse' || o.status === 'new');
+              if (pendingSearchQuery.trim()) {
+                const q = pendingSearchQuery.toLowerCase();
+                filtered = filtered.filter(o => (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) || (o.customerName && String(o.customerName).toLowerCase().includes(q)) || (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q)));
+              }
+              if (filtered.length === 0) return <View style={{ marginTop: 50, alignItems: 'center' }}><Text style={{ fontSize: 16, color: '#666', fontWeight: 'bold' }}>لا يوجد نتائج</Text></View>;
+              return (
+                <>
+                  {filtered.slice(0, displayedOrdersCount).map((item, index) => (
+                    <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+                         <Text style={{ fontWeight: 'bold', color: '#fff' }}>رقم الوصل: {item.receiptNumber}</Text>
+                         <Text style={{ color: '#666' }}>{item.status}</Text>
+                       </View>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
+                    </View>
+                  ))}
+                  {filtered.length > displayedOrdersCount && (
+                    <TouchableOpacity style={{ padding: 15, backgroundColor: '#27272a', borderRadius: 8, alignItems: 'center', marginBottom: 30 }} onPress={() => setDisplayedOrdersCount(prev => prev + 20)}>
+                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض المزيد</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* شحنات اليوم Screen */}
+      {activeTab === 'today_shipments' && (
+        <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+          <View style={{ backgroundColor: '#ffffff', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
+              <Text style={{ color: '#333', fontSize: 18, fontWeight: 'bold' }}>شحنات اليوم ({orders.filter(o => { if (!o.createdAt) return false; let od = o.createdAt.toDate ? o.createdAt.toDate() : new Date(o.createdAt); let today = new Date(); return od.getDate() === today.getDate() && od.getMonth() === today.getMonth() && od.getFullYear() === today.getFullYear(); }).length})</Text>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 15, backgroundColor: '#f1f5f9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
+               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
+               <TextInput style={{ flex: 1, marginLeft: 10, textAlign: 'right', color: '#333' }} placeholder="بحث (رقم الوصل، اسم الزبون، الهاتف...)" value={todaySearchQuery} onChangeText={setTodaySearchQuery} />
+            </View>
+          </View>
+          <ScrollView style={{ flex: 1, padding: 15 }}>
+            {(() => {
+              let filtered = orders.filter(o => { if (!o.createdAt) return false; let od = o.createdAt.toDate ? o.createdAt.toDate() : new Date(o.createdAt); let today = new Date(); return od.getDate() === today.getDate() && od.getMonth() === today.getMonth() && od.getFullYear() === today.getFullYear(); });
+              if (todaySearchQuery.trim()) {
+                const q = todaySearchQuery.toLowerCase();
+                filtered = filtered.filter(o => (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) || (o.customerName && String(o.customerName).toLowerCase().includes(q)) || (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q)));
+              }
+              if (filtered.length === 0) return <View style={{ marginTop: 50, alignItems: 'center' }}><Text style={{ fontSize: 16, color: '#666', fontWeight: 'bold' }}>لا يوجد نتائج</Text></View>;
+              return (
+                <>
+                  {filtered.slice(0, displayedOrdersCount).map((item, index) => (
+                    <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+                         <Text style={{ fontWeight: 'bold', color: '#333' }}>رقم الوصل: {item.receiptNumber}</Text>
+                         <Text style={{ color: '#666' }}>{item.status}</Text>
+                       </View>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
+                    </View>
+                  ))}
+                  {filtered.length > displayedOrdersCount && (
+                    <TouchableOpacity style={{ padding: 15, backgroundColor: '#cbd5e1', borderRadius: 8, alignItems: 'center', marginBottom: 30 }} onPress={() => setDisplayedOrdersCount(prev => prev + 20)}>
+                      <Text style={{ color: '#333', fontWeight: 'bold' }}>عرض المزيد</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* جزئي او استبدال Screen */}
+      {activeTab === 'partial_shipments' && (
+        <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+          <View style={{ backgroundColor: '#34d399', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>جزئي او استبدال ({orders.filter(o => o.status === 'partial' || o.status === 'replaced').length})</Text>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
+               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
+               <TextInput style={{ flex: 1, marginLeft: 10, textAlign: 'right', color: '#333' }} placeholder="بحث (رقم الوصل، اسم الزبون، الهاتف...)" value={partialSearchQuery} onChangeText={setPartialSearchQuery} />
+            </View>
+          </View>
+          <ScrollView style={{ flex: 1, padding: 15 }}>
+            {(() => {
+              let filtered = orders.filter(o => o.status === 'partial' || o.status === 'replaced');
+              if (partialSearchQuery.trim()) {
+                const q = partialSearchQuery.toLowerCase();
+                filtered = filtered.filter(o => (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) || (o.customerName && String(o.customerName).toLowerCase().includes(q)) || (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q)));
+              }
+              if (filtered.length === 0) return <View style={{ marginTop: 50, alignItems: 'center' }}><Text style={{ fontSize: 16, color: '#666', fontWeight: 'bold' }}>لا يوجد نتائج</Text></View>;
+              return (
+                <>
+                  {filtered.slice(0, displayedOrdersCount).map((item, index) => (
+                    <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+                         <Text style={{ fontWeight: 'bold', color: '#fff' }}>رقم الوصل: {item.receiptNumber}</Text>
+                         <Text style={{ color: '#666' }}>{item.status}</Text>
+                       </View>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
+                    </View>
+                  ))}
+                  {filtered.length > displayedOrdersCount && (
+                    <TouchableOpacity style={{ padding: 15, backgroundColor: '#34d399', borderRadius: 8, alignItems: 'center', marginBottom: 30 }} onPress={() => setDisplayedOrdersCount(prev => prev + 20)}>
+                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض المزيد</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* تمت المعالجة Screen */}
+      {activeTab === 'processed_shipments' && (
+        <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+          <View style={{ backgroundColor: '#34d399', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>تمت المعالجة ({orders.filter(o => o.status === 'processed' || o.status === 'confirmed').length})</Text>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
+               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
+               <TextInput style={{ flex: 1, marginLeft: 10, textAlign: 'right', color: '#333' }} placeholder="بحث (رقم الوصل، اسم الزبون، الهاتف...)" value={processedSearchQuery} onChangeText={setProcessedSearchQuery} />
+            </View>
+          </View>
+          <ScrollView style={{ flex: 1, padding: 15 }}>
+            {(() => {
+              let filtered = orders.filter(o => o.status === 'processed' || o.status === 'confirmed');
+              if (processedSearchQuery.trim()) {
+                const q = processedSearchQuery.toLowerCase();
+                filtered = filtered.filter(o => (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) || (o.customerName && String(o.customerName).toLowerCase().includes(q)) || (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q)));
+              }
+              if (filtered.length === 0) return <View style={{ marginTop: 50, alignItems: 'center' }}><Text style={{ fontSize: 16, color: '#666', fontWeight: 'bold' }}>لا يوجد نتائج</Text></View>;
+              return (
+                <>
+                  {filtered.slice(0, displayedOrdersCount).map((item, index) => (
+                    <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+                         <Text style={{ fontWeight: 'bold', color: '#fff' }}>رقم الوصل: {item.receiptNumber}</Text>
+                         <Text style={{ color: '#666' }}>{item.status}</Text>
+                       </View>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
+                    </View>
+                  ))}
+                  {filtered.length > displayedOrdersCount && (
+                    <TouchableOpacity style={{ padding: 15, backgroundColor: '#34d399', borderRadius: 8, alignItems: 'center', marginBottom: 30 }} onPress={() => setDisplayedOrdersCount(prev => prev + 20)}>
+                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض المزيد</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* في الطريق للشركة Screen */}
+      {activeTab === 'ofd_shipments' && (
+        <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+          <View style={{ backgroundColor: '#eab308', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>في الطريق للشركة ({orders.filter(o => o.status === 'processing' || o.status === 'confirmed' || o.status === 'ofd' || o.status === 'shipped').length})</Text>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
+               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
+               <TextInput style={{ flex: 1, marginLeft: 10, textAlign: 'right', color: '#333' }} placeholder="بحث (رقم الوصل، اسم الزبون، الهاتف...)" value={ofdSearchQuery} onChangeText={setOfdSearchQuery} />
+            </View>
+          </View>
+          <ScrollView style={{ flex: 1, padding: 15 }}>
+            {(() => {
+              let filtered = orders.filter(o => o.status === 'processing' || o.status === 'confirmed' || o.status === 'ofd' || o.status === 'shipped');
+              if (ofdSearchQuery.trim()) {
+                const q = ofdSearchQuery.toLowerCase();
+                filtered = filtered.filter(o => (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) || (o.customerName && String(o.customerName).toLowerCase().includes(q)) || (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q)));
+              }
+              if (filtered.length === 0) return <View style={{ marginTop: 50, alignItems: 'center' }}><Text style={{ fontSize: 16, color: '#666', fontWeight: 'bold' }}>لا يوجد نتائج</Text></View>;
+              return (
+                <>
+                  {filtered.slice(0, displayedOrdersCount).map((item, index) => (
+                    <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+                         <Text style={{ fontWeight: 'bold', color: '#fff' }}>رقم الوصل: {item.receiptNumber}</Text>
+                         <Text style={{ color: '#666' }}>{item.status}</Text>
+                       </View>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? parseInt(item.totalAmount).toLocaleString('en-US') + ' د.ع' : '-'}</Text>
+                    </View>
+                  ))}
+                  {filtered.length > displayedOrdersCount && (
+                    <TouchableOpacity style={{ padding: 15, backgroundColor: '#eab308', borderRadius: 8, alignItems: 'center', marginBottom: 30 }} onPress={() => setDisplayedOrdersCount(prev => prev + 20)}>
                       <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض المزيد</Text>
                     </TouchableOpacity>
                   )}
@@ -1697,24 +1946,24 @@ export default function App() {
             <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
               {renderCustomCard('مؤجلة', postponedCount, '#f97316', '#ffffff', 
                 <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('postponed_shipments'))}
-              {renderCustomCard('قيد المعالجة', newCount, '#27272a', '#ffffff', 
-                <Path d="M5 22h14M5 2h14M8 2v5l4 5-4 5v5m8-20v5l-4 5 4 5v5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false)}
+              {renderCustomCard('قيد الإنتظار', newCount, '#27272a', '#ffffff', 
+                <Path d="M5 22h14M5 2h14M8 2v5l4 5-4 5v5m8-20v5l-4 5 4 5v5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false, () => setActiveTab('pending_shipments'))}
             </View>
 
             {/* Row 3 */}
             <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
               {renderCustomCard('جزئي او استبدال', partialCount, '#34d399', '#ffffff', 
-                <><Path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M3 3v5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M21 21v-5h-5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false)}
+                <><Path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M3 3v5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M21 21v-5h-5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('partial_shipments'))}
               {renderCustomCard('تمت المعالجة', processedCount, '#34d399', '#ffffff', 
-                <Path d="M20 16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4M12 4v12M8 12l4 4 4-4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false)}
+                <Path d="M20 16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4M12 4v12M8 12l4 4 4-4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false, () => setActiveTab('processed_shipments'))}
             </View>
 
             {/* Row 4 */}
             <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
               {renderCustomCard('شحنات اليوم', todayOrdersCount, '#ffffff', '#94a3b8', 
-                <><Circle cx="12" cy="12" r="10" stroke="#cbd5e1" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round"/></>, true)}
+                <><Circle cx="12" cy="12" r="10" stroke="#cbd5e1" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round"/></>, true, () => setActiveTab('today_shipments'))}
               {renderCustomCard('في الطريق للشركة', ofdOrdersCount, '#eab308', '#ffffff', 
-                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false)}
+                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('ofd_shipments'))}
             </View>
           </View>
 
@@ -2388,7 +2637,7 @@ export default function App() {
               
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>
                 الشحنات المكتملة عدد الطلبيات { (() => {
-                  let fc = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status));
+                  let fc = orders.filter(o => (o.status === 'delivered' || o.status === 'delivered_settled'));
                   if (completedSubTab === 'accounted') fc = fc.filter(o => o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled')));
                   else fc = fc.filter(o => !(o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled'))));
                   if (completedSearchQuery.trim()) {
@@ -2422,7 +2671,7 @@ export default function App() {
 
             <View style={{ flexDirection: 'row', marginTop: 15, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden' }}>
                {(() => {
-                  const allC = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status));
+                  const allC = orders.filter(o => (o.status === 'delivered' || o.status === 'delivered_settled'));
                   const acc = allC.filter(o => o.paymentStatus === 'settled' || (o.status && o.status.endsWith('_settled'))).length;
                   const unacc = allC.length - acc;
                   return (
@@ -2449,7 +2698,7 @@ export default function App() {
           <ScrollView style={{ flex: 1, padding: 15 }}>
             {(() => {
               // Filter completed
-              let filtered = orders.filter(o => ['delivered', 'returned', 'partial', 'replaced', 'cancelled'].includes(o.status));
+              let filtered = orders.filter(o => (o.status === 'delivered' || o.status === 'delivered_settled'));
               
               // Filter by sub tab
               if (completedSubTab === 'accounted') {
@@ -2694,109 +2943,115 @@ export default function App() {
               ].map(filter => (
                 <TouchableOpacity 
                   key={filter.id}
-                  onPress={() => {
-                    setGlobalDateFilter(filter.id);
-                    setDateFilterModalVisible(false);
-                  }}
+                  onPress={() => setTempGlobalDateFilter(filter.id)}
                   style={{
                     paddingHorizontal: 16,
                     paddingVertical: 8,
                     borderRadius: 20,
-                    backgroundColor: globalDateFilter === filter.id ? 'rgba(168, 85, 247, 0.2)' : 'rgba(30, 30, 40, 0.65)',
+                    backgroundColor: tempGlobalDateFilter === filter.id ? 'rgba(168, 85, 247, 0.2)' : 'rgba(30, 30, 40, 0.65)',
                     borderWidth: 1,
-                    borderColor: globalDateFilter === filter.id ? '#a855f7' : '#475569',
+                    borderColor: tempGlobalDateFilter === filter.id ? '#a855f7' : '#475569',
                   }}
                 >
                   <Text style={{ 
-                    color: globalDateFilter === filter.id ? '#e9d5ff' : '#cbd5e1',
-                    fontWeight: globalDateFilter === filter.id ? 'bold' : 'normal',
+                    color: tempGlobalDateFilter === filter.id ? '#e9d5ff' : '#cbd5e1',
+                    fontWeight: tempGlobalDateFilter === filter.id ? 'bold' : 'normal',
                     fontSize: 13
                   }}>{filter.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={{ color: '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تاريخ مخصص:</Text>
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 }}>
+            <TouchableOpacity onPress={() => setTempGlobalDateFilter('custom')}>
+              <Text style={{ color: tempGlobalDateFilter === 'custom' ? '#a855f7' : '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تاريخ مخصص:</Text>
+            </TouchableOpacity>
+            
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15, opacity: tempGlobalDateFilter === 'custom' ? 1 : 0.5 }}>
               <TouchableOpacity 
                 style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
-                onPress={() => setShowStartDatePicker(true)}
+                onPress={() => {
+                   setTempGlobalDateFilter('custom');
+                   setShowStartDatePicker(true);
+                }}
               >
                 <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>من تاريخ</Text>
-                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customStartDate.toISOString().split('T')[0]}</Text>
+                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{tempCustomStartDate.toISOString().split('T')[0]}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
-                onPress={() => setShowEndDatePicker(true)}
+                onPress={() => {
+                   setTempGlobalDateFilter('custom');
+                   setShowEndDatePicker(true);
+                }}
               >
                 <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>إلى تاريخ</Text>
-                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customEndDate.toISOString().split('T')[0]}</Text>
+                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{tempCustomEndDate.toISOString().split('T')[0]}</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity 
-              style={{ backgroundColor: '#a855f7', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 20 }}
-              onPress={() => {
-                setGlobalDateFilter('custom');
-                setDateFilterModalVisible(false);
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>تطبيق التاريخ المخصص</Text>
-            </TouchableOpacity>
 
-            <Text style={{ color: '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تحديد شهر وسنة:</Text>
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 }}>
+            <TouchableOpacity onPress={() => setTempGlobalDateFilter('specific_month')}>
+               <Text style={{ color: tempGlobalDateFilter === 'specific_month' ? '#a855f7' : '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تحديد شهر وسنة:</Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 25, opacity: tempGlobalDateFilter === 'specific_month' ? 1 : 0.5 }}>
               <View style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', borderRadius: 8, alignItems: 'center', flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 10 }}>
-                  <TouchableOpacity onPress={() => setFilterMonth(prev => prev === 11 ? 0 : prev + 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
-                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{filterMonth + 1}</Text>
-                  <TouchableOpacity onPress={() => setFilterMonth(prev => prev === 0 ? 11 : prev - 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => { setTempGlobalDateFilter('specific_month'); setTempFilterMonth(prev => prev === 11 ? 0 : prev + 1); }} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
+                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{tempFilterMonth + 1}</Text>
+                  <TouchableOpacity onPress={() => { setTempGlobalDateFilter('specific_month'); setTempFilterMonth(prev => prev === 0 ? 11 : prev - 1); }} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
               </View>
               
               <View style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', borderRadius: 8, alignItems: 'center', flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 10 }}>
-                  <TouchableOpacity onPress={() => setFilterYear(prev => prev + 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
-                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{filterYear}</Text>
-                  <TouchableOpacity onPress={() => setFilterYear(prev => prev - 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => { setTempGlobalDateFilter('specific_month'); setTempFilterYear(prev => prev + 1); }} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
+                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{tempFilterYear}</Text>
+                  <TouchableOpacity onPress={() => { setTempGlobalDateFilter('specific_month'); setTempFilterYear(prev => prev - 1); }} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
               </View>
             </View>
-            <TouchableOpacity 
-              style={{ backgroundColor: '#a855f7', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 10 }}
-              onPress={() => {
-                setGlobalDateFilter('specific_month');
-                setDateFilterModalVisible(false);
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>تطبيق شهر وسنة محددين</Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.modalCloseBtn}
-              onPress={() => setDateFilterModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>إغلاق</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
+               <TouchableOpacity 
+                 style={{ backgroundColor: '#10b981', padding: 12, borderRadius: 8, alignItems: 'center', flex: 1, marginLeft: 5 }}
+                 onPress={() => {
+                   setGlobalDateFilter(tempGlobalDateFilter);
+                   setCustomStartDate(tempCustomStartDate);
+                   setCustomEndDate(tempCustomEndDate);
+                   setFilterMonth(tempFilterMonth);
+                   setFilterYear(tempFilterYear);
+                   setDateFilterModalVisible(false);
+                 }}
+               >
+                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>موافق</Text>
+               </TouchableOpacity>
+               
+               <TouchableOpacity 
+                 style={{ backgroundColor: '#334155', padding: 12, borderRadius: 8, alignItems: 'center', flex: 1, marginRight: 5 }}
+                 onPress={() => setDateFilterModalVisible(false)}
+               >
+                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>إلغاء</Text>
+               </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
-      {showStartDatePicker && (
+  {showStartDatePicker && (
         <DateTimePicker
-          value={customStartDate}
+          value={tempCustomStartDate}
           mode="date"
           display="default"
           onChange={(event, selectedDate) => {
             setShowStartDatePicker(false);
-            if (selectedDate) setCustomStartDate(selectedDate);
+            if (selectedDate) setTempCustomStartDate(selectedDate);
           }}
         />
       )}
       {showEndDatePicker && (
         <DateTimePicker
-          value={customEndDate}
+          value={tempCustomEndDate}
           mode="date"
           display="default"
           onChange={(event, selectedDate) => {
             setShowEndDatePicker(false);
-            if (selectedDate) setCustomEndDate(selectedDate);
+            if (selectedDate) setTempCustomEndDate(selectedDate);
           }}
         />
       )}
