@@ -98,13 +98,17 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
   const handleApply = () => {
     let output = preset;
     if (preset === 'تاريخ مخصص') {
-      output = `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
+      output = `${selectedStartDate?.toLocaleDateString('en-GB') || ''} - ${selectedEndDate?.toLocaleDateString('en-GB') || ''}`;
     } else if (preset === 'فترة مطلقة') {
       output = 'الكل';
     }
     onApply(output);
     if (onApplyDates) {
-      onApplyDates(selectedStartDate, selectedEndDate);
+      if (preset === 'فترة مطلقة' || preset === 'الكل') {
+        onApplyDates(new Date(2000, 0, 1), new Date(2100, 0, 1));
+      } else if (selectedStartDate && selectedEndDate) {
+        onApplyDates(selectedStartDate, selectedEndDate);
+      }
     }
     setIsOpen(false);
   };
@@ -112,7 +116,7 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
   const handleApplyWithArchived = () => {
     let output = preset;
     if (preset === 'تاريخ مخصص') {
-      output = `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
+      output = `${selectedStartDate?.toLocaleDateString('en-GB') || ''} - ${selectedEndDate?.toLocaleDateString('en-GB') || ''}`;
     } else if (preset === 'فترة مطلقة') {
       output = 'الكل';
     }
@@ -122,19 +126,23 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
       onApply(output);
     }
     if (onApplyDates) {
-      onApplyDates(selectedStartDate, selectedEndDate);
+      if (preset === 'فترة مطلقة' || preset === 'الكل') {
+        onApplyDates(new Date(2000, 0, 1), new Date(2100, 0, 1));
+      } else if (selectedStartDate && selectedEndDate) {
+        onApplyDates(selectedStartDate, selectedEndDate);
+      }
     }
     setIsOpen(false);
   };
 
   const getButtonLabel = () => {
     if (preset === 'تاريخ مخصص') {
-      return `${selectedStartDate.toLocaleDateString('en-GB')} - ${selectedEndDate.toLocaleDateString('en-GB')}`;
+      return `${selectedStartDate?.toLocaleDateString('en-GB') || ''} - ${selectedEndDate?.toLocaleDateString('en-GB') || ''}`;
     }
     if (preset === 'فترة مطلقة' || preset === 'الكل') {
       return 'فترة مطلقة (الكل)';
     }
-    return `${preset}: ${selectedStartDate.toLocaleDateString('en-GB')}`;
+    return `${preset}: ${selectedStartDate?.toLocaleDateString('en-GB') || ''}`;
   };
 
   // Convert Date object to YYYY-MM-DD for input[type="date"]
