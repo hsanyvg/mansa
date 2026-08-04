@@ -37,7 +37,8 @@
       "url": "https://u.expo.dev/4ce17f86-2c69-4494-8912-4d94118dd1a5"
     },
     "plugins": [
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-image-picker"
     ]
   }
 }

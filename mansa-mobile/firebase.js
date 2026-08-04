@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { initializeAuth, getReactNativePersistence, getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const getFirebaseApiKey = () => "slzZztf6qSAMfosH578vOB3tDrywIfndBySazIA".split("").reverse().join("");
@@ -18,6 +19,7 @@ const firebaseConfig = {
 // Initialize Firebase for React Native Expo
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 let auth;
 try {
@@ -28,5 +30,5 @@ try {
   auth = getAuth(app);
 }
 
-export { app, db, auth };
+export { app, db, auth, storage };
 

@@ -18,12 +18,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
 import * as Updates from 'expo-updates';
-import * as ImagePicker from 'expo-image-picker';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from './firebase';
 import Svg, { Path, Circle, G, Polygon, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { db, auth } from './firebase';
 import { 
@@ -75,12 +70,12 @@ export default function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [productsTab, setProductsTab] = useState('products');
   const [completedSearchQuery, setCompletedSearchQuery] = useState('');
   const [completedSubTab, setCompletedSubTab] = useState('accounted');
   const [returnedSubTab, setReturnedSubTab] = useState('agent');
   const [postponedSearchQuery, setPostponedSearchQuery] = useState('');
   const [returnedSearchQuery, setReturnedSearchQuery] = useState('');
+  const [cancelledSearchQuery, setCancelledSearchQuery] = useState('');
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
   const [todaySearchQuery, setTodaySearchQuery] = useState('');
   const [partialSearchQuery, setPartialSearchQuery] = useState('');
@@ -210,42 +205,6 @@ export default function App() {
   const [compositeProductsData, setCompositeProductsData] = useState([]);
   const [customersDb, setCustomersDb] = useState([]);
   const [ordersMatches, setOrdersMatches] = useState([]);
-
-  const [plusMenuVisible, setPlusMenuVisible] = useState(false);
-  const [addExpenseModalVisible, setAddExpenseModalVisible] = useState(false);
-  const [addBarcodeModalVisible, setAddBarcodeModalVisible] = useState(false);
-
-  // Expense form states
-  const [treasuryDb, setTreasuryDb] = useState([]);
-  const [newExpenseCategory, setNewExpenseCategory] = useState('');
-  const [newExpenseAmount, setNewExpenseAmount] = useState('');
-  const [newExpenseCurrency, setNewExpenseCurrency] = useState('IQD');
-  const [newExpenseWallet, setNewExpenseWallet] = useState('');
-  const [newExpenseDetails, setNewExpenseDetails] = useState('');
-
-  // Barcode receipt state
-  const [newBarcodeReceipt, setNewBarcodeReceipt] = useState('');
-  const [customReceiptNumber, setCustomReceiptNumber] = useState('');
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState(false);
-
-  // Full Add Expense states
-  const [expenseTagsDb, setExpenseTagsDb] = useState([]);
-  const [pagesStoresDb, setPagesStoresDb] = useState([]);
-  const [branchesDb, setBranchesDb] = useState([]);
-  const [expenseCategoriesDb, setExpenseCategoriesDb] = useState([]);
-  const [walletsDb, setWalletsDb] = useState([]);
-  
-  const [expensePageId, setExpensePageId] = useState('');
-  const [expenseBranchId, setExpenseBranchId] = useState('');
-  const [expenseItemId, setExpenseItemId] = useState('');
-  const [expenseSelectedTags, setExpenseSelectedTags] = useState([]);
-  const [expenseDate, setExpenseDate] = useState(new Date());
-  const [showExpenseDatePicker, setShowExpenseDatePicker] = useState(false);
-  const [expenseImage, setExpenseImage] = useState(null);
-  const [isUploadingExpense, setIsUploadingExpense] = useState(false);
-
-
 
   // Stats
   const [todaySales, setTodaySales] = useState(0);
@@ -536,13 +495,6 @@ export default function App() {
       setCustomersDb([]);
       return;
     }
-    
-    const unsubExpCats = onSnapshot(collection(db, 'users', adminUid, 'expense_categories'), s => setExpenseCategoriesDb(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubWallets = onSnapshot(collection(db, 'users', adminUid, 'wallets'), s => setWalletsDb(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubTags = onSnapshot(collection(db, 'users', adminUid, 'expense_tags'), s => setExpenseTagsDb(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubPagesStores = onSnapshot(collection(db, 'users', adminUid, 'pages_stores'), s => setPagesStoresDb(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubBranches = onSnapshot(collection(db, 'users', adminUid, 'categories'), s => setBranchesDb(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-
     const unsub = onSnapshot(collection(db, 'users', adminUid, 'customers'), (snapshot) => {
       setCustomersDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -860,162 +812,6 @@ export default function App() {
     if (type === 'phone') return !isValidPhoneNumber(val);
     return val.trim() === '';
   };
-
-  
-  const pickExpenseImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setExpenseImage(result.assets[0].uri);
-    }
-  };
-
-
-  const handleSaveExpense = async () => {
-    if (!newExpenseCategory || !newExpenseAmount || !newExpenseWallet) {
-      setAlertModal({ visible: true, message: 'يرجى تعبئة الحقول الأساسية (الفئة، المبلغ، المحفظة)' });
-      return;
-    }
-    
-    setIsUploadingExpense(true);
-    try {
-      let uploadedImageUrl = '';
-      if (expenseImage) {
-        const response = await fetch(expenseImage);
-        const blob = await response.blob();
-        const filename = `expenses/${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        const storageRef = ref(storage, `users/${adminUid}/${filename}`);
-        const uploadTask = await uploadBytesResumable(storageRef, blob);
-        uploadedImageUrl = await getDownloadURL(storageRef);
-      }
-
-      const numAmount = Number(newExpenseAmount);
-      const cat = expenseCategoriesDb.find(c => c.id === newExpenseCategory);
-      const wallet = walletsDb.find(w => w.id === newExpenseWallet);
-      
-      const pg = pagesStoresDb.find(p => p.id === expensePageId);
-      const br = branchesDb.find(b => b.id === expenseBranchId);
-      const it = baseProducts.find(i => i.id === expenseItemId) || compositeProductsData.find(i => i.id === expenseItemId);
-      
-      const batch = writeBatch(db);
-      const expenseRef = doc(collection(db, 'users', adminUid, 'expenses'));
-      const treasuryRef = doc(collection(db, 'users', adminUid, 'treasury_transactions'));
-      
-      const dateStr = expenseDate.toISOString().split('T')[0];
-      const timeStr = expenseDate.toTimeString().split(' ')[0];
-
-      batch.set(expenseRef, {
-        categoryId: newExpenseCategory,
-        categoryName: cat?.name || '',
-        amount: numAmount,
-        currency: newExpenseCurrency,
-        date: dateStr,
-        time: timeStr,
-        details: newExpenseDetails,
-        walletId: newExpenseWallet,
-        walletName: wallet?.name || '',
-        pageId: expensePageId,
-        pageName: pg?.name || '',
-        branchId: expenseBranchId,
-        branchName: br?.name || '',
-        itemId: expenseItemId,
-        itemName: it?.name || '',
-        tags: expenseSelectedTags,
-        imageUrl: uploadedImageUrl,
-        isArchived: false,
-        createdAt: serverTimestamp()
-      });
-
-      batch.set(treasuryRef, {
-        type: 'withdraw',
-        walletId: newExpenseWallet,
-        amount: numAmount,
-        currency: newExpenseCurrency,
-        date: dateStr,
-        time: timeStr,
-        details: `مصروف فئة ${cat?.name || 'غير محدد'} - ${newExpenseDetails}`,
-        createdAt: serverTimestamp(),
-        isAutomated: true,
-        expenseId: expenseRef.id
-      });
-
-      await batch.commit();
-
-      // Reset
-      setActiveTab('dashboard');
-      setNewExpenseCategory('');
-      setNewExpenseAmount('');
-      setNewExpenseDetails('');
-      setNewExpenseWallet('');
-      setExpensePageId('');
-      setExpenseBranchId('');
-      setExpenseItemId('');
-      setExpenseSelectedTags([]);
-      setExpenseImage(null);
-      setExpenseDate(new Date());
-      setIsUploadingExpense(false);
-      setAlertModal({ visible: true, message: 'تم إضافة المصروف بنجاح' });
-    } catch(err) {
-      console.log(err);
-      setIsUploadingExpense(false);
-      setAlertModal({ visible: true, message: 'حدث خطأ أثناء الحفظ' });
-    }
-  };
-
-  const handleBarcodeScanned = ({ type, data }) => {
-    setScanned(true);
-    setNewBarcodeReceipt(data);
-  };
-
-  const handleSaveBarcodeReceipt = async () => {
-    if (!newBarcodeReceipt.trim()) {
-      setAlertModal({ visible: true, message: 'يرجى إدخال رقم الوصل' });
-      return;
-    }
-    try {
-      const counterRef = doc(db, 'users', adminUid, 'metadata', 'orderCounter');
-      let newOrderId = 100000;
-      
-      await runTransaction(db, async (transaction) => {
-          const counterDoc = await transaction.get(counterRef);
-          if (counterDoc.exists()) {
-            newOrderId = (counterDoc.data().lastId || 100000) + 1;
-            transaction.update(counterRef, { lastId: newOrderId });
-          } else {
-            transaction.set(counterRef, { lastId: newOrderId });
-          }
-          
-          const newOrderRef = doc(db, 'users', adminUid, 'orders', newOrderId.toString());
-          transaction.set(newOrderRef, {
-            receiptNumber: newBarcodeReceipt.trim(),
-            employeeId: selectedEmployeeId || 'agent',
-            employeeName: employees?.find(e => e.id === selectedEmployeeId)?.name || 'مجهول',
-            customerName: '',
-            customerPhone: '',
-            governorate: '',
-            region: '',
-            notes: 'تم إنشاؤه عبر وصل باركود',
-            paymentMethod: 'cash',
-            totalAmount: 0,
-            items: [],
-            date: serverTimestamp(),
-            status: 'waiting',
-            is_settled: false
-          });
-      });
-
-      setAddBarcodeModalVisible(false);
-      setNewBarcodeReceipt('');
-      setAlertModal({ visible: true, message: 'تم إضافة الطلب بنجاح' });
-    } catch(err) {
-      console.log(err);
-      setAlertModal({ visible: true, message: 'حدث خطأ أثناء الحفظ' });
-    }
-  };
-
 
   const handleSubmit = async () => {
     setHasAttemptedSubmit(true);
@@ -1702,7 +1498,7 @@ export default function App() {
       
       
       {/* Global Header & Search */}
-      {activeTab !== 'settings' && (
+      {(!activeTab.endsWith('_shipments') && activeTab !== 'settings') && (
       <View style={{ backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12', paddingBottom: 10 }}>
         {/* Top Row: Profile & Notifications */}
         <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingHorizontal: 16, marginTop: 15 }}>
@@ -1723,7 +1519,7 @@ export default function App() {
             {/* User Icon */}
             <TouchableOpacity 
               style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 8, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
-              onPress={() => setEmpModalVisible(true)}
+              onPress={() => setActiveTab('settings')}
             >
               <Svg width={22} height={22} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2.5}>
                 <Path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
@@ -1947,7 +1743,54 @@ export default function App() {
       )}
 
       {/* شحنات اليوم Screen */}
-      {activeTab === 'today_shipments' && (
+      
+      {/* Cancelled Screen */}
+      {activeTab === 'cancelled_shipments' && (
+        <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+          <View style={{ backgroundColor: '#ef4444', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>
+                ملغي ({orders.filter(o => o.status === 'cancelled').length})
+              </Text>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
+               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
+               <TextInput style={{ flex: 1, marginLeft: 10, textAlign: 'right', color: '#333' }} placeholder="بحث (رقم الوصل، اسم الزبون، الهاتف...)" value={cancelledSearchQuery || ''} onChangeText={t => setCancelledSearchQuery(t)} />
+            </View>
+          </View>
+          <ScrollView style={{ flex: 1, padding: 15 }}>
+            {(() => {
+              let filtered = orders.filter(o => o.status === 'cancelled');
+              if (cancelledSearchQuery && cancelledSearchQuery.trim()) {
+                const q = cancelledSearchQuery.toLowerCase();
+                filtered = filtered.filter(o => (o.receiptNumber && String(o.receiptNumber).toLowerCase().includes(q)) || (o.customerName && String(o.customerName).toLowerCase().includes(q)) || (o.customerPhone && String(o.customerPhone).toLowerCase().includes(q)));
+              }
+              if (filtered.length === 0) return <View style={{ marginTop: 50, alignItems: 'center' }}><Text style={{ fontSize: 16, color: '#666', fontWeight: 'bold' }}>لا يوجد نتائج</Text></View>;
+              return (
+                <>
+                  {filtered.slice(0, displayedOrdersCount).map((item, index) => (
+                    <View key={item.id} style={{ backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#eee' }}>
+                       <Text style={{ fontWeight: 'bold', color: '#ef4444', textAlign: 'right', marginBottom: 10 }}>رقم الوصل: {item.receiptNumber}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الزبون: {item.customerName || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>الهاتف: {item.customerPhone || '-'}</Text>
+                       <Text style={{ textAlign: 'right', marginBottom: 5 }}>المبلغ: {item.totalAmount ? item.totalAmount.toLocaleString() + ' د.ع' : '-'}</Text>
+                    </View>
+                  ))}
+                  {filtered.length > displayedOrdersCount && (
+                     <TouchableOpacity onPress={() => setDisplayedOrdersCount(prev => prev + 50)} style={{ backgroundColor: '#3b82f6', padding: 12, borderRadius: 8, alignItems: 'center', marginVertical: 20 }}>
+                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>عرض المزيد</Text>
+                     </TouchableOpacity>
+                  )}
+                </>
+              )
+            })()}
+          </ScrollView>
+        </View>
+      )}
+
+{activeTab === 'today_shipments' && (
         <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
           <View style={{ backgroundColor: '#ffffff', paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight || 20, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2170,6 +2013,11 @@ export default function App() {
               {renderCustomCard('في الطريق للشركة', ofdOrdersCount, '#eab308', '#ffffff', 
                 <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('ofd_shipments'))}
             </View>
+            {/* Row 5 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('ملغي', cancelledCount, '#ef4444', '#ffffff', 
+                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M15 9l-6 6M9 9l6 6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('cancelled_shipments'))}
+            </View>
           </View>
 
           {/* Team Performance Section */}
@@ -2277,149 +2125,6 @@ export default function App() {
             </ScrollView>
           </View>
         </ScrollView>
-      ) : activeTab === 'add_expense' ? (
-        <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding} keyboardShouldPersistTaps="handled">
-          <View style={[styles.formContainer, { backgroundColor: isLightMode ? '#fff' : '#1e293b', padding: 20, borderRadius: 12 }]}>
-            
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 22, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#fff' }}>💸 إضافة مصروف</Text>
-              <TouchableOpacity onPress={() => setActiveTab('dashboard')} style={{ padding: 8, backgroundColor: isLightMode ? '#f1f5f9' : '#334155', borderRadius: 8 }}>
-                <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8' }}>رجوع</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              
-              {/* Right side fields (in RTL, row-reverse makes this the main grid) */}
-              <View style={{ width: '100%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>البيان / التفاصيل</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', color: isLightMode ? '#000' : '#fff', textAlign: 'right', height: 100, textAlignVertical: 'top' }]}
-                  placeholder="اكتب التفاصيل هنا..."
-                  placeholderTextColor="#64748b"
-                  multiline
-                  value={newExpenseDetails}
-                  onChangeText={setNewExpenseDetails}
-                />
-              </View>
-
-              {/* Categories & Amounts */}
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>الفئة</Text>
-                <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 8 }}>
-                  <Picker selectedValue={newExpenseCategory} onValueChange={setNewExpenseCategory} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                    <Picker.Item label="اختر الفئة..." value="" />
-                    {expenseCategoriesDb.map(c => <Picker.Item key={c.id} label={c.name} value={c.id} />)}
-                  </Picker>
-                </View>
-              </View>
-
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>المبلغ</Text>
-                <View style={{ flexDirection: 'row-reverse' }}>
-                  <TextInput
-                    style={[styles.input, { flex: 1, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', color: isLightMode ? '#000' : '#fff', textAlign: 'right', marginLeft: 10 }]}
-                    placeholder="0.00"
-                    placeholderTextColor="#64748b"
-                    keyboardType="numeric"
-                    value={newExpenseAmount}
-                    onChangeText={setNewExpenseAmount}
-                  />
-                  <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 8, width: 80 }}>
-                    <Picker selectedValue={newExpenseCurrency} onValueChange={setNewExpenseCurrency} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                      <Picker.Item label="د.ع" value="IQD" />
-                      <Picker.Item label="$" value="USD" />
-                    </Picker>
-                  </View>
-                </View>
-              </View>
-
-              {/* Wallets & Date */}
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>دفع من محفظة (إلزامي)</Text>
-                <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 8 }}>
-                  <Picker selectedValue={newExpenseWallet} onValueChange={setNewExpenseWallet} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                    <Picker.Item label="اختر المحفظة..." value="" />
-                    {walletsDb.map(w => <Picker.Item key={w.id} label={w.name} value={w.id} />)}
-                  </Picker>
-                </View>
-              </View>
-
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>التاريخ</Text>
-                <TouchableOpacity 
-                  style={[styles.input, { backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', justifyContent: 'center' }]}
-                  onPress={() => setShowExpenseDatePicker(true)}
-                >
-                  <Text style={{ color: isLightMode ? '#000' : '#fff', textAlign: 'center' }}>
-                    {expenseDate.toISOString().split('T')[0]}
-                  </Text>
-                </TouchableOpacity>
-                {showExpenseDatePicker && (
-                  <DateTimePicker
-                    value={expenseDate}
-                    mode="date"
-                    display="default"
-                    onChange={(event, date) => {
-                      setShowExpenseDatePicker(false);
-                      if (date) setExpenseDate(date);
-                    }}
-                  />
-                )}
-              </View>
-
-              {/* Optionals: Page, Branch, Item */}
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>البيج (اختياري)</Text>
-                <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 8 }}>
-                  <Picker selectedValue={expensePageId} onValueChange={setExpensePageId} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                    <Picker.Item label="اختر البيج..." value="" />
-                    {pagesStoresDb.map(p => <Picker.Item key={p.id} label={p.name} value={p.id} />)}
-                  </Picker>
-                </View>
-              </View>
-
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>الفرع (اختياري)</Text>
-                <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 8 }}>
-                  <Picker selectedValue={expenseBranchId} onValueChange={setExpenseBranchId} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                    <Picker.Item label="اختر الفرع..." value="" />
-                    {branchesDb.map(b => <Picker.Item key={b.id} label={b.name} value={b.id} />)}
-                  </Picker>
-                </View>
-              </View>
-
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>الصنف (اختياري)</Text>
-                <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 8 }}>
-                  <Picker selectedValue={expenseItemId} onValueChange={setExpenseItemId} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                    <Picker.Item label="اختر الصنف..." value="" />
-                    {baseProducts.concat(compositeProductsData).map(p => <Picker.Item key={p.id} label={p.name} value={p.id} />)}
-                  </Picker>
-                </View>
-              </View>
-
-              {/* Image and Tags */}
-              <View style={{ width: '48%', marginBottom: 15 }}>
-                <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right' }}>صور الفاتورة / الوصل (اختياري)</Text>
-                <TouchableOpacity onPress={pickExpenseImage} style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', padding: 15, borderRadius: 8, alignItems: 'center' }}>
-                  <Text style={{ color: '#a855f7', fontWeight: 'bold' }}>{expenseImage ? 'تم اختيار صورة (تغيير)' : '📁 اختيار صور الفاتورة'}</Text>
-                </TouchableOpacity>
-              </View>
-
-            </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity 
-              style={{ backgroundColor: '#a855f7', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 }}
-              onPress={handleSaveExpense}
-              disabled={isUploadingExpense}
-            >
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{isUploadingExpense ? 'جاري الحفظ...' : '💾 حفظ العملية'}</Text>
-            </TouchableOpacity>
-
-          </View>
-        </ScrollView>
       ) : activeTab === 'entry' ? (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding} keyboardShouldPersistTaps="handled">
           <View style={styles.formContainer}>
@@ -2430,31 +2135,7 @@ export default function App() {
               <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#e2e8f0', marginRight: 8 }}>بيانات الزبون والعنوان</Text>
             </View>
 
-            {/* Employee Selector */}
-            <View style={styles.formGroup}>
-              <Text style={{ color: '#e9d5ff', fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>موظفة الرد (التي حجزت الطلب) *</Text>
-              <TouchableOpacity 
-                style={[styles.modalTrigger, isFieldInvalid(selectedEmployeeId) && styles.inputError]}
-                onPress={() => setEmpModalVisible(true)}
-              >
-                <Text style={selectedEmployeeId ? styles.triggerText : styles.triggerPlaceholder}>
-                  {selectedEmployeeId ? employees.find(e => e.id === selectedEmployeeId)?.name : "-- اختر موظفة الرد --"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Receipt Number (Optional) */}
-            <View style={styles.formGroup}>
-              <TextInput 
-                style={[styles.input, { backgroundColor: isLightMode ? '#f1f5f9' : '#334155', color: isLightMode ? '#000' : '#fff' }]}
-                value={customReceiptNumber}
-                onChangeText={setCustomReceiptNumber}
-                placeholder="رقم الوصل (اختياري، يملأ عبر الباركود)"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-              />
-            </View>
-
-            {/* Input Name */}
+{/* Input Name */}
             <View style={styles.formGroup}>
               <TextInput 
                 style={[styles.input, isFieldInvalid(customerName) && styles.inputError]}
@@ -2688,7 +2369,7 @@ export default function App() {
             {/* Left: User button */}
             <TouchableOpacity 
               style={styles.headerIconButton}
-              onPress={() => setEmpModalVisible(true)}
+              onPress={() => setActiveTab('settings')}
             >
               <Text style={styles.headerIconText}>👤</Text>
             </TouchableOpacity>
@@ -2901,117 +2582,7 @@ export default function App() {
             </View>
             </Animated.View>
           </ScrollView>
-        ) : activeTab === 'products_manager' ? (
-        <View style={[styles.tabContent, { backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12' }]}>
-          {/* Segmented Control */}
-          <View style={{ flexDirection: 'row-reverse', padding: 15, backgroundColor: isLightMode ? '#fff' : '#1e293b', borderBottomWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-            <TouchableOpacity 
-              style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderColor: productsTab === 'products' ? '#a855f7' : 'transparent' }}
-              onPress={() => setProductsTab('products')}
-            >
-              <Text style={{ fontWeight: 'bold', color: productsTab === 'products' ? '#a855f7' : (isLightMode ? '#64748b' : '#94a3b8') }}>الأصناف</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderColor: productsTab === 'categories' ? '#a855f7' : 'transparent' }}
-              onPress={() => setProductsTab('categories')}
-            >
-              <Text style={{ fontWeight: 'bold', color: productsTab === 'categories' ? '#a855f7' : (isLightMode ? '#64748b' : '#94a3b8') }}>الفئات</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderColor: productsTab === 'pages' ? '#a855f7' : 'transparent' }}
-              onPress={() => setProductsTab('pages')}
-            >
-              <Text style={{ fontWeight: 'bold', color: productsTab === 'pages' ? '#a855f7' : (isLightMode ? '#64748b' : '#94a3b8') }}>البيجات</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Content Lists */}
-          <ScrollView contentContainerStyle={{ padding: 15 }}>
-            {productsTab === 'products' && (
-              <>
-                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc' }}>قائمة الأصناف ({baseProducts.length})</Text>
-                  <TouchableOpacity style={{ backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 6 }} onPress={() => setAddProductModalVisible(true)}>
-                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ إضافة صنف</Text>
-                  </TouchableOpacity>
-                </View>
-                {baseProducts.map(p => (
-                  <View key={p.id} style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-                    <Text style={{ fontWeight: 'bold', fontSize: 16, color: isLightMode ? '#1e293b' : '#fff', textAlign: 'right' }}>{p.name}</Text>
-                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 12 }}>
-                      {/* Cost Card */}
-                      <View style={{ flex: 1, backgroundColor: isLightMode ? '#fef2f2' : '#7f1d1d', padding: 8, borderRadius: 8, marginHorizontal: 4, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 11, color: isLightMode ? '#ef4444' : '#fca5a5', marginBottom: 4, fontWeight: 'bold' }}>التكلفة</Text>
-                        <Text style={{ fontWeight: 'bold', fontSize: 13, color: isLightMode ? '#b91c1c' : '#fee2e2' }}>
-                          {typeof p.cost === 'object' ? 0 : (p.cost || p.purchase || 0)}
-                        </Text>
-                      </View>
-
-                      {/* Selling Card */}
-                      <View style={{ flex: 1, backgroundColor: isLightMode ? '#f0fdf4' : '#14532d', padding: 8, borderRadius: 8, marginHorizontal: 4, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 11, color: isLightMode ? '#22c55e' : '#86efac', marginBottom: 4, fontWeight: 'bold' }}>سعر البيع</Text>
-                        <Text style={{ fontWeight: 'bold', fontSize: 13, color: isLightMode ? '#15803d' : '#dcfce7' }}>
-                          {typeof (p.selling || p.price) === 'object' ? 0 : (p.selling || p.price || 0)}
-                        </Text>
-                      </View>
-
-                      {/* Quantity Card */}
-                      <View style={{ flex: 1, backgroundColor: isLightMode ? '#eff6ff' : '#1e3a8a', padding: 8, borderRadius: 8, marginHorizontal: 4, alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 11, color: isLightMode ? '#3b82f6' : '#93c5fd', marginBottom: 4, fontWeight: 'bold' }}>العدد</Text>
-                        <Text style={{ fontWeight: 'bold', fontSize: 13, color: isLightMode ? '#1d4ed8' : '#dbeafe' }}>
-                          {(() => {
-                            if (typeof p.totalBaseQuantity === 'number') return p.totalBaseQuantity;
-                            let stk = p.stock || p.quantity;
-                            if (typeof stk === 'number' || typeof stk === 'string') return stk;
-                            if (typeof stk === 'object' && stk !== null) {
-                              let t = 0;
-                              Object.keys(stk).forEach(k => { t += Number(stk[k]?.quantity) || 0; });
-                              return t;
-                            }
-                            return 0;
-                          })()}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </>
-            )}
-
-            {productsTab === 'categories' && (
-              <>
-                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc' }}>الفئات ({branchesDb.length})</Text>
-                  <TouchableOpacity style={{ backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 6 }} onPress={() => setAddCategoryModalVisible(true)}>
-                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ إضافة فئة</Text>
-                  </TouchableOpacity>
-                </View>
-                {branchesDb.map(c => (
-                  <View key={c.id} style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-                    <Text style={{ fontWeight: 'bold', fontSize: 16, color: isLightMode ? '#1e293b' : '#fff', textAlign: 'right' }}>{c.name}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-
-            {productsTab === 'pages' && (
-              <>
-                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc' }}>البيجات ({pagesStoresDb.length})</Text>
-                  <TouchableOpacity style={{ backgroundColor: '#10b981', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 6 }} onPress={() => setAddPageModalVisible(true)}>
-                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ إضافة بيج</Text>
-                  </TouchableOpacity>
-                </View>
-                {pagesStoresDb.map(pg => (
-                  <View key={pg.id} style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-                    <Text style={{ fontWeight: 'bold', fontSize: 16, color: isLightMode ? '#1e293b' : '#fff', textAlign: 'right' }}>{pg.name}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-          </ScrollView>
-        </View>
-) : activeTab === 'settings' ? (
+        ) : activeTab === 'settings' ? (
           <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
           {/* Settings Tab Content */}
           <View style={styles.tabHeaderCard}>
@@ -3056,7 +2627,7 @@ export default function App() {
             </Text>
             <TouchableOpacity 
               style={styles.profileSwitchBtn} 
-              onPress={() => setEmpModalVisible(true)}
+              onPress={() => setActiveTab('settings')}
             >
               <Text style={styles.profileSwitchBtnText}>🔄 تغيير الموظف</Text>
             </TouchableOpacity>
@@ -3250,7 +2821,7 @@ export default function App() {
         <View style={[styles.centerNavWrapper, { marginTop: -40, flex: 1.2 }]}>
           <TouchableOpacity 
             style={[styles.centerNavBtn, { backgroundColor: 'transparent', borderWidth: 0, width: 68, height: 68, shadowColor: 'transparent', elevation: 0 }, activeTab === 'entry' && styles.centerNavBtnActive]}
-            onPress={() => setPlusMenuVisible(true)}
+            onPress={() => setActiveTab('entry')}
           >
             <Svg width="76" height="76" viewBox="0 0 100 100" style={{ position: 'absolute' }}>
               <Polygon points="50 5, 93 30, 93 70, 50 95, 7 70, 7 30" fill="#a855f7" stroke="#8b5cf6" strokeWidth="6" />
@@ -3262,122 +2833,15 @@ export default function App() {
 
         {/* Left: المنتجات (settings) */}
         <TouchableOpacity 
-          style={[styles.navItem, activeTab === 'products_manager' && styles.navItemActive]}
-          onPress={() => setActiveTab('products_manager')}
+          style={[styles.navItem, activeTab === 'settings' && styles.navItemActive]}
+          onPress={() => setActiveTab('settings')}
         >
-          {renderProductsIcon(activeTab === 'products_manager')}
-          <Text style={[styles.navText, activeTab === 'products_manager' && styles.navTextActive]}>المنتجات</Text>
+          {renderProductsIcon(activeTab === 'settings')}
+          <Text style={[styles.navText, activeTab === 'settings' && styles.navTextActive]}>المنتجات</Text>
         </TouchableOpacity>
       </View>
 
       {/* --- Modals Section --- */}
-
-      {/* Plus Menu Modal (Action Sheet) */}
-      <Modal visible={plusMenuVisible} transparent animationType="fade">
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => setPlusMenuVisible(false)}>
-          <View style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, alignItems: 'center' }}>
-            <View style={{ width: 40, height: 5, backgroundColor: isLightMode ? '#cbd5e1' : '#475569', borderRadius: 5, marginBottom: 20 }} />
-            
-            <TouchableOpacity style={{ width: '100%', flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155' }} onPress={() => { setPlusMenuVisible(false); setActiveTab('entry'); }}>
-              <Text style={{ fontSize: 18, color: isLightMode ? '#1e293b' : '#f8fafc', fontWeight: 'bold' }}>📦 إضافة طلب</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={{ width: '100%', flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155' }} onPress={() => { setPlusMenuVisible(false); setActiveTab('add_expense'); }}>
-              <Text style={{ fontSize: 18, color: isLightMode ? '#1e293b' : '#f8fafc', fontWeight: 'bold' }}>💸 إضافة مصروف</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={{ width: '100%', flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 15 }} onPress={() => { setPlusMenuVisible(false); setAddBarcodeModalVisible(true); }}>
-              <Text style={{ fontSize: 18, color: isLightMode ? '#1e293b' : '#f8fafc', fontWeight: 'bold' }}>🧾 إضافة وصل باركود</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Add Expense Modal */}
-      <Modal visible={addExpenseModalVisible} transparent animationType="slide">
-        <View style={styles.modalBg}>
-          <View style={[styles.modalContent, { backgroundColor: isLightMode ? '#fff' : '#1e293b' }]}>
-            <Text style={[styles.modalTitle, { color: isLightMode ? '#1e293b' : '#fff' }]}>إضافة مصروف جديد</Text>
-            
-            <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#334155', borderRadius: 8, marginBottom: 10 }}>
-              <Picker selectedValue={newExpenseCategory} onValueChange={setNewExpenseCategory} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                <Picker.Item label="-- الفئة --" value="" />
-                {expenseCategoriesDb.map(c => <Picker.Item key={c.id} label={c.name} value={c.id} />)}
-              </Picker>
-            </View>
-
-            <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#334155', borderRadius: 8, marginBottom: 10 }}>
-              <Picker selectedValue={newExpenseWallet} onValueChange={setNewExpenseWallet} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                <Picker.Item label="-- الخزنة (للسحب منها) --" value="" />
-                {walletsDb.map(w => <Picker.Item key={w.id} label={w.name} value={w.id} />)}
-              </Picker>
-            </View>
-
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
-              <TextInput style={[styles.input, { backgroundColor: isLightMode ? '#f1f5f9' : '#334155', color: isLightMode ? '#000' : '#fff', flex: 1, marginLeft: 10, textAlign: 'right' }]} placeholder="المبلغ" placeholderTextColor="#64748b" keyboardType="numeric" value={newExpenseAmount} onChangeText={setNewExpenseAmount} />
-              
-              <View style={{ backgroundColor: isLightMode ? '#f1f5f9' : '#334155', borderRadius: 8, flex: 0.5, marginBottom: 10 }}>
-                <Picker selectedValue={newExpenseCurrency} onValueChange={setNewExpenseCurrency} style={{ color: isLightMode ? '#000' : '#fff' }}>
-                  <Picker.Item label="د.ع" value="IQD" />
-                  <Picker.Item label="$" value="USD" />
-                </Picker>
-              </View>
-            </View>
-
-            <TextInput style={[styles.input, { backgroundColor: isLightMode ? '#f1f5f9' : '#334155', color: isLightMode ? '#000' : '#fff', textAlign: 'right', height: 80, textAlignVertical: 'top' }]} placeholder="التفاصيل / ملاحظات" placeholderTextColor="#64748b" multiline value={newExpenseDetails} onChangeText={setNewExpenseDetails} />
-
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={handleSaveExpense}><Text style={styles.modalCloseText}>حفظ المصروف</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.modalCloseBtn, { backgroundColor: '#ef4444', marginTop: 10 }]} onPress={() => setAddExpenseModalVisible(false)}><Text style={styles.modalCloseText}>إغلاق</Text></TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Barcode Receipt Modal */}
-      <Modal visible={addBarcodeModalVisible} transparent animationType="slide">
-        <View style={styles.modalBg}>
-          <View style={[styles.modalContent, { backgroundColor: isLightMode ? '#fff' : '#1e293b', width: '90%', height: '80%' }]}>
-            <Text style={[styles.modalTitle, { color: isLightMode ? '#1e293b' : '#fff' }]}>مسح وصل الباركود 📸</Text>
-            
-            <View style={{ flex: 1, backgroundColor: '#000', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
-              {!cameraPermission ? (
-                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                   <ActivityIndicator size="large" color="#a855f7" />
-                 </View>
-              ) : !cameraPermission.granted ? (
-                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-                   <Text style={{ color: '#fff', textAlign: 'center', marginBottom: 15 }}>نحتاج إلى صلاحية الكاميرا لمسح الباركود</Text>
-                   <TouchableOpacity style={{ backgroundColor: '#a855f7', padding: 10, borderRadius: 8 }} onPress={requestCameraPermission}>
-                     <Text style={{ color: '#fff', fontWeight: 'bold' }}>منح الصلاحية</Text>
-                   </TouchableOpacity>
-                 </View>
-              ) : (
-                <CameraView
-                  style={{ flex: 1 }}
-                  facing="back"
-                  onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-                />
-              )}
-            </View>
-
-            <Text style={{ color: isLightMode ? '#475569' : '#cbd5e1', marginBottom: 5, textAlign: 'right', fontWeight: 'bold' }}>أو أدخل رقم الوصل يدوياً:</Text>
-            <TextInput 
-              style={[styles.input, { backgroundColor: isLightMode ? '#f1f5f9' : '#334155', color: isLightMode ? '#000' : '#fff', textAlign: 'right', fontSize: 18, marginBottom: 15 }]} 
-              placeholder="رقم الوصل..." 
-              placeholderTextColor="#64748b" 
-              value={newBarcodeReceipt} 
-              onChangeText={setNewBarcodeReceipt} 
-            />
-
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={handleSaveBarcodeReceipt}>
-              <Text style={styles.modalCloseText}>متابعة وإضافة طلب ➡️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalCloseBtn, { backgroundColor: '#ef4444', marginTop: 10 }]} onPress={() => { setAddBarcodeModalVisible(false); setScanned(false); }}>
-              <Text style={styles.modalCloseText}>إلغاء</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
 
       {/* 1. Employee Selection Modal */}
       <Modal visible={empModalVisible} transparent animationType="slide">
@@ -3628,133 +3092,6 @@ export default function App() {
           onChange={(event, selectedDate) => {
             setShowEndDatePicker(false);
             if (selectedDate) setTempCustomEndDate(selectedDate);
-          }}
-        />
-      )}
-    
-      {/* 5. Date Filter Modal */}
-      <Modal visible={dateFilterModalVisible} transparent animationType="slide">
-        <View style={styles.modalBg}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>تصفية التاريخ</Text>
-            
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginBottom: 15 }}>
-              {[
-                { id: 'today', label: 'اليوم' },
-                { id: 'yesterday', label: 'أمس' },
-                { id: 'today_and_yesterday', label: 'اليوم وأمس' },
-                { id: 'last_7_days', label: 'آخر 7 أيام' },
-                { id: 'last_30_days', label: 'آخر 30 يوم' },
-                { id: 'last_60_days', label: 'آخر 60 يوم' },
-                { id: 'last_90_days', label: 'آخر 90 يوم' },
-                { id: 'year', label: 'سنة' },
-                { id: 'all_time', label: 'فترة مطلقة' }
-              ].map(filter => (
-                <TouchableOpacity 
-                  key={filter.id}
-                  onPress={() => {
-                    setGlobalDateFilter(filter.id);
-                    setDateFilterModalVisible(false);
-                  }}
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 20,
-                    backgroundColor: globalDateFilter === filter.id ? 'rgba(168, 85, 247, 0.2)' : 'rgba(30, 30, 40, 0.65)',
-                    borderWidth: 1,
-                    borderColor: globalDateFilter === filter.id ? '#a855f7' : '#475569',
-                  }}
-                >
-                  <Text style={{ 
-                    color: globalDateFilter === filter.id ? '#e9d5ff' : '#cbd5e1',
-                    fontWeight: globalDateFilter === filter.id ? 'bold' : 'normal',
-                    fontSize: 13
-                  }}>{filter.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={{ color: '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تاريخ مخصص:</Text>
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 }}>
-              <TouchableOpacity 
-                style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
-                onPress={() => setShowStartDatePicker(true)}
-              >
-                <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>من تاريخ</Text>
-                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customStartDate.toISOString().split('T')[0]}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', padding: 10, borderRadius: 8, alignItems: 'center' }}
-                onPress={() => setShowEndDatePicker(true)}
-              >
-                <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>إلى تاريخ</Text>
-                <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{customEndDate.toISOString().split('T')[0]}</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity 
-              style={{ backgroundColor: '#a855f7', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 20 }}
-              onPress={() => {
-                setGlobalDateFilter('custom');
-                setDateFilterModalVisible(false);
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>تطبيق التاريخ المخصص</Text>
-            </TouchableOpacity>
-
-            <Text style={{ color: '#ffffff', marginBottom: 10, textAlign: 'right', fontWeight: 'bold' }}>تحديد شهر وسنة:</Text>
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 }}>
-              <View style={{ flex: 1, marginLeft: 8, backgroundColor: '#334155', borderRadius: 8, alignItems: 'center', flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 10 }}>
-                  <TouchableOpacity onPress={() => setFilterMonth(prev => prev === 11 ? 0 : prev + 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
-                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{filterMonth + 1}</Text>
-                  <TouchableOpacity onPress={() => setFilterMonth(prev => prev === 0 ? 11 : prev - 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
-              </View>
-              
-              <View style={{ flex: 1, marginRight: 8, backgroundColor: '#334155', borderRadius: 8, alignItems: 'center', flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 10 }}>
-                  <TouchableOpacity onPress={() => setFilterYear(prev => prev + 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>+</Text></TouchableOpacity>
-                  <Text style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{filterYear}</Text>
-                  <TouchableOpacity onPress={() => setFilterYear(prev => prev - 1)} style={{ padding: 10 }}><Text style={{ color: '#a855f7', fontSize: 18, fontWeight: 'bold' }}>-</Text></TouchableOpacity>
-              </View>
-            </View>
-            <TouchableOpacity 
-              style={{ backgroundColor: '#a855f7', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 10 }}
-              onPress={() => {
-                setGlobalDateFilter('specific_month');
-                setDateFilterModalVisible(false);
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>تطبيق شهر وسنة محددين</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.modalCloseBtn}
-              onPress={() => setDateFilterModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>إغلاق</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {showStartDatePicker && (
-        <DateTimePicker
-          value={customStartDate}
-          mode="date"
-          display="default"
-          onChange={(event, selectedDate) => {
-            setShowStartDatePicker(false);
-            if (selectedDate) setCustomStartDate(selectedDate);
-          }}
-        />
-      )}
-      {showEndDatePicker && (
-        <DateTimePicker
-          value={customEndDate}
-          mode="date"
-          display="default"
-          onChange={(event, selectedDate) => {
-            setShowEndDatePicker(false);
-            if (selectedDate) setCustomEndDate(selectedDate);
           }}
         />
       )}

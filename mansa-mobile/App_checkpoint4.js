@@ -3250,7 +3250,7 @@ export default function App() {
         <View style={[styles.centerNavWrapper, { marginTop: -40, flex: 1.2 }]}>
           <TouchableOpacity 
             style={[styles.centerNavBtn, { backgroundColor: 'transparent', borderWidth: 0, width: 68, height: 68, shadowColor: 'transparent', elevation: 0 }, activeTab === 'entry' && styles.centerNavBtnActive]}
-            onPress={() => setPlusMenuVisible(true)}
+            onPress={() => setActiveTab('entry')}
           >
             <Svg width="76" height="76" viewBox="0 0 100 100" style={{ position: 'absolute' }}>
               <Polygon points="50 5, 93 30, 93 70, 50 95, 7 70, 7 30" fill="#a855f7" stroke="#8b5cf6" strokeWidth="6" />
