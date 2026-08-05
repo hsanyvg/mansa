@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
+import { 
   StyleSheet, Switch, 
   Text, 
   View, 
@@ -14,8 +14,7 @@ import {
   StatusBar,
   Animated,
   Easing,
-  AppState,
-  Keyboard
+  AppState
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -63,21 +62,20 @@ export default function App() {
       case 'new': return 'جديد';
       case 'pending': return 'قيد الانتظار';
       case 'pending_warehouse': return 'قيد انتظار المخزن';
-      case 'backordered': return 'قيد الانتظار (مخزن)';
-      case 'processing': return 'جاري التجهيز';
+      case 'processing': return 'قيد المعالجة';
       case 'processed': return 'تمت المعالجة';
       case 'confirmed': return 'مؤكد';
+      case 'ofd': return 'في الطريق';
       case 'shipped': return 'تم الشحن';
-      case 'ofd': return 'قيد التوصيل';
-      case 'delivered': return 'مكتمل (لم تتم المحاسبة)';
-      case 'delivered_settled': return 'مكتمل (تمت المحاسبة)';
-      case 'partial': return 'واصل جزئي (لم تتم المحاسبة)';
+      case 'delivered': return 'واصل (ناجح)';
+      case 'delivered_settled': return 'واصل ومسدد';
       case 'returned': return 'راجع';
-      case 'returned_agent': return 'راجع عند المندوب';
-      case 'returned_warehouse': return 'راجع مخزن';
+      case 'returned_agent': return 'راجع بيد المندوب';
+      case 'returned_warehouse': return 'راجع للمخزن';
       case 'postponed': return 'مؤجل';
-      case 'cancelled': return 'ملغي';
+      case 'partial': return 'جزئي';
       case 'replaced': return 'استبدال';
+      case 'backordered': return 'طلب متأخر';
       default: return status || 'غير معروف';
     }
   };
@@ -110,7 +108,7 @@ export default function App() {
     checkUpdates();
   }, []);
 
-  const [activeTab, setActiveTab] = useState('orders');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [productsTab, setProductsTab] = useState('products');
   const [completedSearchQuery, setCompletedSearchQuery] = useState('');
   const [completedSubTab, setCompletedSubTab] = useState('accounted');
@@ -313,56 +311,6 @@ export default function App() {
   const [customTotalAmount, setCustomTotalAmount] = useState(null);
   const [ordersFilter, setOrdersFilter] = useState('all');
   const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
-  const [advSearchGov, setAdvSearchGov] = useState('');
-  const [advSearchDate, setAdvSearchDate] = useState('');
-  const [advSearchReceipt, setAdvSearchReceipt] = useState('');
-  const [advSearchName, setAdvSearchName] = useState('');
-  const [advSearchPhone, setAdvSearchPhone] = useState('');
-  const [advSearchStatus, setAdvSearchStatus] = useState('');
-
-  
-  // Server Search State
-  const [serverSearchQuery, setServerSearchQuery] = useState('');
-  const [serverSearchResult, setServerSearchResult] = useState(null);
-  const [isSearchingServer, setIsSearchingServer] = useState(false);
-  
-  const handleServerSearch = async () => {
-    if (!serverSearchQuery.trim()) {
-      setServerSearchResult(null);
-      return;
-    }
-    setIsSearchingServer(true);
-    setServerSearchResult(null);
-    try {
-       let q = fsQuery(collection(db, 'users', adminUid, 'orders'), where('receiptNumber', '==', serverSearchQuery.trim()));
-       let snap = await getDocs(q);
-       
-       if (snap.empty) {
-          // Try customerPhone
-          q = fsQuery(collection(db, 'users', adminUid, 'orders'), where('customerPhone', '==', serverSearchQuery.trim()));
-          snap = await getDocs(q);
-       }
-       if (snap.empty) {
-          // Try id
-          const docRef = doc(db, 'users', adminUid, 'orders', serverSearchQuery.trim());
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-             setServerSearchResult([{ id: docSnap.id, ...docSnap.data() }]);
-             setIsSearchingServer(false);
-             return;
-          }
-       }
-       
-       if (!snap.empty) {
-         setServerSearchResult(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-       } else {
-         setServerSearchResult([]); // not found
-       }
-    } catch (e) {
-       console.log("Server search error:", e);
-    }
-    setIsSearchingServer(false);
-  };
   
   // Edit Order State
   const [editingOrderId, setEditingOrderId] = useState(null);
@@ -1137,7 +1085,7 @@ export default function App() {
       await batch.commit();
 
       // Reset
-      setActiveTab('orders');
+      setActiveTab('dashboard');
       setNewExpenseCategory('');
       setNewExpenseAmount('');
       setNewExpenseDetails('');
@@ -1223,7 +1171,7 @@ export default function App() {
     }
 
     if (
-      
+      customerName.trim() === '' ||
       !isValidPhoneNumber(customerPhone) ||
       governorate.trim() === '' ||
       region.trim() === ''
@@ -1281,7 +1229,6 @@ export default function App() {
           }
           
           const newOrderRef = doc(db, 'users', adminUid, 'orders', newOrderId.toString());
-          orderData.receiptNumber = customReceiptNumber.trim() || newOrderId.toString();
           transaction.set(newOrderRef, orderData);
           orderDocId = newOrderRef.id;
       });
@@ -1439,7 +1386,7 @@ export default function App() {
       return;
     }
     if (
-      
+      customerName.trim() === '' ||
       !isValidPhoneNumber(customerPhone) ||
       governorate.trim() === '' ||
       region.trim() === ''
@@ -1624,21 +1571,22 @@ export default function App() {
     );
   };
 
-    const renderSearchIcon = (active) => {
+  const renderOrdersIcon = (active) => {
     const strokeColor = active ? '#e9d5ff' : '#64748b';
     return (
       <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 3 }}>
         {active && (
           <>
-            <Circle cx="11" cy="11" r="8" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            <Path d="M21 21l-4.3-4.3" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
-            
-            <Circle cx="11" cy="11" r="8" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
-            <Path d="M21 21l-4.3-4.3" stroke="rgba(168, 85, 247, 0.45)" strokeWidth={4} />
+            <Path d="M9 2H15A1 1 0 0 1 16 3V5H8V3A1 1 0 0 1 9 2Z" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+            <Path d="M8 4H5A2 2 0 0 0 3 6V20A2 2 0 0 0 5 22H19A2 2 0 0 0 21 20V6A2 2 0 0 0 19 4H16" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+            <Path d="M8 11H16" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
+            <Path d="M8 15H16" stroke="rgba(168, 85, 247, 0.22)" strokeWidth={6} />
           </>
         )}
-        <Circle cx="11" cy="11" r="8" stroke={strokeColor} strokeWidth={2} />
-        <Path d="M21 21l-4.3-4.3" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M9 2H15A1 1 0 0 1 16 3V5H8V3A1 1 0 0 1 9 2Z" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M8 4H5A2 2 0 0 0 3 6V20A2 2 0 0 0 5 22H19A2 2 0 0 0 21 20V6A2 2 0 0 0 19 4H16" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M8 11H16" stroke={strokeColor} strokeWidth={2} />
+        <Path d="M8 15H16" stroke={strokeColor} strokeWidth={2} />
       </Svg>
     );
   };
@@ -1878,7 +1826,7 @@ export default function App() {
                 <Text style={styles.alertBtnText}>حسناً</Text>
               </TouchableOpacity>
             </View>
-            </View>
+          </View>
         </Modal>
       </SafeAreaView>
     );
@@ -1920,7 +1868,7 @@ export default function App() {
             {/* User Icon */}
             <TouchableOpacity 
               style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 8, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
-              onPress={() => setActiveTab('settings')}
+              onPress={() => setEmpModalVisible(true)}
             >
               <Svg width={22} height={22} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2.5}>
                 <Path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
@@ -1941,6 +1889,24 @@ export default function App() {
                 <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>52</Text>
               </View>
             </TouchableOpacity>
+
+            {/* Date Filter Icon */}
+            <TouchableOpacity 
+              style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 12, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
+              onPress={() => {
+              setTempGlobalDateFilter(globalDateFilter);
+              setTempCustomStartDate(customStartDate);
+              setTempCustomEndDate(customEndDate);
+              setTempFilterMonth(filterMonth);
+              setTempFilterYear(filterYear);
+              setDateFilterModalVisible(true);
+            }}
+            >
+              <Svg width={22} height={22} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2.5}>
+                <Rect x='3' y='4' width='18' height='18' rx='2' ry='2' />
+                <Path d='M16 2v4M8 2v4M3 10h18' />
+              </Svg>
+            </TouchableOpacity>
             
             
 
@@ -1960,7 +1926,7 @@ export default function App() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>الطلبات المؤجلة ({orders.filter(o => o.status === 'postponed').length})</Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
             </View>
             <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
@@ -2001,7 +1967,7 @@ export default function App() {
                 </>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
       )}
 
@@ -2023,7 +1989,7 @@ export default function App() {
                   return fc.length;
                 })()})
               </Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
             </View>
             <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
@@ -2083,7 +2049,7 @@ export default function App() {
                 </>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
       )}
 
@@ -2095,7 +2061,7 @@ export default function App() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>قيد الإنتظار ({orders.filter(o => o.status === 'pending' || o.status === 'pending_warehouse' || o.status === 'new').length})</Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
             </View>
             <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
@@ -2134,7 +2100,7 @@ export default function App() {
                 </>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
       )}
 
@@ -2145,7 +2111,7 @@ export default function App() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
               <Text style={{ color: '#333', fontSize: 18, fontWeight: 'bold' }}>الطلبات الكلية ({orders.length})</Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
             </View>
             <View style={{ marginTop: 15, backgroundColor: '#f1f5f9', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
@@ -2184,7 +2150,7 @@ export default function App() {
                 </>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
       )}
 
@@ -2195,7 +2161,7 @@ export default function App() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>جزئي او استبدال ({orders.filter(o => o.status === 'partial' || o.status === 'replaced').length})</Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
             </View>
             <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
@@ -2234,7 +2200,7 @@ export default function App() {
                 </>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
       )}
 
@@ -2245,7 +2211,7 @@ export default function App() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>تمت المعالجة ({orders.filter(o => o.status === 'processed' || o.status === 'confirmed').length})</Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
             </View>
             <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
@@ -2284,7 +2250,7 @@ export default function App() {
                 </>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
       )}
 
@@ -2295,7 +2261,7 @@ export default function App() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <TouchableOpacity onPress={() => {}}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"></Svg></TouchableOpacity>
               <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>في الطريق للشركة ({orders.filter(o => o.status === 'processing' || o.status === 'confirmed' || o.status === 'ofd' || o.status === 'shipped').length})</Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}><Svg width="24" height="24" viewBox="0 0 24 24" fill="none"><Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg></TouchableOpacity>
             </View>
             <View style={{ marginTop: 15, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center' }}>
                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none"><Circle cx="11" cy="11" r="8" stroke="#ccc" strokeWidth="2"/><Path d="M21 21l-4.35-4.35" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></Svg>
@@ -2334,18 +2300,150 @@ export default function App() {
                 </>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
       )}
 
       {/* Main Tab View */}
-      {activeTab === 'add_expense' ? (
+      {activeTab === 'dashboard' ? (
+        <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
+          {/* Dashboard Stats */}
+          <View style={{ marginBottom: 20 }}>
+            {/* Row 1 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('الشحنات المكتملة', totalCompletedCount, '#10b981', '#ffffff', 
+                <Path d="M3 10h10a5 5 0 0 1 5 5v2a5 5 0 0 1-5 5H3m0-12l4-4m-4 4l4 4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>, false, () => setActiveTab('completed_shipments'))}
+              {renderCustomCard('جزئي او استبدال', partialCount, '#34d399', '#ffffff', 
+                <><Path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M3 3v5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/><Path d="M21 21v-5h-5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('partial_shipments'))}
+            </View>
+
+            {/* Row 2 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('في الطريق للشركة', ofdOrdersCount, '#eab308', '#ffffff', 
+                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('ofd_shipments'))}
+              {renderCustomCard('تمت المعالجة', processedCount, '#34d399', '#ffffff', 
+                <Path d="M20 16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4M12 4v12M8 12l4 4 4-4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false, () => setActiveTab('processed_shipments'))}
+            </View>
+
+            {/* Row 3 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('قيد الإنتظار', newCount, '#27272a', '#ffffff', 
+                <Path d="M5 22h14M5 2h14M8 2v5l4 5-4 5v5m8-20v5l-4 5 4 5v5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, false, () => setActiveTab('pending_shipments'))}
+              {renderCustomCard('مؤجلة', postponedCount, '#f97316', '#ffffff', 
+                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('postponed_shipments'))}
+            </View>
+
+            {/* Row 4 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('راجع', returnedCountCard, '#ef4444', '#ffffff', 
+                <><Path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><Path d="M3 3v5h5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>, false, () => setActiveTab('returned_shipments'))}
+              {renderCustomCard('ملغي', cancelledCount, '#ef4444', '#ffffff', 
+                <><Circle cx="12" cy="12" r="10" stroke="#ffffff" strokeWidth="2"/><Path d="M15 9l-6 6M9 9l6 6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></>, false, () => setActiveTab('orders'))}
+            </View>
+            
+            {/* Row 5 */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 }}>
+              {renderCustomCard('الطلبات الكلية', todayOrdersCount, '#ffffff', '#94a3b8', 
+                <><Circle cx="12" cy="12" r="10" stroke="#cbd5e1" strokeWidth="2"/><Path d="M12 6v6l4 2" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round"/></>, true, () => setActiveTab('today_shipments'))}
+              {renderCustomCard('المبيعات الكلية', todaySales + ' د.ع', '#ffffff', '#94a3b8', 
+                <><Path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></>, true, () => setActiveTab('dashboard'))}
+            </View>
+          </View>
+
+          {/* Team Performance Section */}
+          <View style={[styles.bigCard, { marginTop: 15, paddingHorizontal: 0, paddingBottom: 20 }]}>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingHorizontal: 15 }}>
+              <Text style={styles.cardTitle}>📊 أداء الفريق ({employees.length} موظف)</Text>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : 'rgba(255,255,255,0.1)' }}>
+                <Text style={{ fontSize: 10, color: isLightMode ? '#475569' : '#94a3b8' }}>🗓️ تاريخ: {
+                  [
+                    { id: 'today', label: 'اليوم' },
+                    { id: 'yesterday', label: 'أمس' },
+                    { id: 'today_and_yesterday', label: 'اليوم وأمس' },
+                    { id: 'last_7_days', label: 'آخر 7 أيام' },
+                    { id: 'last_30_days', label: 'آخر 30 يوم' },
+                    { id: 'last_60_days', label: 'آخر 60 يوم' },
+                    { id: 'last_90_days', label: 'آخر 90 يوم' },
+                    { id: 'year', label: 'سنة' },
+                    { id: 'all_time', label: 'فترة مطلقة' },
+                    { id: 'custom', label: 'تاريخ مخصص' }
+                  ].find(f => f.id === globalDateFilter)?.label || 'الكل'
+                }</Text>
+              </View>
+            </View>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 15 }}>
+              {(() => {
+                // teamStats is already loaded from state!
+
+                return teamStats.map(stat => (
+                  <View key={stat.emp.id} style={{ 
+                    width: 140, 
+                    backgroundColor: isLightMode ? '#ffffff' : 'rgba(30, 30, 40, 0.4)', 
+                    borderRadius: 12, 
+                    padding: 12, 
+                    marginLeft: 10,
+                    borderWidth: 1,
+                    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255,255,255,0.05)'
+                  }}>
+                    <Text style={{ color: isLightMode ? '#0f172a' : '#fff', fontWeight: 'bold', textAlign: 'center', fontSize: 14, marginBottom: 4 }} numberOfLines={1}>{stat.emp.name}</Text>
+                    <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', textAlign: 'center', fontSize: 11, marginBottom: 15 }}>إجمالي الطلبات: {stat.total}</Text>
+                    
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-end', height: 120 }}>
+                      
+                      {/* Pending Bar */}
+                      <View style={{ alignItems: 'center', width: '30%' }}>
+                        <Text style={{ color: '#eab308', fontWeight: 'bold', fontSize: 12 }}>{stat.pending}</Text>
+                        <Text style={{ color: '#eab308', fontSize: 9, marginBottom: 4 }}>({stat.penPct}%)</Text>
+                        <View style={{ height: 70, width: 8, backgroundColor: 'rgba(234, 179, 8, 0.2)', borderRadius: 4, justifyContent: 'flex-end' }}>
+                          <View style={{ width: '100%', height: stat.penPct + '%', backgroundColor: '#eab308', borderRadius: 4 }} />
+                        </View>
+                        <View style={{ marginTop: 6, width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#eab308', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#eab308', fontSize: 8 }}>⌛</Text>
+                        </View>
+                        <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 10, marginTop: 4 }}>انتظار</Text>
+                      </View>
+
+                      {/* Returned Bar */}
+                      <View style={{ alignItems: 'center', width: '30%' }}>
+                        <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 12 }}>{stat.returned}</Text>
+                        <Text style={{ color: '#ef4444', fontSize: 9, marginBottom: 4 }}>({stat.retPct}%)</Text>
+                        <View style={{ height: 70, width: 8, backgroundColor: 'rgba(239, 68, 68, 0.2)', borderRadius: 4, justifyContent: 'flex-end' }}>
+                          <View style={{ width: '100%', height: stat.retPct + '%', backgroundColor: '#ef4444', borderRadius: 4 }} />
+                        </View>
+                        <View style={{ marginTop: 6, width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#ef4444', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#ef4444', fontSize: 8 }}>↩</Text>
+                        </View>
+                        <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 10, marginTop: 4 }}>راجع</Text>
+                      </View>
+
+                      {/* Delivered Bar */}
+                      <View style={{ alignItems: 'center', width: '30%' }}>
+                        <Text style={{ color: '#10b981', fontWeight: 'bold', fontSize: 12 }}>{stat.delivered}</Text>
+                        <Text style={{ color: '#10b981', fontSize: 9, marginBottom: 4 }}>({stat.delPct}%)</Text>
+                        <View style={{ height: 70, width: 8, backgroundColor: 'rgba(16, 185, 129, 0.2)', borderRadius: 4, justifyContent: 'flex-end' }}>
+                          <View style={{ width: '100%', height: stat.delPct + '%', backgroundColor: '#10b981', borderRadius: 4 }} />
+                        </View>
+                        <View style={{ marginTop: 6, width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#10b981', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#10b981', fontSize: 8 }}>✓</Text>
+                        </View>
+                        <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 10, marginTop: 4 }}>واصل</Text>
+                      </View>
+
+                    </View>
+                  </View>
+                ));
+              })()}
+            </ScrollView>
+          </View>
+        </ScrollView>
+      ) : activeTab === 'add_expense' ? (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding} keyboardShouldPersistTaps="handled">
           <View style={[styles.formContainer, { backgroundColor: isLightMode ? '#fff' : '#1e293b', padding: 20, borderRadius: 12 }]}>
             
             <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 22, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#fff' }}>💸 إضافة مصروف</Text>
-              <TouchableOpacity onPress={() => setActiveTab('orders')} style={{ padding: 8, backgroundColor: isLightMode ? '#f1f5f9' : '#334155', borderRadius: 8 }}>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')} style={{ padding: 8, backgroundColor: isLightMode ? '#f1f5f9' : '#334155', borderRadius: 8 }}>
                 <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8' }}>رجوع</Text>
               </TouchableOpacity>
             </View>
@@ -2744,269 +2842,223 @@ export default function App() {
         </ScrollView>
 
       ) : activeTab === 'orders' ? (
-        <ScrollView style={[styles.tabContent, { backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12' }]} contentContainerStyle={{ paddingBottom: 100 }}>
-          
-          {/* Main Header */}
+        <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
+          {/* Header row in screenshot */}
           <View style={styles.ordersHeaderRow}>
-            <View />
-            <View>
-              <Text style={styles.ordersHeaderTitle}>البحث المتقدم</Text>
-              <Text style={styles.ordersHeaderSubtitle}>ابحث عن الطلبات بسهولة</Text>
+            {/* Left: User button */}
+            <TouchableOpacity 
+              style={styles.headerIconButton}
+              onPress={() => setEmpModalVisible(true)}
+            >
+              <Text style={styles.headerIconText}>👤</Text>
+            </TouchableOpacity>
+
+            {/* Center: Title & Date */}
+            <View style={styles.headerCenter}>
+              <Text style={styles.ordersHeaderTitle}>الطلبات</Text>
+              <Text style={styles.ordersHeaderDate}>{getArabicDate()}</Text>
             </View>
+
+            {/* Right: Bell button */}
+            <TouchableOpacity 
+              style={styles.headerIconButton}
+              onPress={() => setAlertModal({ visible: true, message: 'لا توجد إشعارات جديدة حالياً.' })}
+            >
+              <Text style={styles.headerIconText}>🔔</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Advanced Search Form */}
-          <View style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', borderRadius: 16, padding: 15, marginHorizontal: 5, marginBottom: 20, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
+          {/* Segmented Filter Control */}
+          <View style={styles.segmentedControl}>
+            <TouchableOpacity 
+              style={[styles.segmentBtn, ordersFilter === 'completed' && styles.segmentBtnActive]}
+              onPress={() => setOrdersFilter('completed')}
+            >
+              <Text style={[styles.segmentBtnText, ordersFilter === 'completed' && styles.segmentBtnTextActive]}>مكتملة</Text>
+            </TouchableOpacity>
             
-            {/* Governorates */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="المحافظة"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchGov}
-                onChangeText={setAdvSearchGov}
-              />
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M3 21h18" /><Path d="M9 8h1" /><Path d="M9 12h1" /><Path d="M9 16h1" /><Path d="M14 8h1" /><Path d="M14 12h1" /><Path d="M14 16h1" /><Path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" /></Svg>
-            </View>
-
-            {/* Date */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="تاريخ الاضافة (مثال: 2024-05-01)"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchDate}
-                onChangeText={setAdvSearchDate}
-              />
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Circle cx="12" cy="12" r="10" /><Path d="M12 6v6l4 2" /></Svg>
-            </View>
-
-            {/* Receipt */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="رقم الوصل"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchReceipt}
-                onChangeText={setAdvSearchReceipt}
-              />
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><Path d="M16 2v4" /><Path d="M8 2v4" /><Path d="M3 10h18" /></Svg>
-            </View>
-
-            {/* Customer Name */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="اسم الزبون"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchName}
-                onChangeText={setAdvSearchName}
-              />
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><Circle cx="12" cy="7" r="4" /></Svg>
-            </View>
-
-            {/* Customer Phone */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="هاتف الزبون"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchPhone}
-                onChangeText={setAdvSearchPhone}
-                keyboardType="phone-pad"
-              />
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></Svg>
-            </View>
-
-            {/* Status Picker */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
-                <Picker
-                  selectedValue={advSearchStatus}
-                  style={{ width: '100%', height: 48, textAlign: 'right', color: advSearchStatus ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b') }}
-                  onValueChange={(itemValue) => setAdvSearchStatus(itemValue)}
-                >
-                  <Picker.Item label="الحالة (الكل)" value="" color={isLightMode ? '#94a3b8' : '#64748b'} />
-                  <Picker.Item label="قيد الانتظار" value="pending" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="قيد الانتظار (مخزن)" value="backordered" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="جاري التجهيز" value="processing" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="تم الشحن" value="shipped" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="قيد التوصيل" value="ofd" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="مكتمل (لم تتم المحاسبة)" value="delivered" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="مكتمل (تمت المحاسبة)" value="delivered_settled" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="واصل جزئي (لم تتم المحاسبة)" value="partial" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="راجع" value="returned" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="راجع عند المندوب" value="returned_agent" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="راجع مخزن" value="returned_warehouse" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="مؤجل" value="postponed" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="ملغي" value="cancelled" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                </Picker>
-              </View>
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M22 2L11 13" /><Path d="M22 2l-7 20-4-9-9-4 20-7z" /></Svg>
-            </View>
-
-            {/* Clear Button */}
             <TouchableOpacity 
-              style={{ paddingVertical: 10, alignItems: 'center', marginBottom: 10 }}
-              onPress={() => {
-                setAdvSearchGov('');
-                setAdvSearchDate('');
-                setAdvSearchReceipt('');
-                setAdvSearchName('');
-                setAdvSearchPhone('');
-                setAdvSearchStatus('');
-                Keyboard.dismiss();
-              }}
+              style={[styles.segmentBtn, ordersFilter === 'active' && styles.segmentBtnActive]}
+              onPress={() => setOrdersFilter('active')}
             >
-              <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: 'bold' }}>مسح الحقول</Text>
+              <Text style={[styles.segmentBtnText, ordersFilter === 'active' && styles.segmentBtnTextActive]}>جارية</Text>
             </TouchableOpacity>
 
-            {/* Search Button */}
             <TouchableOpacity 
-              style={{ backgroundColor: isLightMode ? '#3b82f6' : '#a855f7', paddingVertical: 14, borderRadius: 12, alignItems: 'center', shadowColor: isLightMode ? '#3b82f6' : '#a855f7', shadowOpacity: 0.3, shadowRadius: 5, elevation: 4 }}
-              onPress={() => Keyboard.dismiss()}
+              style={[styles.segmentBtn, ordersFilter === 'all' && styles.segmentBtnActive]}
+              onPress={() => setOrdersFilter('all')}
             >
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>بحث</Text>
+              <Text style={[styles.segmentBtnText, ordersFilter === 'all' && styles.segmentBtnTextActive]}>الكل</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Search Results */}
-          <View style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, minHeight: 400, marginTop: 10 }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc', textAlign: 'right', marginBottom: 15 }}>نتائج البحث</Text>
-          
-            {(() => {
-              // Only filter if at least one field is filled
-              const hasSearchCriteria = !!(advSearchGov || advSearchDate || advSearchReceipt || advSearchName || advSearchPhone || advSearchStatus);
+          {/* Three Counters Cards */}
+          <View style={styles.countersRow}>
+            {/* Card 3: ملغي */}
+            <View style={styles.counterCard}>
+              <View style={[styles.statusDot, { backgroundColor: '#ef4444' }]} />
+              <Text style={styles.counterNumber}>{cancelledCount}</Text>
+              <Text style={styles.counterLabel}>ملغي</Text>
+            </View>
 
-              if (!hasSearchCriteria) {
-                return (
-                  <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40, opacity: 0.5 }}>
-                    <Svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#94a3b8' : '#64748b'} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 15 }}><Circle cx="11" cy="11" r="8" /><Path d="m21 21-4.3-4.3" /></Svg>
-                    <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 16, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>قم بإدخال معلومات للبحث عن الطلبات</Text>
-                  </View>
-                );
-              }
+            {/* Card 2: جارٍ */}
+            <View style={styles.counterCard}>
+              <View style={[styles.statusDot, { backgroundColor: '#fb923c' }]} />
+              <Text style={styles.counterNumber}>{activeOrdersCountForTab}</Text>
+              <Text style={styles.counterLabel}>جارٍ</Text>
+            </View>
 
-              const filteredList = orders.filter((ord) => {
-                let match = true;
-                
-                if (advSearchGov && advSearchGov.trim()) {
-                  if (!String(ord.governorate || '').toLowerCase().includes(advSearchGov.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchDate && advSearchDate.trim()) {
-                  if (!String(ord.createdAt || '').toLowerCase().includes(advSearchDate.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchReceipt && advSearchReceipt.trim()) {
-                  if (!String(ord.receiptNumber || ord.id || '').toLowerCase().includes(advSearchReceipt.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchName && advSearchName.trim()) {
-                  if (!String(ord.customerName || '').toLowerCase().includes(advSearchName.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchPhone && advSearchPhone.trim()) {
-                  const p1 = String(ord.customerPhone || '').toLowerCase();
-                  const p2 = String(ord.customerPhone2 || '').toLowerCase();
-                  const term = advSearchPhone.toLowerCase().trim();
-                  if (!p1.includes(term) && !p2.includes(term)) match = false;
-                }
-                
-                if (advSearchStatus && advSearchStatus.trim()) {
-                  if (ord.status !== advSearchStatus) match = false;
-                }
-                
-                return match;
-              });
+            {/* Card 1: مكتمل */}
+            <View style={styles.counterCard}>
+              <View style={[styles.statusDot, { backgroundColor: '#10b981' }]} />
+              <Text style={styles.counterNumber}>{completedCount}</Text>
+              <Text style={styles.counterLabel}>مكتمل</Text>
+            </View>
+          </View>
 
-              if (filteredList.length === 0) {
-                return (
-                  <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
-                    <Svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 15 }}><Circle cx="12" cy="12" r="10"/><Path d="m15 9-6 6"/><Path d="m9 9 6 6"/></Svg>
-                    <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 16, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>لا توجد طلبات تطابق بحثك</Text>
-                  </View>
-                );
-              }
+          {/* Search Input with Animated Spinning Neon Border & Pulsing Glow */}
+          {/* Shadow wrapper is separate from overflow:hidden clip so corners render correctly */}
+          <Animated.View style={[styles.neonSearchShadowWrapper, { shadowOpacity: neonAnim.interpolate({ inputRange: [0.45, 0.95], outputRange: [0.4, 0.8] }) }]}>
+            {/* Clip box handles borderRadius + overflow:hidden */}
+            <View style={styles.neonSearchContainer}>
+              {/* Spinning Svg Background */}
+              <Animated.View style={[styles.neonSearchSpinBg, { transform: [{ rotate: spin }] }]}>
+                <Svg width={360} height={360} viewBox="0 0 360 360">
+                  <Defs>
+                    <LinearGradient id="neonSpinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <Stop offset="0%" stopColor="#ff00aa" />
+                      <Stop offset="35%" stopColor="#a855f7" />
+                      <Stop offset="70%" stopColor="#00f0ff" />
+                      <Stop offset="100%" stopColor="#ff00aa" />
+                    </LinearGradient>
+                  </Defs>
+                  <Circle cx={180} cy={180} r={175} fill="url(#neonSpinGrad)" />
+                </Svg>
+              </Animated.View>
 
-              return (
-                <FlatList 
-                  data={filteredList} 
-                  keyExtractor={ord => ord.id}
-                  initialNumToRender={25}
-                  maxToRenderPerBatch={50}
-                  windowSize={10}
-                  contentContainerStyle={{ paddingBottom: 50 }}
-                  renderItem={({item: ord}) => (
-                    <View key={ord.id} style={styles.orderItem}>
-                      <View style={styles.orderLeft}>
-                        <Text style={[styles.orderCustName, { color: isLightMode ? '#1e293b' : '#f8fafc', fontSize: 15 }]}>{ord.customerName}</Text>
-                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginTop: 4 }}>
-                          <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#64748b' : '#cbd5e1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></Svg>
-                          <Text style={{ marginRight: 6, color: isLightMode ? '#475569' : '#cbd5e1', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{ord.customerPhone} {ord.customerPhone2 ? ` - ${ord.customerPhone2}` : ''}</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginTop: 4 }}>
-                          <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#64748b' : '#cbd5e1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><Circle cx="12" cy="10" r="3" /></Svg>
-                          <Text style={{ marginRight: 6, color: isLightMode ? '#475569' : '#cbd5e1', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{ord.governorate} {ord.address ? `- ${ord.address}` : ''}</Text>
-                        </View>
-                        <Text style={{ marginTop: 4, color: isLightMode ? '#475569' : '#cbd5e1', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>المنتجات: {Array.isArray(ord.products) ? ord.products.map(p => p.name).join('، ') : 'بدون منتجات'}</Text>
-                        {ord.notes && ord.notes.trim() !== '' && (
-                          <Text style={{ marginTop: 4, color: '#f59e0b', fontStyle: 'italic', fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>ملاحظة: {ord.notes}</Text>
-                        )}
-                        <Text style={{ marginTop: 6, fontSize: 11, color: isLightMode ? '#94a3b8' : '#64748b', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{ord.createdAt}</Text>
-                      </View>
-
-                      <View style={styles.orderRight}>
-                        <Text style={{ fontSize: 12, color: isLightMode ? '#64748b' : '#94a3b8', marginBottom: 6, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', fontWeight: 'bold' }}>#{ord.receiptNumber || (ord.id ? ord.id.substring(0,6) : '')}</Text>
-                        <View style={[
-                          styles.statusBadge, 
-                          ord.status === 'delivered' ? styles.badgeDelivered : 
-                          ord.status === 'returned' || ord.status === 'returned_warehouse' ? styles.badgeReturned : 
-                          ord.status === 'partial' ? styles.badgePartial :
-                          ord.status === 'cancelled' ? styles.badgeCancelled :
-                          ord.status === 'backordered' ? styles.badgeBackordered : styles.badgePending,
-                          { borderWidth: 1, borderColor: 
-                            ord.status === 'delivered' ? 'rgba(16, 185, 129, 0.3)' : 
-                            ord.status === 'returned' || ord.status === 'returned_warehouse' ? 'rgba(244, 63, 94, 0.3)' : 
-                            ord.status === 'partial' ? 'rgba(14, 165, 233, 0.3)' :
-                            ord.status === 'cancelled' ? 'rgba(244, 63, 94, 0.3)' :
-                            ord.status === 'backordered' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(251, 191, 36, 0.3)'
-                          }
-                        ]}>
-                          <Text style={[styles.statusBadgeText, {
-                            color: ord.status === 'delivered' ? (isLightMode ? '#059669' : '#34d399') :
-                                   ord.status === 'partial' ? (isLightMode ? '#0284c7' : '#38bdf8') :
-                                   ord.status === 'returned' || ord.status === 'returned_warehouse' || ord.status === 'cancelled' ? (isLightMode ? '#e11d48' : '#fb7185') :
-                                   ord.status === 'backordered' ? (isLightMode ? '#7c3aed' : '#a78bfa') :
-                                   (isLightMode ? '#d97706' : '#fbbf24')
-                          }]}>
-                            {ord.status === 'delivered' ? 'واصل' :
-                             ord.status === 'partial' ? 'واصل جزئي' :
-                             ord.status === 'returned' ? 'راجع' :
-                             ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
-                             ord.status === 'cancelled' ? 'ملغي' :
-                             ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
-                          </Text>
-                        </View>
-                        
-                        {(ord.status !== 'delivered' && ord.status !== 'cancelled' && ord.status !== 'returned_warehouse' && ord.status !== 'returned' && ord.status !== 'returned_agent') && (
-                          <TouchableOpacity 
-                            style={{ padding: 6, backgroundColor: 'rgba(168, 85, 247, 0.15)', borderRadius: 6, marginTop: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' }}
-                            onPress={() => handleEditOrder(ord)}
-                          >
-                            <Text style={{ color: '#e9d5ff', fontWeight: 'bold', fontSize: 12 }}>✏️ تعديل الطلب</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  )} 
+              {/* The Inner Box Cover */}
+              <View style={styles.neonSearchInner}>
+                <View style={styles.neonSearchBtn}>
+                  <Svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#e9d5ff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <Circle cx="11" cy="11" r="8" />
+                    <Path d="m21 21-4.3-4.3" />
+                  </Svg>
+                </View>
+                <TextInput
+                  style={styles.neonSearchInput}
+                  value={ordersSearchQuery}
+                  onChangeText={setOrdersSearchQuery}
+                  placeholder="ابحث بالاسم، الهاتف، المحافظة أو رقم الطلب..."
+                  placeholderTextColor="rgba(255,255,255,0.4)"
                 />
-              );
-            })()}
-          </View>
-        </ScrollView>
-      ) : activeTab === 'products_manager' ? (
+              </View>
+            </View>
+          </Animated.View>
+
+          {/* Section: أحدث الطلبات */}
+          <Text style={styles.sectionHeaderTitle}>قائمة الطلبات</Text>
+          
+          {/* Neon spinning border card wrapper */}
+          <Animated.View style={[styles.neonCardShadow, { shadowOpacity: neonAnim.interpolate({ inputRange: [0.45, 0.95], outputRange: [0.3, 0.7] }) }]}>
+            <View style={styles.neonCardClip}>
+              {/* Spinning gradient background */}
+              <Animated.View style={[styles.neonCardSpinBg, { transform: [{ rotate: spin }] }]}>
+                <Svg width={600} height={600} viewBox="0 0 600 600">
+                  <Defs>
+                    <LinearGradient id="neonCardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <Stop offset="0%" stopColor="#ff00aa" />
+                      <Stop offset="30%" stopColor="#a855f7" />
+                      <Stop offset="60%" stopColor="#00f0ff" />
+                      <Stop offset="85%" stopColor="#a855f7" />
+                      <Stop offset="100%" stopColor="#ff00aa" />
+                    </LinearGradient>
+                  </Defs>
+                  <Circle cx={300} cy={300} r={295} fill="url(#neonCardGrad)" />
+                </Svg>
+              </Animated.View>
+
+              {/* Inner dark content card */}
+              <View style={styles.neonCardInner}>
+                {(() => {
+                  const filteredList = orders
+                    
+                    .filter((ord) => {
+                      if (ordersFilter === 'completed') return ord.status === 'delivered' || ord.status === 'partial';
+                      if (ordersFilter === 'active') return ord.status !== 'delivered' && ord.status !== 'partial' && ord.status !== 'cancelled' && ord.status !== 'returned';
+                      return true;
+                    })
+                    .filter((ord) => {
+                      if (!ordersSearchQuery.trim()) return true;
+                      const query = ordersSearchQuery.toLowerCase().trim();
+                      const name = (ord.customerName || '').toLowerCase();
+                      const phone = (ord.customerPhone || '').toLowerCase();
+                      const phone2 = (ord.customerPhone2 || '').toLowerCase();
+                      const gov = (ord.governorate || '').toLowerCase();
+                      const id = (ord.id || '').toLowerCase();
+                      return name.includes(query) || phone.includes(query) || phone2.includes(query) || gov.includes(query) || id.includes(query);
+                    });
+
+                  if (filteredList.length === 0) {
+                    return <Text style={styles.emptyText}>لا توجد نتائج مطابقة للبحث.</Text>;
+                  }
+
+                  return (
+                    <>
+                      <FlatList 
+                        data={filteredList} 
+                        keyExtractor={ord => ord.id}
+                        initialNumToRender={25}
+                        maxToRenderPerBatch={50}
+                        windowSize={10}
+                        contentContainerStyle={{ paddingBottom: 50 }}
+                        renderItem={({item: ord}) => (
+                        <View key={ord.id} style={styles.orderItem}>
+                          <View style={styles.orderLeft}>
+                            <Text style={styles.orderCustName}>{ord.customerName}</Text>
+                            <Text style={styles.orderMetaText}>{ord.customerPhone} | {ord.governorate}</Text>
+                          </View>
+                          <View style={styles.orderRight}>
+                            <Text style={styles.orderAmountText}>{Number(ord.totalAmount || 0).toLocaleString()} د.ع</Text>
+                            <View style={[
+                              styles.statusBadge,
+                              ord.status === 'delivered' ? styles.badgeDelivered :
+                              ord.status === 'partial' ? styles.badgePartial :
+                              ord.status === 'returned' ? styles.badgeReturned :
+                              ord.status === 'cancelled' ? styles.badgeCancelled :
+                              ord.status === 'backordered' ? styles.badgeBackordered : styles.badgePending
+                            ]}>
+                              <Text style={styles.statusBadgeText}>
+                                {ord.status === 'delivered' ? 'واصل' :
+                                 ord.status === 'partial' ? 'واصل جزئي' :
+                                 ord.status === 'returned' ? 'راجع' :
+                                 ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
+                                 ord.status === 'cancelled' ? 'ملغي' :
+                                 ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
+                              </Text>
+                            </View>
+                            
+                            {(ord.status !== 'delivered' && ord.status !== 'cancelled' && ord.status !== 'returned_warehouse' && ord.status !== 'returned' && ord.status !== 'returned_agent') && (
+                              <TouchableOpacity 
+                                style={{ padding: 6, backgroundColor: 'rgba(168, 85, 247, 0.15)', borderRadius: 6, marginTop: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' }}
+                                onPress={() => handleEditOrder(ord)}
+                              >
+                                <Text style={{ color: '#e9d5ff', fontWeight: 'bold', fontSize: 12 }}>✏️ تعديل الطلب</Text>
+                              </TouchableOpacity>
+                            )}
+                            
+                            
+                          </View>
+                        </View>
+                      )} 
+                      />
+                    </>
+                  );
+                })()}
+              </View>
+            </View>
+            </Animated.View>
+          </ScrollView>
+        ) : activeTab === 'products_manager' ? (
         <View style={[styles.tabContent, { backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12' }]}>
           {/* Segmented Control */}
           <View style={{ flexDirection: 'row-reverse', padding: 15, backgroundColor: isLightMode ? '#fff' : '#1e293b', borderBottomWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
@@ -3161,7 +3213,7 @@ export default function App() {
             </Text>
             <TouchableOpacity 
               style={styles.profileSwitchBtn} 
-              onPress={() => setActiveTab('settings')}
+              onPress={() => setEmpModalVisible(true)}
             >
               <Text style={styles.profileSwitchBtnText}>🔄 تغيير الموظف</Text>
             </TouchableOpacity>
@@ -3223,7 +3275,7 @@ export default function App() {
               </Text>
 
               {/* Back Button */}
-              <TouchableOpacity onPress={() => setActiveTab('orders')}>
+              <TouchableOpacity onPress={() => setActiveTab('dashboard')}>
                  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                     <Path d="M9 18l6-6-6-6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                  </Svg>
@@ -3324,20 +3376,28 @@ export default function App() {
               );
             })()}
             <View style={{height: 50}} />
-          </View>
+          </ScrollView>
         </View>
       )}
 
       {/* Bottom Tabs Navigation */}
       <View style={styles.bottomNav}>
+        {/* Right: بياناتي (dashboard) */}
+        <TouchableOpacity 
+          style={[styles.navItem, activeTab === 'dashboard' && styles.navItemActive]}
+          onPress={() => setActiveTab('dashboard')}
+        >
+          {renderReportsIcon(activeTab === 'dashboard')}
+          <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>بياناتي</Text>
+        </TouchableOpacity>
 
         {/* Center-Right: طلبيات (orders) */}
         <TouchableOpacity 
           style={[styles.navItem, activeTab === 'orders' && styles.navItemActive]}
           onPress={() => setActiveTab('orders')}
         >
-          {renderSearchIcon(activeTab === 'orders')}
-          <Text style={[styles.navText, activeTab === 'orders' && styles.navTextActive]}>بحث</Text>
+          {renderOrdersIcon(activeTab === 'orders')}
+          <Text style={[styles.navText, activeTab === 'orders' && styles.navTextActive]}>طلبيات</Text>
         </TouchableOpacity>
 
         {/* Center-Left: Floating + (entry) */}
