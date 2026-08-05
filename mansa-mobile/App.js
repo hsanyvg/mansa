@@ -129,6 +129,7 @@ export default function App() {
   const [adminUid, setAdminUid] = useState(null);
   const [isEmployee, setIsEmployee] = useState(false);
   const [loggedInEmployeeId, setLoggedInEmployeeId] = useState('');
+  const [loggedInSystemUserName, setLoggedInSystemUserName] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   const [email, setEmail] = useState('');
@@ -161,6 +162,10 @@ export default function App() {
              
              try {
                 const sysUserRef = doc(db, 'users', data.adminUid, 'system_users', usr.uid);
+                const sysUserSnap = await getDoc(sysUserRef);
+                if (sysUserSnap.exists()) {
+                   setLoggedInSystemUserName(sysUserSnap.data().name);
+                }
                 await updateDoc(sysUserRef, { isOnline: true, lastActive: serverTimestamp() });
              } catch(e){}
              
@@ -1191,7 +1196,7 @@ export default function App() {
             bookingEmployeeName: employees?.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
             employeeId: orderBookingEmployeeId || 'agent',
             employeeName: employees?.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
-            customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
+            customerName: isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
             customerPhone: '',
             governorate: '',
             region: '',
@@ -1252,7 +1257,7 @@ export default function App() {
         bookingEmployeeName: employees.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
         employeeId: orderBookingEmployeeId,
         employeeName: employees.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
-        customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
+        customerName: isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
         customerPhone: customerPhone,
         customerPhone2: customerPhone2,
         governorate: governorate,
@@ -1572,7 +1577,7 @@ export default function App() {
     }
   };
 
-  const systemUserName = isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير';
+  const systemUserName = isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير';
 
   const getArabicDate = () => {
     const days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
