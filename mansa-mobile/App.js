@@ -1186,6 +1186,8 @@ export default function App() {
           const newOrderRef = doc(db, 'users', adminUid, 'orders', newOrderId.toString());
           transaction.set(newOrderRef, {
             receiptNumber: newBarcodeReceipt.trim(),
+            bookingEmployeeId: orderBookingEmployeeId || 'agent',
+            bookingEmployeeName: employees?.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
             employeeId: orderBookingEmployeeId || 'agent',
             employeeName: employees?.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
             customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
@@ -1245,6 +1247,8 @@ export default function App() {
 
     try {
       const orderData = {
+        bookingEmployeeId: orderBookingEmployeeId,
+        bookingEmployeeName: employees.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
         employeeId: orderBookingEmployeeId,
         employeeName: employees.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
         customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
@@ -1567,7 +1571,7 @@ export default function App() {
     }
   };
 
-  const selectedEmployeeName = employees.find(e => e.id === selectedEmployeeId)?.name || 'اختر الموظف 👤';
+  const systemUserName = isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير';
 
   const getArabicDate = () => {
     const days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -1910,11 +1914,11 @@ export default function App() {
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
             <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginLeft: 12 }}>
               <Text style={{ color: '#a855f7', fontWeight: 'bold', fontSize: 18 }}>
-                {selectedEmployeeName ? selectedEmployeeName.split(' ').slice(0,2).map(n => n[0]).join(' ') : '👤'}
+                {systemUserName ? systemUserName.split(' ').slice(0,2).map(n => n[0]).join(' ') : '👤'}
               </Text>
             </View>
             <Text style={{ fontSize: 20, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc' }}>
-              {selectedEmployeeName}
+              {systemUserName}
             </Text>
           </View>
 
@@ -3136,7 +3140,7 @@ export default function App() {
 
           <View style={styles.statCardBig}>
             <Text style={styles.profileLabel}>الموظف الحالي:</Text>
-            <Text style={styles.profileValue}>{selectedEmployeeName}</Text>
+            <Text style={styles.profileValue}>{systemUserName}</Text>
             <Text style={styles.profileDescription}>
               مسؤول عن إدخال الطلبات الحالية وتعديلها.
             </Text>
