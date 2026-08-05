@@ -302,6 +302,8 @@ export default function App() {
 
   // Form State
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [orderBookingEmployeeId, setOrderBookingEmployeeId] = useState('');
+  const [bookingEmpModalVisible, setBookingEmpModalVisible] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerPhone2, setCustomerPhone2] = useState('');
@@ -1184,8 +1186,8 @@ export default function App() {
           const newOrderRef = doc(db, 'users', adminUid, 'orders', newOrderId.toString());
           transaction.set(newOrderRef, {
             receiptNumber: newBarcodeReceipt.trim(),
-            employeeId: selectedEmployeeId || 'agent',
-            employeeName: employees?.find(e => e.id === selectedEmployeeId)?.name || 'مجهول',
+            employeeId: orderBookingEmployeeId || 'agent',
+            employeeName: employees?.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
             customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
             customerPhone: '',
             governorate: '',
@@ -1218,7 +1220,7 @@ export default function App() {
       return;
     }
 
-    if (!selectedEmployeeId) {
+    if (!orderBookingEmployeeId) {
       setAlertModal({ visible: true, message: 'يرجى اختيار الموظف أولاً.' });
       return;
     }
@@ -1243,8 +1245,8 @@ export default function App() {
 
     try {
       const orderData = {
-        employeeId: selectedEmployeeId,
-        employeeName: employees.find(e => e.id === selectedEmployeeId)?.name || 'مجهول',
+        employeeId: orderBookingEmployeeId,
+        employeeName: employees.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
         customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
         customerPhone: customerPhone,
         customerPhone2: customerPhone2,
@@ -1435,7 +1437,7 @@ export default function App() {
       setAlertModal({ visible: true, message: 'يرجى تسجيل الدخول أولاً.' });
       return;
     }
-    if (!selectedEmployeeId) {
+    if (!orderBookingEmployeeId) {
       setAlertModal({ visible: true, message: 'يرجى اختيار الموظف أولاً.' });
       return;
     }
@@ -2497,11 +2499,11 @@ export default function App() {
             <View style={styles.formGroup}>
               <Text style={{ color: '#e9d5ff', fontWeight: 'bold', marginBottom: 8, textAlign: 'right' }}>موظفة الرد (التي حجزت الطلب) *</Text>
               <TouchableOpacity 
-                style={[styles.modalTrigger, isFieldInvalid(selectedEmployeeId) && styles.inputError]}
-                onPress={() => setEmpModalVisible(true)}
+                style={[styles.modalTrigger, isFieldInvalid(orderBookingEmployeeId) && styles.inputError]}
+                onPress={() => setBookingEmpModalVisible(true)}
               >
-                <Text style={selectedEmployeeId ? styles.triggerText : styles.triggerPlaceholder}>
-                  {selectedEmployeeId ? employees.find(e => e.id === selectedEmployeeId)?.name : "-- اختر موظفة الرد --"}
+                <Text style={orderBookingEmployeeId ? styles.triggerText : styles.triggerPlaceholder}>
+                  {orderBookingEmployeeId ? employees.find(e => e.id === orderBookingEmployeeId)?.name : "-- اختر موظفة الرد --"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -3453,6 +3455,32 @@ export default function App() {
 
 
       {/* 1. Employee Selection Modal */}
+      <Modal visible={bookingEmpModalVisible} transparent animationType="slide">
+        <View style={styles.modalBg}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>اختر موظفة الرد (التي حجزت الطلب)</Text>
+            <FlatList 
+              data={employees}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={styles.modalItem}
+                  onPress={() => { setOrderBookingEmployeeId(item.id); setBookingEmpModalVisible(false); }}
+                >
+                  <Text style={styles.modalItemText}>{item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity 
+              style={styles.modalCloseBtn}
+              onPress={() => setBookingEmpModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>إلغاء</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={empModalVisible} transparent animationType="slide">
         <View style={styles.modalBg}>
           <View style={styles.modalContent}>
