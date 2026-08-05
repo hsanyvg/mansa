@@ -156,6 +156,7 @@ export default function App() {
              const data = mappingSnap.data();
              setAdminUid(data.adminUid);
              setSelectedEmployeeId(data.employeeId);
+             setLoggedInEmployeeId(data.employeeId);
              setIsEmployee(true);
              
              try {
