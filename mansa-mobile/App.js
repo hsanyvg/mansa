@@ -128,6 +128,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [adminUid, setAdminUid] = useState(null);
   const [isEmployee, setIsEmployee] = useState(false);
+  const [loggedInEmployeeId, setLoggedInEmployeeId] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   const [email, setEmail] = useState('');
@@ -1185,7 +1186,7 @@ export default function App() {
             receiptNumber: newBarcodeReceipt.trim(),
             employeeId: selectedEmployeeId || 'agent',
             employeeName: employees?.find(e => e.id === selectedEmployeeId)?.name || 'مجهول',
-            customerName: '',
+            customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
             customerPhone: '',
             governorate: '',
             region: '',
@@ -1244,7 +1245,7 @@ export default function App() {
       const orderData = {
         employeeId: selectedEmployeeId,
         employeeName: employees.find(e => e.id === selectedEmployeeId)?.name || 'مجهول',
-        customerName: customerName,
+        customerName: isEmployee ? (employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
         customerPhone: customerPhone,
         customerPhone2: customerPhone2,
         governorate: governorate,
@@ -2503,28 +2504,6 @@ export default function App() {
                   {selectedEmployeeId ? employees.find(e => e.id === selectedEmployeeId)?.name : "-- اختر موظفة الرد --"}
                 </Text>
               </TouchableOpacity>
-            </View>
-
-            {/* Receipt Number (Optional) */}
-            <View style={styles.formGroup}>
-              <TextInput 
-                style={[styles.input, { backgroundColor: isLightMode ? '#f1f5f9' : '#334155', color: isLightMode ? '#000' : '#fff' }]}
-                value={customReceiptNumber}
-                onChangeText={setCustomReceiptNumber}
-                placeholder="رقم الوصل (اختياري، يملأ عبر الباركود)"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-              />
-            </View>
-
-            {/* Input Name */}
-            <View style={styles.formGroup}>
-              <TextInput 
-                style={[styles.input, isFieldInvalid(customerName) && styles.inputError]}
-                value={customerName}
-                onChangeText={setCustomerName}
-                placeholder="اسم الزبون *"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-              />
             </View>
 
             {/* Governorate Modal Selector */}
