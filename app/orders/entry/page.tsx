@@ -381,6 +381,7 @@ export default function OrderEntryPage() {
   const isFieldInvalid = (fieldName: keyof typeof formData) => {
     if (!hasAttemptedSubmit) return false;
     if (fieldName === 'notes') return false; // Optional
+    if (fieldName === 'customerName') return false; // No longer required
     if (fieldName === 'customerPhone') return isPhoneInvalid;
     return formData[fieldName].trim() === '';
   };
@@ -747,7 +748,6 @@ export default function OrderEntryPage() {
     }
 
     if (
-      formData.customerName.trim() === '' ||
       !isValidPhoneNumber(formData.customerPhone) ||
       formData.governorate.trim() === '' ||
       formData.region.trim() === ''
@@ -829,7 +829,7 @@ export default function OrderEntryPage() {
         employeeName: emp?.name || 'مجهول',
         bookingEmployeeId: selectedBookingEmployeeId,
         bookingEmployeeName: bookingEmp?.name || 'مجهول',
-        customerName: formData.customerName,
+        customerName: formData.customerName || 'زبون',
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,
         governorate: formData.governorate,
@@ -1069,7 +1069,7 @@ export default function OrderEntryPage() {
             </div>
           </div>
 
-          <div className={styles.formGroup}>
+          <div className={styles.formGroup} style={{ display: 'none' }}>
             <label className={styles.label}>اسم الزبون</label>
             <input 
               id="customerName"

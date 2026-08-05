@@ -52,7 +52,7 @@ export default function Dashboard() {
   const [tempGaugeEndDate, setTempGaugeEndDate] = useState('');
 
   // Sales Card custom filters
-  const [salesCardViewType, setSalesCardViewType] = useState<'sales' | 'orders'>('sales');
+  const [salesCardViewType, setSalesCardViewType] = useState<'sales' | 'orders' | 'total_orders' | 'returned_orders' | 'delivered_and_returned'>('sales');
   const [salesCardYear, setSalesCardYear] = useState(new Date().getFullYear());
   const [salesCardMonth, setSalesCardMonth] = useState(new Date().getMonth() + 1);
 
@@ -515,14 +515,18 @@ export default function Dashboard() {
 
   const salesCardData = React.useMemo(() => {
     const points: { value: number; time?: number; label: string }[] = [];
+    const secondaryPoints: { value: number; time?: number; label: string }[] = [];
     const daysInMonth = new Date(salesCardYear, salesCardMonth, 0).getDate();
 
     for (let i = 1; i <= daysInMonth; i++) {
       points.push({ value: 0, time: new Date(salesCardYear, salesCardMonth - 1, i).getTime(), label: `${i}` });
+      secondaryPoints.push({ value: 0, time: new Date(salesCardYear, salesCardMonth - 1, i).getTime(), label: `${i}` });
     }
 
     let total = 0;
     let prevTotal = 0;
+    let secondaryTotal = 0;
+    let prevSecondaryTotal = 0;
 
     orders.forEach(order => {
       if (order.status === 'cancelled' || order.status === 'deleted' || order.isDeleted === true) return;
@@ -535,10 +539,27 @@ export default function Dashboard() {
       const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
 
       const isDelivered = order.status === 'delivered' || order.status === 'completed' || order.is_settled === true || order.paymentStatus === 'partially_settled' || order.status === 'partial';
+      const isReturned = order.status === 'returned' || order.status === 'returned_agent' || order.status === 'returned_warehouse' || order.returnStatus === 'in_warehouse';
+
+      let shouldCount = false;
+      let shouldCountSecondary = false;
+
+      if (salesCardViewType === 'sales') {
+        shouldCount = isDelivered;
+      } else if (salesCardViewType === 'orders') {
+        shouldCount = isDelivered;
+      } else if (salesCardViewType === 'total_orders') {
+        shouldCount = true;
+      } else if (salesCardViewType === 'returned_orders') {
+        shouldCount = isReturned;
+      } else if (salesCardViewType === 'delivered_and_returned') {
+        shouldCount = isDelivered;
+        shouldCountSecondary = isReturned;
+      }
 
       if (yr === salesCardYear && mo === salesCardMonth) {
         const dayIndex = date.getDate() - 1;
-        if (isDelivered) {
+        if (shouldCount) {
           if (salesCardViewType === 'sales') {
             const amount = Number(order.totalAmount) || 0;
             points[dayIndex].value += amount;
@@ -548,21 +569,28 @@ export default function Dashboard() {
             total += 1;
           }
         }
+        if (shouldCountSecondary) {
+          secondaryPoints[dayIndex].value += 1;
+          secondaryTotal += 1;
+        }
       } else if (
         (mo === salesCardMonth - 1 && yr === salesCardYear) || 
         (salesCardMonth === 1 && mo === 12 && yr === salesCardYear - 1)
       ) {
-        if (isDelivered) {
+        if (shouldCount) {
           if (salesCardViewType === 'sales') {
             prevTotal += Number(order.totalAmount) || 0;
           } else {
             prevTotal += 1;
           }
         }
+        if (shouldCountSecondary) {
+          prevSecondaryTotal += 1;
+        }
       }
     });
 
-    return { points, total, prevTotal };
+    return { points, secondaryPoints, total, prevTotal, secondaryTotal, prevSecondaryTotal };
   }, [orders, salesCardYear, salesCardMonth, salesCardViewType]);
 
   const svgChartPath = React.useMemo(() => {
@@ -570,42 +598,59 @@ export default function Dashboard() {
     const height = 180;
     const padding = 8;
     const chartWidth = width;
-    const chartHeight = 152; // drawing height range (160 - 8)
+    const baseline = 160;
+    const topMargin = 24; // Ensure enough space at the top for labels
+    const chartHeight = baseline - topMargin;
 
     if (salesCardData.points.length === 0) {
-      return { barPaths: [], maxVal: 0, minVal: 0 };
+      return { barPaths: [], secondaryBarPaths: [], maxVal: 0, minVal: 0 };
     }
 
+    const isDouble = salesCardViewType === 'delivered_and_returned';
     const values = salesCardData.points.map(p => p.value);
-    const maxVal = Math.max(...values);
-    const minVal = Math.min(...values);
+    const secValues = salesCardData.secondaryPoints.map(p => p.value);
+    const allValues = isDouble ? [...values, ...secValues] : values;
+    const maxVal = Math.max(...allValues);
+    const minVal = Math.min(...allValues);
     const range = maxVal - minVal;
 
     const slotWidth = chartWidth / salesCardData.points.length;
-    const barWidth = Math.min(24, Math.max(6, slotWidth * 0.45));
+    const barWidth = isDouble 
+      ? Math.min(12, Math.max(3, slotWidth * 0.35))
+      : Math.min(24, Math.max(6, slotWidth * 0.45));
     const r = Math.min(5, barWidth / 2);
-    const baseline = 160;
+
+    const createPath = (value: number, x: number) => {
+      if (value === 0) return '';
+      const y = range === 0 
+        ? topMargin + chartHeight / 2 
+        : topMargin + chartHeight - ((value - minVal) / range) * chartHeight;
+      return `M ${x - barWidth / 2} ${baseline} 
+              L ${x - barWidth / 2} ${y + r} 
+              A ${r} ${r} 0 0 1 ${x - barWidth / 2 + r} ${y} 
+              L ${x + barWidth / 2 - r} ${y} 
+              A ${r} ${r} 0 0 1 ${x + barWidth / 2} ${y + r} 
+              L ${x + barWidth / 2} ${baseline} 
+              Z`;
+    };
 
     const barPaths = salesCardData.points.map((point, idx) => {
-      const x = (idx + 0.5) * slotWidth;
-      const y = range === 0 
-        ? 8 + chartHeight / 2 
-        : 8 + chartHeight - ((point.value - minVal) / range) * chartHeight;
-      
-      const path = point.value === 0 
-        ? '' 
-        : `M ${x - barWidth / 2} ${baseline} 
-           L ${x - barWidth / 2} ${y + r} 
-           A ${r} ${r} 0 0 1 ${x - barWidth / 2 + r} ${y} 
-           L ${x + barWidth / 2 - r} ${y} 
-           A ${r} ${r} 0 0 1 ${x + barWidth / 2} ${y + r} 
-           L ${x + barWidth / 2} ${baseline} 
-           Z`;
-      return { path, val: point.value, label: point.label, x, y };
+      const centerX = (idx + 0.5) * slotWidth;
+      const x = isDouble ? centerX - barWidth / 2 - 0.5 : centerX;
+      const y = range === 0 ? topMargin + chartHeight / 2 : topMargin + chartHeight - ((point.value - minVal) / range) * chartHeight;
+      return { path: createPath(point.value, x), val: point.value, label: point.label, x, y };
     });
 
-    return { barPaths, maxVal, minVal };
-  }, [salesCardData]);
+    const secondaryBarPaths = salesCardData.secondaryPoints.map((point, idx) => {
+      if (!isDouble) return { path: '', val: 0, label: '', x: 0, y: 0 };
+      const centerX = (idx + 0.5) * slotWidth;
+      const x = centerX + barWidth / 2 + 0.5;
+      const y = range === 0 ? topMargin + chartHeight / 2 : topMargin + chartHeight - ((point.value - minVal) / range) * chartHeight;
+      return { path: createPath(point.value, x), val: point.value, label: point.label, x, y };
+    });
+
+    return { barPaths, secondaryBarPaths, maxVal, minVal };
+  }, [salesCardData, salesCardViewType]);
 
   const salesTrendPercentage = React.useMemo(() => {
     const now = new Date();
@@ -665,6 +710,8 @@ export default function Dashboard() {
     return Math.round(((currentSales - prevSales) / prevSales) * 10000) / 100;
   }, [orders, filter, filterStartDate, filterEndDate]);
 
+
+
   const yAxisLabels = React.useMemo(() => {
     const max = svgChartPath.maxVal || 0;
     const min = svgChartPath.minVal || 0;
@@ -673,7 +720,7 @@ export default function Dashboard() {
       return {
         top: '100,000',
         mid: '50,000',
-        bottom: '0'
+        bottom: ''
       };
     }
 
@@ -681,7 +728,7 @@ export default function Dashboard() {
       return {
         top: Math.round(max).toLocaleString(),
         mid: Math.round(max / 2).toLocaleString(),
-        bottom: '0'
+        bottom: ''
       };
     }
 
@@ -689,7 +736,7 @@ export default function Dashboard() {
     return {
       top: Math.round(max).toLocaleString(),
       mid: Math.round(min + range / 2).toLocaleString(),
-      bottom: Math.round(min).toLocaleString()
+      bottom: ''
     };
   }, [svgChartPath.maxVal, svgChartPath.minVal]);
 
@@ -1320,10 +1367,13 @@ export default function Dashboard() {
                 <select 
                   style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
                   value={salesCardViewType} 
-                  onChange={(e) => setSalesCardViewType(e.target.value as 'sales' | 'orders')}
+                  onChange={(e) => setSalesCardViewType(e.target.value as 'sales' | 'orders' | 'total_orders' | 'returned_orders')}
                 >
                   <option value="sales">المبيعات</option>
-                  <option value="orders">عدد الطلبات</option>
+                  <option value="orders">عدد طلبات الواصلة</option>
+                  <option value="total_orders">عدد طلبات الاجمالي</option>
+                  <option value="returned_orders">عدد طلبات الراجعه</option>
+                  <option value="delivered_and_returned">الواصل والراجع معاً</option>
                 </select>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <select 
@@ -1361,19 +1411,70 @@ export default function Dashboard() {
                     <stop offset="30%" stopColor="#a855f7" />
                     <stop offset="100%" stopColor="rgba(168, 85, 247, 0.05)" />
                   </linearGradient>
+                  <linearGradient id="deliveredBarGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#4ade80" />
+                    <stop offset="30%" stopColor="#22c55e" />
+                    <stop offset="100%" stopColor="rgba(34, 197, 94, 0.05)" />
+                  </linearGradient>
+                  <linearGradient id="secondaryBarGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#fca5a5" />
+                    <stop offset="30%" stopColor="#ef4444" />
+                    <stop offset="100%" stopColor="rgba(239, 68, 68, 0.05)" />
+                  </linearGradient>
+                  <linearGradient id="purpleShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="rgba(168, 85, 247, 0.2)" />
+                    <stop offset="100%" stopColor="rgba(168, 85, 247, 0)" />
+                  </linearGradient>
+                  <linearGradient id="greenShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="rgba(74, 222, 128, 0.2)" />
+                    <stop offset="100%" stopColor="rgba(74, 222, 128, 0)" />
+                  </linearGradient>
+                  <linearGradient id="redShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="rgba(248, 113, 113, 0.2)" />
+                    <stop offset="100%" stopColor="rgba(248, 113, 113, 0)" />
+                  </linearGradient>
                 </defs>
 
                 {/* Apple-style horizontal dashed gridlines corresponding to Top, Mid, Bottom */}
-                <line x1="0" y1="8" x2="500" y2="8" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
-                <line x1="0" y1="84" x2="500" y2="84" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
+                <line x1="0" y1="24" x2="500" y2="24" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
+                <line x1="0" y1="92" x2="500" y2="92" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
                 <line x1="0" y1="160" x2="500" y2="160" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+
+                {/* Highlight today's background */}
+                {(() => {
+                  const today = new Date();
+                  if (salesCardYear === today.getFullYear() && salesCardMonth === today.getMonth() + 1) {
+                    const todayDay = today.getDate();
+                    if (todayDay <= salesCardData.points.length) {
+                      const slotWidth = 500 / salesCardData.points.length;
+                      const x = (todayDay - 1) * slotWidth;
+                      return (
+                        <rect x={x} y="24" width={slotWidth} height="136" fill="rgba(255, 255, 255, 0.05)" rx="4" />
+                      );
+                    }
+                  }
+                  return null;
+                })()}
 
                 {/* Render the bars */}
                 {svgChartPath.barPaths.map((bar, i) => bar.path && (
                   <path
                     key={`path-${i}`}
                     d={bar.path}
-                    fill="url(#salesBarGradient)"
+                    fill={
+                      salesCardViewType === 'sales' ? "url(#salesBarGradient)" :
+                      salesCardViewType === 'returned_orders' ? "url(#secondaryBarGradient)" :
+                      "url(#deliveredBarGradient)"
+                    }
+                    className={styles.chartBarPath}
+                  />
+                ))}
+
+                {svgChartPath.secondaryBarPaths && svgChartPath.secondaryBarPaths.map((bar, i) => bar.path && (
+                  <path
+                    key={`sec-path-${i}`}
+                    d={bar.path}
+                    fill="url(#secondaryBarGradient)"
                     className={styles.chartBarPath}
                   />
                 ))}
@@ -1381,21 +1482,20 @@ export default function Dashboard() {
                 {/* Render Values on top of bars */}
                 {svgChartPath.barPaths.map((bar, i) => {
                   if (bar.val === 0) return null;
-                  
                   const displayVal = bar.val >= 1000000 
                     ? (bar.val / 1000000).toFixed(1) + 'm' 
                     : bar.val >= 1000 
                     ? (bar.val / 1000).toFixed(1) + 'k' 
                     : bar.val.toString();
-
+                  const isDouble = salesCardViewType === 'delivered_and_returned';
                   return (
                     <text
                       key={`val-${i}`}
                       x={bar.x}
-                      y={bar.y - 4}
+                      y={isDouble ? bar.y - 11 : bar.y - 4}
                       textAnchor="middle"
-                      fill="rgba(255, 255, 255, 0.6)"
-                      fontSize="8"
+                      fill={isDouble ? "#4ade80" : "rgba(255, 255, 255, 0.6)"}
+                      fontSize={isDouble ? "6.5" : "7"}
                       fontWeight="600"
                     >
                       {displayVal}
@@ -1403,20 +1503,86 @@ export default function Dashboard() {
                   );
                 })}
 
+                {svgChartPath.secondaryBarPaths && svgChartPath.secondaryBarPaths.map((bar, i) => {
+                  if (bar.val === 0) return null;
+                  const displayVal = bar.val >= 1000000 
+                    ? (bar.val / 1000000).toFixed(1) + 'm' 
+                    : bar.val >= 1000 
+                    ? (bar.val / 1000).toFixed(1) + 'k' 
+                    : bar.val.toString();
+                  return (
+                    <text
+                      key={`sec-val-${i}`}
+                      x={bar.x}
+                      y={bar.y - 3}
+                      textAnchor="middle"
+                      fill="#fca5a5"
+                      fontSize="6.5"
+                      fontWeight="600"
+                    >
+                      {displayVal}
+                    </text>
+                  );
+                })}
+
+                {/* Column shadows to numbers */}
+                {svgChartPath.barPaths.map((bar, i) => {
+                  if (bar.val === 0) return null;
+                  const isDouble = salesCardViewType === 'delivered_and_returned';
+                  const slotWidth = 500 / salesCardData.points.length;
+                  const barWidth = isDouble 
+                    ? Math.min(12, Math.max(3, slotWidth * 0.35))
+                    : Math.min(24, Math.max(6, slotWidth * 0.45));
+                  
+                  return (
+                    <rect
+                      key={`shadow-p-${i}`}
+                      x={bar.x - barWidth / 2}
+                      y="158"
+                      width={barWidth}
+                      height="20"
+                      fill={
+                        salesCardViewType === 'sales' ? "url(#purpleShadow)" :
+                        salesCardViewType === 'returned_orders' ? "url(#redShadow)" :
+                        "url(#greenShadow)"
+                      }
+                    />
+                  );
+                })}
+                {svgChartPath.secondaryBarPaths && svgChartPath.secondaryBarPaths.map((bar, i) => {
+                  if (bar.val === 0) return null;
+                  const slotWidth = 500 / salesCardData.points.length;
+                  const barWidth = Math.min(12, Math.max(3, slotWidth * 0.35));
+                  return (
+                    <rect
+                      key={`shadow-s-${i}`}
+                      x={bar.x - barWidth / 2}
+                      y="158"
+                      width={barWidth}
+                      height="20"
+                      fill="url(#redShadow)"
+                    />
+                  );
+                })}
+
                 {/* Render X-Axis weekday/period labels */}
-                {svgChartPath.barPaths.map((bar, i) => (
-                  <text
-                    key={`lbl-${i}`}
-                    x={bar.x}
-                    y="173"
-                    textAnchor="middle"
-                    fill="rgba(255, 255, 255, 0.3)"
-                     fontSize="9"
-                     fontWeight="700"
-                   >
+                {svgChartPath.barPaths.map((bar, i) => {
+                  const slotWidth = 500 / salesCardData.points.length;
+                  const centerX = (i + 0.5) * slotWidth;
+                  return (
+                    <text
+                      key={`lbl-${i}`}
+                      x={centerX}
+                      y="173"
+                      textAnchor="middle"
+                      fill="rgba(255, 255, 255, 0.4)"
+                      fontSize="9"
+                      fontWeight="700"
+                    >
                       {bar.label}
-                   </text>
-                 ))}
+                    </text>
+                  );
+                })}
                </svg>
              </div>
 
@@ -1438,7 +1604,13 @@ export default function Dashboard() {
                   })()}
                 </div>
                 <div className={styles.salesStatusLabel}>
-                  <span>{salesCardViewType === 'sales' ? 'إجمالي المبيعات الواصلة' : 'إجمالي عدد الطلبات'} في شهر {salesCardMonth}</span>
+                  <span>
+                    {salesCardViewType === 'sales' ? 'إجمالي المبيعات الواصلة' : 
+                     salesCardViewType === 'orders' ? 'إجمالي عدد الطلبات الواصلة' :
+                     salesCardViewType === 'total_orders' ? 'إجمالي عدد الطلبات الاجمالي' :
+                     salesCardViewType === 'delivered_and_returned' ? 'إجمالي الواصل والراجع' :
+                     'إجمالي عدد الطلبات الراجعة'} في شهر {salesCardMonth}
+                  </span>
                   <svg className={styles.checkboxIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                     <rect x="3" y="3" width="18" height="18" rx="4" fill="rgba(16, 185, 129, 0.1)" stroke="#10b981" />
                     <path d="M9 12l2 2 4-4" stroke="#10b981" strokeLinecap="round" strokeLinejoin="round" />

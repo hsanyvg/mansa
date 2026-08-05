@@ -42,7 +42,7 @@ export default function TreasuryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   
   // Modal State
-  const [activeModal, setActiveModal] = useState<'deposit' | 'withdraw' | 'transfer' | null>(null);
+  const [activeModal, setActiveModal] = useState<'deposit' | 'withdraw' | 'transfer' | 'adjust' | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -131,7 +131,7 @@ export default function TreasuryPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleOpenModal = (type: 'deposit' | 'withdraw' | 'transfer') => {
+  const handleOpenModal = (type: 'deposit' | 'withdraw' | 'transfer' | 'adjust') => {
     setFormData({
       walletId: '',
       fromWalletId: '',
@@ -152,6 +152,43 @@ export default function TreasuryPage() {
     }
 
     const numAmount = Number(formData.amount);
+
+    if (activeModal === 'adjust') {
+      if (!formData.walletId) return showToastMsg("يرجى تحديد المحفظة", "error");
+      const currentBalance = getWalletBalance(formData.walletId, formData.currency as 'IQD' | 'USD');
+      const difference = numAmount - currentBalance;
+      
+      if (difference === 0) {
+        return showToastMsg("الرصيد الفعلي مطابق للرصيد المسجل، لا داعي للتسوية", "error");
+      }
+      
+      const type = difference > 0 ? 'deposit' : 'withdraw';
+      const absDiff = Math.abs(difference);
+      const detailsPrefix = difference > 0 ? 'تسوية جرد (فائض) - ' : 'تسوية جرد (نقص) - ';
+
+      const now = new Date();
+      const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+      const data: any = {
+        type: type,
+        amount: absDiff,
+        currency: formData.currency,
+        date: formData.date,
+        time: time,
+        details: detailsPrefix + formData.details,
+        createdAt: serverTimestamp(),
+        walletId: formData.walletId
+      };
+
+      try {
+        await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'), data);
+        showToastMsg("تمت تسوية الرصيد بنجاح");
+        setActiveModal(null);
+      } catch (err) {
+        showToastMsg("حدث خطأ أثناء الحفظ", "error");
+      }
+      return;
+    }
 
     if (activeModal === 'transfer') {
       if (!formData.fromWalletId || !formData.toWalletId) return showToastMsg("يرجى تحديد المحفظتين", "error");
@@ -324,6 +361,9 @@ export default function TreasuryPage() {
         <button className={`${styles.actionBtn} ${styles.transferBtn}`} onClick={() => handleOpenModal('transfer')}>
           🔄 تحويل داخلي
         </button>
+        <button className={`${styles.actionBtn}`} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }} onClick={() => handleOpenModal('adjust')}>
+          ⚙️ تسوية الرصيد
+        </button>
       </div>
 
       {/* Ledger Table */}
@@ -488,7 +528,8 @@ export default function TreasuryPage() {
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <h2 className={styles.modalTitle}>
               {activeModal === 'deposit' ? 'إيداع نقدي جديد' : 
-               activeModal === 'withdraw' ? 'سحب نقدي جديد' : 'تحويل داخلي بين المحافظ'}
+               activeModal === 'withdraw' ? 'سحب نقدي جديد' : 
+               activeModal === 'adjust' ? 'تسوية الرصيد' : 'تحويل داخلي بين المحافظ'}
             </h2>
             <form onSubmit={handleSubmit}>
               {activeModal === 'transfer' ? (
@@ -535,7 +576,7 @@ export default function TreasuryPage() {
 
               <div style={{display: 'flex', gap: '1rem'}}>
                 <div className={styles.formGroup} style={{flex: 2}}>
-                  <label className={styles.label}>المبلغ</label>
+                  <label className={styles.label}>{activeModal === 'adjust' ? 'الرصيد الفعلي (الموجود حالياً)' : 'المبلغ'}</label>
                   <input 
                     type="number" 
                     className={styles.input} 

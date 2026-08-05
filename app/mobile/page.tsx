@@ -279,7 +279,7 @@ export default function MobileApp() {
 
   const isFieldInvalid = (fieldName: keyof typeof formData) => {
     if (!hasAttemptedSubmit) return false;
-    if (fieldName === 'notes' || fieldName === 'fbLoginId') return false;
+    if (fieldName === 'notes' || fieldName === 'fbLoginId' || fieldName === 'customerName') return false;
     if (fieldName === 'customerPhone') return isPhoneInvalid;
     return formData[fieldName].trim() === '';
   };
@@ -325,7 +325,6 @@ export default function MobileApp() {
     }
 
     if (
-      formData.customerName.trim() === '' ||
       !isValidPhoneNumber(formData.customerPhone) ||
       formData.governorate.trim() === '' ||
       formData.region.trim() === ''
@@ -395,7 +394,7 @@ export default function MobileApp() {
       const orderData = {
         employeeId: selectedEmployeeId,
         employeeName: emp?.name || 'مجهول',
-        customerName: formData.customerName,
+        customerName: formData.customerName || 'زبون',
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,
         governorate: formData.governorate,
@@ -613,7 +612,7 @@ export default function MobileApp() {
             </div>
 
             {/* Customer Name */}
-            <div className={styles.formGroup}>
+            <div className={styles.formGroup} style={{ display: 'none' }}>
               <input 
                 type="text" 
                 name="customerName"
@@ -621,7 +620,6 @@ export default function MobileApp() {
                 value={formData.customerName}
                 onChange={handleFormChange}
                 placeholder="اسم الزبون *"
-                required
                 autoComplete="off"
               />
             </div>

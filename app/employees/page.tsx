@@ -402,7 +402,10 @@ export default function EmployeesPage() {
         let absentCount = 0;
         
         let iterDate = new Date(dateRange.start);
-        const endIter = new Date(dateRange.end);
+        const actualEnd = new Date(dateRange.end);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        const endIter = actualEnd > todayEnd ? todayEnd : actualEnd;
         
         while (iterDate <= endIter) {
           const dateKey = toLocalDate(iterDate);
@@ -581,7 +584,10 @@ export default function EmployeesPage() {
       });
 
       let iterDate = new Date(dateRange.start);
-      const endIter = new Date(dateRange.end);
+      const actualEnd = new Date(dateRange.end);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+      const endIter = actualEnd > todayEnd ? todayEnd : actualEnd;
       let absentCount = 0;
       
       const daysInMonth = new Date(dateRange.end.getFullYear(), dateRange.end.getMonth() + 1, 0).getDate();

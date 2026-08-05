@@ -2463,7 +2463,7 @@ export default function OrdersListPage() {
           'رقم الطلب': order.id.slice(-6).toUpperCase(),
           'تاريخ الإضافة': order.addDate,
           'وقت الإضافة': order.addTime,
-          'اسم العميل': order.customerName,
+          'اسم العميل': order.employeeName || '---',
           'المحافظة': order.governorate,
           'المنطقة': order.region,
           'رقم الهاتف': order.customerPhone || order.phone,
@@ -2471,7 +2471,7 @@ export default function OrdersListPage() {
           'اجرة التوصيل': order.deliveryCost || 0,
           'المنتجات': itemsList,
           'الحالة': statusLabel,
-          'اسم الموظف': order.employeeName,
+          'الموظف اللي حجز الطلب': order.bookingEmployeeName || '---',
           'ملاحظات': order.notes
         };
       });
@@ -2538,7 +2538,7 @@ export default function OrdersListPage() {
 
         return {
           'رقم الوصل': order.id.slice(-6).toUpperCase(),
-          'اسم الزبون': order.customerName || '',
+          'اسم الزبون': order.employeeName || '',
           'هاتف الزبون': phone1,
           'هاتف الزبون2': phone2,
           'المحافظة': zitaGov,
@@ -2681,7 +2681,7 @@ export default function OrdersListPage() {
                    </div>
                    
                    <table style="width: 100%; font-size: 8pt; font-weight: bold; border-collapse: separate; border-spacing: 0 4px;">
-                      <tr><td style="color: #000; width: 65px; text-align: right;">اسم الزبون:</td><td style="text-align: right; font-size: 9pt;">${order.customerName || ''}</td></tr>
+                      <tr><td style="color: #000; width: 65px; text-align: right;">اسم الزبون:</td><td style="text-align: right; font-size: 9pt;">${order.employeeName || ''}</td></tr>
                       <tr><td style="color: #000; text-align: right; vertical-align: middle;">هاتف:</td><td style="text-align: right; direction: ltr;">
                          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px;">
                            <span style="font-size: 9pt;">${phoneStr}</span>
@@ -4047,7 +4047,7 @@ export default function OrdersListPage() {
                       </div>
                     </td>
                   )}
-                  {visibleColumns.customerName && <td>{order.customerName}</td>}
+                  {visibleColumns.customerName && <td style={{ fontWeight: 'bold' }}>{order.employeeName || '---'}</td>}
                   {visibleColumns.governorate && <td>{order.governorate}</td>}
                   {visibleColumns.phone && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>}
                   {visibleColumns.totalAmount && (
@@ -4151,7 +4151,7 @@ export default function OrdersListPage() {
                   {visibleColumns.employeeName && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
-                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || order.employeeName || '---'}</span>
+                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || '---'}</span>
                       </div>
                     </td>
                   )}
