@@ -428,8 +428,8 @@ export default function Dashboard() {
     // Find all unique active employees from all orders
     const allEmployees = new Set<string>();
     orders.forEach(order => {
-      const empName = order.employeeName?.trim() || 'مجهول';
-      if (empName !== '---' && empName !== 'مجهول') {
+      const empName = (order.bookingEmployeeName || order.employeeName || '').trim() || 'غير معروف';
+      if (empName !== '---' && empName !== 'مجهول' && empName !== 'غير معروف') {
         allEmployees.add(empName);
       }
     });
@@ -441,8 +441,8 @@ export default function Dashboard() {
 
     // Accumulate actual stats from filtered orders
     teamFilteredOrders.forEach(order => {
-      const empName = order.employeeName?.trim() || 'مجهول';
-      if (empName === '---' || empName === 'مجهول') return;
+      const empName = (order.bookingEmployeeName || order.employeeName || '').trim() || 'غير معروف';
+      if (empName === '---' || empName === 'مجهول' || empName === 'غير معروف') return;
 
       if (!empMap.has(empName)) {
         empMap.set(empName, { name: empName, delivered: 0, returned: 0, pending: 0, total: 0 });

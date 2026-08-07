@@ -394,6 +394,8 @@ export default function MobileApp() {
       const orderData = {
         employeeId: selectedEmployeeId,
         employeeName: emp?.name || 'مجهول',
+        bookingEmployeeId: selectedEmployeeId, // On mobile, the data entry employee is also the booking employee
+        bookingEmployeeName: emp?.name || 'مجهول',
         customerName: formData.customerName || 'زبون',
         customerPhone: formData.customerPhone,
         customerPhone2: formData.customerPhone2,

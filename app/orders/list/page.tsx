@@ -163,9 +163,9 @@ export default function OrdersListPage() {
   // Column Visibility State
   const defaultVisibleColumns = {
     id: true,
-    customerName: true,
     governorate: true,
     phone: true,
+    phone2: true,
     totalAmount: true,
     deliveryCost: true,
     netAmount: true,
@@ -173,6 +173,7 @@ export default function OrdersListPage() {
     status: true,
     addDate: true,
     employeeName: true,
+    bookingEmployeeName: true,
     shippingCompany: true,
     goodsPosition: true
   };
@@ -195,9 +196,9 @@ export default function OrdersListPage() {
   const defaultColumnWidths = {
     selection: 40,
     id: 110,
-    customerName: 180,
     governorate: 120,
     phone: 130,
+    phone2: 130,
     totalAmount: 130,
     deliveryCost: 130,
     netAmount: 130,
@@ -205,6 +206,7 @@ export default function OrdersListPage() {
     status: 180,
     addDate: 140,
     employeeName: 180,
+    bookingEmployeeName: 180,
     shippingCompany: 140,
     goodsPosition: 140,
     actions: 70
@@ -245,10 +247,14 @@ export default function OrdersListPage() {
         let newWidth = startWidth + diff;
         if (newWidth < 40) newWidth = 40; // minimum width
         
-        setColumnWidths(prev => ({
-          ...prev,
-          [resizingCol]: newWidth
-        }));
+        setColumnWidths(prev => {
+          const next = {
+            ...prev,
+            [resizingCol]: newWidth
+          };
+          localStorage.setItem('orders_column_widths', JSON.stringify(next));
+          return next;
+        });
         setResizingCol(null);
         if (dragLineRef.current) {
           dragLineRef.current.style.display = 'none';
@@ -327,20 +333,19 @@ export default function OrdersListPage() {
 
   // Column Filters State
   const [columnFilters, setColumnFilters] = useState({
-    id: '',
-    customerName: '',
-    governorate: '',
-    phone: '',
-    totalAmount: '',
-    deliveryCost: '',
-    netAmount: '',
-    notes: '',
-    status: '',
-    addDate: '',
-    addTime: '',
-    employeeName: '',
-    shippingCompany: ''
+    id: '', customerName: '', governorate: '', phone: '', phone2: '', totalAmount: '',
+    deliveryCost: '', netAmount: '', notes: '', status: '', addDate: '',
+    addTime: '', employeeName: '', bookingEmployeeName: '', shippingCompany: ''
   });
+
+  useEffect(() => {
+    const saved = localStorage.getItem('orders_column_filters');
+    if (saved) {
+      try {
+        setColumnFilters(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, []);
 
   useEffect(() => {
     setSelectedStatus('all');
@@ -795,7 +800,11 @@ export default function OrdersListPage() {
   }, [selectedReturnMonth, groupedReturnBatches]);
 
   const handleFilterChange = (column: keyof typeof columnFilters, value: string) => {
-    setColumnFilters(prev => ({ ...prev, [column]: value }));
+    setColumnFilters(prev => {
+      const next = { ...prev, [column]: value };
+      localStorage.setItem('orders_column_filters', JSON.stringify(next));
+      return next;
+    });
   };
 
   const confirmSingleReturnReceipt = async () => {
@@ -983,6 +992,7 @@ export default function OrdersListPage() {
     const region = (order.region || '').toLowerCase();
     const notes = (order.notes || '').toLowerCase();
     const empName = (order.employeeName || '').toLowerCase();
+    const bookingEmpName = (order.bookingEmployeeName || order.employeeName || '').toLowerCase();
     const shipComp = (order.shippingCompany || '').toLowerCase();
 
     const delivery = (order.deliveryCost || '').toString().toLowerCase();
@@ -993,6 +1003,7 @@ export default function OrdersListPage() {
       custName.includes(columnFilters.customerName.toLowerCase()) &&
       gov.includes(columnFilters.governorate.toLowerCase()) &&
       phone.includes(columnFilters.phone.toLowerCase()) &&
+      (order.customerPhone2 || order.phone2 || '').toLowerCase().includes(columnFilters.phone2?.toLowerCase() || '') &&
       (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase())) &&
       (columnFilters.deliveryCost === '' || delivery.includes(columnFilters.deliveryCost.toLowerCase())) &&
       (columnFilters.netAmount === '' || net.includes(columnFilters.netAmount.toLowerCase())) &&
@@ -1001,6 +1012,7 @@ export default function OrdersListPage() {
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
       aTime.includes(columnFilters.addTime.toLowerCase()) &&
       empName.includes(columnFilters.employeeName.toLowerCase()) &&
+      bookingEmpName.includes((columnFilters.bookingEmployeeName || '').toLowerCase()) &&
       shipComp.includes((columnFilters.shippingCompany || '').toLowerCase())
     );
 
@@ -2306,11 +2318,13 @@ export default function OrdersListPage() {
       const updates: any = {
         customerName: editingOrder.customerName || '',
         customerPhone: editingOrder.customerPhone || editingOrder.phone || '',
+        customerPhone2: editingOrder.customerPhone2 || editingOrder.phone2 || '',
         governorate: editingOrder.governorate || '',
         region: editingOrder.region || '',
         notes: editingOrder.notes || '',
         status: editingOrder.status || 'pending',
         employeeName: editingOrder.employeeName || '',
+        bookingEmployeeName: editingOrder.bookingEmployeeName || '',
         shippingCompany: editingOrder.shippingCompany || '',
         items: editingOrder.items || [],
         totalAmount: Number(editingOrder.totalAmount) || 0
@@ -2463,7 +2477,7 @@ export default function OrdersListPage() {
           'رقم الطلب': order.id.slice(-6).toUpperCase(),
           'تاريخ الإضافة': order.addDate,
           'وقت الإضافة': order.addTime,
-          'اسم العميل': order.employeeName || '---',
+          'اسم العميل': order.bookingEmployeeName || order.employeeName || '---',
           'المحافظة': order.governorate,
           'المنطقة': order.region,
           'رقم الهاتف': order.customerPhone || order.phone,
@@ -2471,7 +2485,7 @@ export default function OrdersListPage() {
           'اجرة التوصيل': order.deliveryCost || 0,
           'المنتجات': itemsList,
           'الحالة': statusLabel,
-          'الموظف اللي حجز الطلب': order.bookingEmployeeName || '---',
+          'الموظف اللي حجز الطلب': order.bookingEmployeeName || order.employeeName || '---',
           'ملاحظات': order.notes
         };
       });
@@ -2538,7 +2552,7 @@ export default function OrdersListPage() {
 
         return {
           'رقم الوصل': order.id.slice(-6).toUpperCase(),
-          'اسم الزبون': order.employeeName || '',
+          'اسم الزبون': order.bookingEmployeeName || order.employeeName || '',
           'هاتف الزبون': phone1,
           'هاتف الزبون2': phone2,
           'المحافظة': zitaGov,
@@ -2555,6 +2569,101 @@ export default function OrdersListPage() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'زيطة');
       XLSX.writeFile(workbook, 'Zita_Orders_Export.xlsx');
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء التصدير' });
+    }
+  };
+
+  const handleExportPrimeExcel = () => {
+    try {
+      const ordersToExport = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
+      if (ordersToExport.length === 0) {
+        setNotificationModal({ show: true, message: 'لا توجد طلبات للتصدير' });
+        return;
+      }
+
+      const PRIME_GOVS = [
+        { name: 'بغداد', key: 'BGD' },
+        { name: 'الناصرية ذي قار', key: 'NAS' },
+        { name: 'ديالى', key: 'DYL' },
+        { name: 'الكوت واسط', key: 'KOT' },
+        { name: 'كربلاء', key: 'KRB' },
+        { name: 'دهوك', key: 'DOH' },
+        { name: 'بابل الحلة', key: 'BBL' },
+        { name: 'النجف', key: 'NJF' },
+        { name: 'البصرة', key: 'BAS' },
+        { name: 'اربيل', key: 'ARB' },
+        { name: 'كركوك', key: 'KRK' },
+        { name: 'السليمانيه', key: 'SMH' },
+        { name: 'صلاح الدين', key: 'SAH' },
+        { name: 'الانبار', key: 'ANB' },
+        { name: 'السماوة المثنى', key: 'SAM' },
+        { name: 'موصل', key: 'MOS' },
+        { name: 'الديوانية', key: 'DWN' },
+        { name: 'العمارة ميسان', key: 'AMA' }
+      ];
+
+      const exportData = ordersToExport.map((order, index) => {
+        const itemsList = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join(' + ');
+        const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
+        
+        let formattedNotes = itemsList;
+        if (order.notes) {
+          formattedNotes += `\n\n*${order.notes}`;
+        }
+
+        let phone1 = order.customerPhone || order.phone || '';
+        if (phone1.includes('-')) phone1 = phone1.split('-')[0].trim();
+        else if (phone1.includes('/')) phone1 = phone1.split('/')[0].trim();
+        else if (phone1.includes(',')) phone1 = phone1.split(',')[0].trim();
+
+        let rawGov = (order.governorate || '').trim();
+        let primeGov = rawGov;
+        if (rawGov.includes('ميسان') || rawGov.includes('العمارة')) primeGov = 'العمارة ميسان';
+        else if (rawGov.includes('بابل') || rawGov.includes('الحلة')) primeGov = 'بابل الحلة';
+        else if (rawGov.includes('ذي قار') || rawGov.includes('الناصرية')) primeGov = 'الناصرية ذي قار';
+        else if (rawGov.includes('واسط') || rawGov.includes('الكوت')) primeGov = 'الكوت واسط';
+        else if (rawGov.includes('المثنى') || rawGov.includes('السماوة')) primeGov = 'السماوة المثنى';
+        else if (rawGov.includes('القادسية') || rawGov.includes('الديوانية')) primeGov = 'الديوانية';
+        else if (rawGov.includes('نينوى') || rawGov.includes('الموصل') || rawGov.includes('موصل')) primeGov = 'موصل';
+        else if (rawGov.includes('الأنبار') || rawGov.includes('الرمادي') || rawGov.includes('الانبار')) primeGov = 'الانبار';
+        else if (rawGov.includes('ديالى') || rawGov.includes('بعقوبة')) primeGov = 'ديالى';
+        else if (rawGov.includes('صلاح الدين') || rawGov.includes('تكريت')) primeGov = 'صلاح الدين';
+        else if (rawGov.includes('أربيل') || rawGov.includes('اربيل')) primeGov = 'اربيل';
+        else if (rawGov.includes('كركوك')) primeGov = 'كركوك';
+        else if (rawGov.includes('السليمانية') || rawGov.includes('السليمانيه')) primeGov = 'السليمانيه';
+        else if (rawGov.includes('دهوك')) primeGov = 'دهوك';
+        else if (rawGov.includes('كربلاء')) primeGov = 'كربلاء';
+        else if (rawGov.includes('النجف')) primeGov = 'النجف';
+        else if (rawGov.includes('البصرة') || rawGov.includes('البصره')) primeGov = 'البصرة';
+        else if (rawGov.includes('بغداد')) primeGov = 'بغداد';
+
+        const govObj = PRIME_GOVS.find(g => g.name === primeGov);
+        const govKey = govObj ? govObj.key : primeGov;
+
+        return {
+          'ملاحظات': formattedNotes,
+          'عدد القطع\nأجباري': totalQuantity,
+          'يحتوي على ارجاع بضاعة؟': '',
+          'هاتف المستلم\nأجباري 11 خانة': phone1,
+          'تفاصيل العنوان\nأجباري': order.region || '',
+          'شفرة المحافظة\nأجباري': govKey,
+          'أسم المستلم': order.bookingEmployeeName || order.employeeName || '',
+          'المبلغ عراقي\nكامل بالالاف .\nفي حال عدم توفره سيعتبر 0': order.totalAmount || order.price || 0,
+          'رقم الوصل \nفي حال عدم وجود رقم وصل سيتم توليده من النظام': order.shipmentId || order.shipmentNumber || (order.id.length > 10 ? order.id.slice(-6).toUpperCase() : order.id),
+          'كود الشحنة': '',
+          'هاتف المستلم 2\n': order.customerPhone2 || order.phone2 || '',
+          'نوع البضاعة': '.',
+          'وصف البضاعة المسترجعة اوالمستبدلة': ''
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      worksheet['!dir'] = 'rtl';
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'برايم');
+      XLSX.writeFile(workbook, 'Prime_Orders_Export.xlsx');
     } catch (error) {
       console.error("Error exporting to Excel:", error);
       setNotificationModal({ show: true, message: 'حدث خطأ أثناء التصدير' });
@@ -2681,7 +2790,7 @@ export default function OrdersListPage() {
                    </div>
                    
                    <table style="width: 100%; font-size: 8pt; font-weight: bold; border-collapse: separate; border-spacing: 0 4px;">
-                      <tr><td style="color: #000; width: 65px; text-align: right;">اسم الزبون:</td><td style="text-align: right; font-size: 9pt;">${order.employeeName || ''}</td></tr>
+                      <tr><td style="color: #000; width: 65px; text-align: right;">اسم الزبون:</td><td style="text-align: right; font-size: 9pt;">${order.bookingEmployeeName || order.employeeName || ''}</td></tr>
                       <tr><td style="color: #000; text-align: right; vertical-align: middle;">هاتف:</td><td style="text-align: right; direction: ltr;">
                          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px;">
                            <span style="font-size: 9pt;">${phoneStr}</span>
@@ -2982,16 +3091,17 @@ export default function OrdersListPage() {
   const calculateTableWidth = () => {
     let w = (columnWidths.selection || 50) + (columnWidths.actions || 160);
     if (visibleColumns.id) w += columnWidths.id || 110;
-    if (visibleColumns.customerName) w += columnWidths.customerName || 180;
+    if (visibleColumns.employeeName) w += columnWidths.employeeName || 180;
     if (visibleColumns.governorate) w += columnWidths.governorate || 120;
     if (visibleColumns.phone) w += columnWidths.phone || 130;
+    if (visibleColumns.phone2) w += columnWidths.phone2 || 130;
     if (visibleColumns.totalAmount) w += columnWidths.totalAmount || 130;
     if (visibleColumns.deliveryCost) w += columnWidths.deliveryCost || 130;
     if (visibleColumns.netAmount) w += columnWidths.netAmount || 130;
     if (visibleColumns.notes) w += columnWidths.notes || 250;
     if (visibleColumns.status) w += columnWidths.status || 180;
     if (visibleColumns.addDate) w += columnWidths.addDate || 140;
-    if (visibleColumns.employeeName) w += columnWidths.employeeName || 180;
+    if (visibleColumns.bookingEmployeeName) w += columnWidths.bookingEmployeeName || 180;
     if (visibleColumns.shippingCompany) w += columnWidths.shippingCompany || 140;
     if (activeTab === 'returned' && visibleColumns.goodsPosition) w += columnWidths.goodsPosition || 180;
     return w;
@@ -3632,11 +3742,13 @@ export default function OrdersListPage() {
               setFilterByMainCat('');
               setFilterBySubCat('');
               setCurrentPage(1);
-              setColumnFilters({
+              const resetFilters = {
                 id: '', customerName: '', governorate: '', phone: '', totalAmount: '',
                 deliveryCost: '', netAmount: '', notes: '', status: '', addDate: '',
-                addTime: '', employeeName: '', shippingCompany: ''
-              });
+                addTime: '', employeeName: '', bookingEmployeeName: '', shippingCompany: ''
+              };
+              setColumnFilters(resetFilters);
+              localStorage.setItem('orders_column_filters', JSON.stringify(resetFilters));
             }}
           >
             تحديث 🔄
@@ -3758,6 +3870,7 @@ export default function OrdersListPage() {
               }}>
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#8b5cf6', color: '#fff', border: 'none' }} onClick={() => { handleExportExcel(); setShowExportDropdown(false); }}>اكسل النظام</button>
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#7c3aed', color: '#fff', border: 'none' }} onClick={() => { handleExportZitaExcel(); setShowExportDropdown(false); }}>اكسل نظام (زيطة)</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#6d28d9', color: '#fff', border: 'none' }} onClick={() => { handleExportPrimeExcel(); setShowExportDropdown(false); }}>اكسل لبرايم</button>
               </div>
             )}
           </div>
@@ -3784,16 +3897,17 @@ export default function OrdersListPage() {
                 </div>
                 {[
                   { key: 'id', label: 'المعرف' },
-                  { key: 'customerName', label: 'مستخدم النظام' },
+                  { key: 'employeeName', label: 'مستخدم النظام' },
                   { key: 'governorate', label: 'المحافظة' },
                   { key: 'phone', label: 'الهاتف' },
+                  { key: 'phone2', label: 'رقم الهاتف الثاني' },
                   { key: 'totalAmount', label: 'المبلغ الكلي' },
                   { key: 'deliveryCost', label: 'أجرة التوصيل' },
                   { key: 'netAmount', label: 'المبلغ الصافي' },
                   { key: 'notes', label: 'الملاحظات' },
                   { key: 'status', label: 'الحالة' },
                   { key: 'addDate', label: 'تاريخ الإضافة' },
-                  { key: 'employeeName', label: 'الموظف اللي حجز الطلب' },
+                  { key: 'bookingEmployeeName', label: 'الموظف اللي حجز الطلب' },
                   { key: 'shippingCompany', label: 'شركة الشحن' }
                 ].map(col => (
                   <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.3rem', borderRadius: '4px', backgroundColor: visibleColumns[col.key] ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }}>
@@ -3838,13 +3952,13 @@ export default function OrdersListPage() {
                   <div onMouseDown={(e) => handleResizeStart(e, 'id')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'id' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
               )}
-              {visibleColumns.customerName && (
-                <th style={{ width: columnWidths.customerName || 180, position: 'relative' }}>
+              {visibleColumns.employeeName && (
+                <th style={{ width: columnWidths.employeeName || 180, position: 'relative' }}>
                   <div className={styles.thContent}>
                     <span>مستخدم النظام</span>
-                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.customerName} onChange={(e) => handleFilterChange('customerName', e.target.value)} />
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.employeeName} onChange={(e) => handleFilterChange('employeeName', e.target.value)} />
                   </div>
-                  <div onMouseDown={(e) => handleResizeStart(e, 'customerName')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'customerName' ? '#3b82f6' : 'transparent' }}></div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'employeeName')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'employeeName' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
               )}
               {visibleColumns.governorate && (
@@ -3863,6 +3977,15 @@ export default function OrdersListPage() {
                     <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.phone} onChange={(e) => handleFilterChange('phone', e.target.value)} />
                   </div>
                   <div onMouseDown={(e) => handleResizeStart(e, 'phone')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'phone' ? '#3b82f6' : 'transparent' }}></div>
+                </th>
+              )}
+              {visibleColumns.phone2 && (
+                <th style={{ width: columnWidths.phone2 || 130, position: 'relative' }}>
+                  <div className={styles.thContent}>
+                    <span>رقم الهاتف الثاني</span>
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.phone2} onChange={(e) => handleFilterChange('phone2', e.target.value)} />
+                  </div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'phone2')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'phone2' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
               )}
               {visibleColumns.totalAmount && (
@@ -3972,13 +4095,13 @@ export default function OrdersListPage() {
                   <div onMouseDown={(e) => handleResizeStart(e, 'addDate')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'addDate' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
               )}
-              {visibleColumns.employeeName && (
-                <th style={{ width: columnWidths.employeeName || 180, position: 'relative' }}>
+              {visibleColumns.bookingEmployeeName && (
+                <th style={{ width: columnWidths.bookingEmployeeName || 180, position: 'relative' }}>
                   <div className={styles.thContent}>
                     <span>الموظف اللي حجز الطلب</span>
-                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.employeeName} onChange={(e) => handleFilterChange('employeeName', e.target.value)} />
+                    <input type="text" className={styles.colFilterInput} placeholder="بحث..." value={columnFilters.bookingEmployeeName || ''} onChange={(e) => handleFilterChange('bookingEmployeeName', e.target.value)} />
                   </div>
-                  <div onMouseDown={(e) => handleResizeStart(e, 'employeeName')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'employeeName' ? '#3b82f6' : 'transparent' }}></div>
+                  <div onMouseDown={(e) => handleResizeStart(e, 'bookingEmployeeName')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10, backgroundColor: resizingCol === 'bookingEmployeeName' ? '#3b82f6' : 'transparent' }}></div>
                 </th>
               )}
               {visibleColumns.shippingCompany && (
@@ -4047,9 +4170,16 @@ export default function OrdersListPage() {
                       </div>
                     </td>
                   )}
-                  {visibleColumns.customerName && <td style={{ fontWeight: 'bold' }}>{order.employeeName || '---'}</td>}
+                  {visibleColumns.employeeName && (
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
+                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="مستخدم النظام">{order.employeeName || '---'}</span>
+                      </div>
+                    </td>
+                  )}
                   {visibleColumns.governorate && <td>{order.governorate}</td>}
                   {visibleColumns.phone && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>}
+                  {visibleColumns.phone2 && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone2 || order.phone2 || ''}</td>}
                   {visibleColumns.totalAmount && (
                     <td style={{ color: '#10B981', fontWeight: 'bold' }}>
                       {new Intl.NumberFormat('en-US').format((order.totalAmount || order.price || 0) + (order.deliveryCost || 0))} د.ع
@@ -4148,7 +4278,7 @@ export default function OrdersListPage() {
                       </div>
                     </td>
                   )}
-                  {visibleColumns.employeeName && (
+                  {visibleColumns.bookingEmployeeName && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
                         <span style={{ fontWeight: '600', color: '#60a5fa' }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || '---'}</span>
@@ -4611,8 +4741,8 @@ export default function OrdersListPage() {
                       <label className={styles.label}>مستخدم النظام</label>
                       <select 
                         className={styles.input} 
-                        value={editingOrder.customerName || ''} 
-                        onChange={e => setEditingOrder({...editingOrder, customerName: e.target.value})} 
+                        value={editingOrder.employeeName || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, employeeName: e.target.value})} 
                         required 
                         disabled={isPartiallyLocked} 
                         style={lockedInputStyle}
@@ -4631,6 +4761,15 @@ export default function OrdersListPage() {
                         value={editingOrder.customerPhone || editingOrder.phone || ''} 
                         onChange={e => setEditingOrder({...editingOrder, customerPhone: e.target.value, phone: e.target.value})} 
                         required 
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>رقم الهاتف الثاني (اختياري)</label>
+                      <input 
+                        type="text" 
+                        className={styles.input} 
+                        value={editingOrder.customerPhone2 || editingOrder.phone2 || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, customerPhone2: e.target.value, phone2: e.target.value})} 
                       />
                     </div>
                     <div style={{ display: 'flex', gap: '1rem' }}>
@@ -4691,11 +4830,11 @@ export default function OrdersListPage() {
                       </select>
                     </div>
                     <div className={styles.formGroup}>
-                      <label className={styles.label}>اسم الموظف</label>
+                      <label className={styles.label}>اسم الموظف (موظف الحجز)</label>
                       <select 
                         className={styles.input} 
-                        value={editingOrder.employeeName || ''} 
-                        onChange={e => setEditingOrder({...editingOrder, employeeName: e.target.value})} 
+                        value={editingOrder.bookingEmployeeName || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, bookingEmployeeName: e.target.value})} 
                         disabled={isPartiallyLocked}
                         style={lockedInputStyle}
                       >

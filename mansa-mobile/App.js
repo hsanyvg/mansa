@@ -323,11 +323,20 @@ export default function App() {
   const [ordersFilter, setOrdersFilter] = useState('all');
   const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
   const [advSearchGov, setAdvSearchGov] = useState('');
-  const [advSearchDate, setAdvSearchDate] = useState('');
+  const [advSearchMonth, setAdvSearchMonth] = useState('');
+  const [advSearchYear, setAdvSearchYear] = useState('');
+  const [advSearchDateFrom, setAdvSearchDateFrom] = useState(null);
+  const [advSearchDateTo, setAdvSearchDateTo] = useState(null);
+  const [showAdvSearchDateFromPicker, setShowAdvSearchDateFromPicker] = useState(false);
+  const [showAdvSearchDateToPicker, setShowAdvSearchDateToPicker] = useState(false);
   const [advSearchReceipt, setAdvSearchReceipt] = useState('');
   const [advSearchName, setAdvSearchName] = useState('');
   const [advSearchPhone, setAdvSearchPhone] = useState('');
+  const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
+  const [selectedGridStatus, setSelectedGridStatus] = useState(null);
+  const [advancedSearchResults, setAdvancedSearchResults] = useState([]);
   const [advSearchStatus, setAdvSearchStatus] = useState('');
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
   
   // Server Search State
@@ -335,6 +344,96 @@ export default function App() {
   const [serverSearchResult, setServerSearchResult] = useState(null);
   const [isSearchingServer, setIsSearchingServer] = useState(false);
   
+  
+  const executeAdvancedSearch = () => {
+    const hasSearchCriteria = !!(advSearchGov || advSearchMonth || advSearchYear || advSearchDateFrom || advSearchDateTo || advSearchReceipt || advSearchPhone || advSearchStatus);
+    if (!hasSearchCriteria && !selectedGridStatus) {
+      setAdvancedSearchResults([]);
+      return;
+    }
+
+    const result = orders.filter((ord) => {
+      let match = true;
+      
+      if (advSearchGov && advSearchGov.trim()) {
+        if (!String(ord.governorate || '').toLowerCase().includes(advSearchGov.toLowerCase().trim())) match = false;
+      }
+      
+      // Use rawCreatedAt if available, otherwise try to parse the string
+      let orderDateObj = null;
+      if (ord.rawCreatedAt) {
+         orderDateObj = new Date(ord.rawCreatedAt);
+      } else if (ord.createdAt && typeof ord.createdAt.toDate === 'function') {
+         // It's a Firebase Timestamp
+         orderDateObj = ord.createdAt.toDate();
+      } else if (ord.createdAt) {
+         // Fallback parsing for string dates
+         const d = String(ord.createdAt);
+         if (d.includes('/')) {
+            const parts = d.split('/');
+            if (parts.length === 3) {
+               const dd = parseInt(parts[0], 10);
+               const mm = parseInt(parts[1], 10) - 1;
+               const yyyy = parseInt(parts[2].split(' ')[0], 10);
+               orderDateObj = new Date(yyyy, mm, dd, 12, 0, 0);
+            }
+         }
+         if (!orderDateObj || isNaN(orderDateObj.getTime())) {
+            orderDateObj = new Date(d);
+         }
+      }
+      
+      const isValidDate = orderDateObj && !isNaN(orderDateObj.getTime());
+      const orderDateIso = isValidDate ? orderDateObj.toISOString() : '';
+      
+      if (advSearchMonth && advSearchMonth.trim()) {
+        if (!isValidDate) match = false;
+        else {
+           const m = String(advSearchMonth).padStart(2, '0');
+           if (!orderDateIso.includes('-' + m + '-')) match = false;
+        }
+      }
+      if (advSearchYear && advSearchYear.trim()) {
+        if (!isValidDate) match = false;
+        else if (!orderDateIso.includes(advSearchYear)) match = false;
+      }
+      if (advSearchDateFrom || advSearchDateTo) {
+        if (isValidDate) {
+          if (advSearchDateFrom) {
+             const f = new Date(advSearchDateFrom); f.setHours(0,0,0,0);
+             if (orderDateObj < f) match = false;
+          }
+          if (advSearchDateTo) {
+             const t = new Date(advSearchDateTo); t.setHours(23,59,59,999);
+             if (orderDateObj > t) match = false;
+          }
+        } else {
+          match = false;
+        }
+      }
+      
+      if (advSearchReceipt && advSearchReceipt.trim()) {
+        if (!String(ord.receiptNumber || ord.id || '').toLowerCase().includes(advSearchReceipt.toLowerCase().trim())) match = false;
+      }
+      
+      if (advSearchPhone && advSearchPhone.trim()) {
+        const p1 = String(ord.customerPhone || '').toLowerCase();
+        const p2 = String(ord.customerPhone2 || '').toLowerCase();
+        const term = advSearchPhone.toLowerCase().trim();
+        if (!p1.includes(term) && !p2.includes(term)) match = false;
+      }
+      
+      if (advSearchStatus && advSearchStatus.trim()) {
+        if (ord.status !== advSearchStatus) match = false;
+      }
+      
+      return match;
+    });
+
+    setAdvancedSearchResults(result);
+    console.log(`Executed Advanced Search: filtered ${orders.length} orders down to ${result.length} orders. Criteria:`, {advSearchGov, advSearchMonth, advSearchYear, advSearchStatus});
+  };
+
   const handleServerSearch = async () => {
     if (!serverSearchQuery.trim()) {
       setServerSearchResult(null);
@@ -2735,7 +2834,7 @@ export default function App() {
         </ScrollView>
 
       ) : activeTab === 'orders' ? (
-        <ScrollView style={[styles.tabContent, { backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12' }]} contentContainerStyle={{ paddingBottom: 100 }}>
+        <ScrollView style={[styles.tabContent, { backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12' }]} contentContainerStyle={{ paddingBottom: 80 }}>
           
           {/* Main Header */}
           <View style={styles.ordersHeaderRow}>
@@ -2751,26 +2850,103 @@ export default function App() {
             
             {/* Governorates */}
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="المحافظة"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchGov}
-                onChangeText={setAdvSearchGov}
-              />
+              <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
+                <Picker
+                  selectedValue={advSearchGov}
+                  style={{ width: '100%', height: 48, color: isLightMode ? '#1e293b' : '#f8fafc' }}
+                  onValueChange={(itemValue) => setAdvSearchGov(itemValue)}
+                  dropdownIconColor={isLightMode ? '#1e293b' : '#f8fafc'}
+                >
+                  <Picker.Item label="-- اختر المحافظة --" value="" color={isLightMode ? '#94a3b8' : '#64748b'} />
+                  {governoratesList.map((gov, idx) => (
+                    <Picker.Item key={idx} label={gov} value={gov} color={isLightMode ? '#1e293b' : '#000000'} />
+                  ))}
+                </Picker>
+              </View>
               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M3 21h18" /><Path d="M9 8h1" /><Path d="M9 12h1" /><Path d="M9 16h1" /><Path d="M14 8h1" /><Path d="M14 12h1" /><Path d="M14 16h1" /><Path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" /></Svg>
             </View>
 
-            {/* Date */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="تاريخ الاضافة (مثال: 2024-05-01)"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchDate}
-                onChangeText={setAdvSearchDate}
-              />
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Circle cx="12" cy="12" r="10" /><Path d="M12 6v6l4 2" /></Svg>
+            {/* Month and Year */}
+            <View style={{ flexDirection: 'row-reverse', gap: 10, marginBottom: 12 }}>
+              <View style={{ flex: 1, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', overflow: 'hidden' }}>
+                <Picker
+                  selectedValue={advSearchMonth}
+                  onValueChange={(itemValue) => setAdvSearchMonth(itemValue)}
+                  style={{ color: isLightMode ? '#1e293b' : '#f8fafc', height: 48, width: '100%' }}
+                  dropdownIconColor={isLightMode ? '#1e293b' : '#f8fafc'}
+                >
+                  <Picker.Item label="-- الشهر --" value="" />
+                  <Picker.Item label="01" value="01" />
+                  <Picker.Item label="02" value="02" />
+                  <Picker.Item label="03" value="03" />
+                  <Picker.Item label="04" value="04" />
+                  <Picker.Item label="05" value="05" />
+                  <Picker.Item label="06" value="06" />
+                  <Picker.Item label="07" value="07" />
+                  <Picker.Item label="08" value="08" />
+                  <Picker.Item label="09" value="09" />
+                  <Picker.Item label="10" value="10" />
+                  <Picker.Item label="11" value="11" />
+                  <Picker.Item label="12" value="12" />
+                </Picker>
+              </View>
+
+              <View style={{ flex: 1, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', overflow: 'hidden' }}>
+                <Picker
+                  selectedValue={advSearchYear}
+                  onValueChange={(itemValue) => setAdvSearchYear(itemValue)}
+                  style={{ color: isLightMode ? '#1e293b' : '#f8fafc', height: 48, width: '100%' }}
+                  dropdownIconColor={isLightMode ? '#1e293b' : '#f8fafc'}
+                >
+                  <Picker.Item label="-- اختر السنة --" value="" />
+                  <Picker.Item label="2024" value="2024" />
+                  <Picker.Item label="2025" value="2025" />
+                  <Picker.Item label="2026" value="2026" />
+                  <Picker.Item label="2027" value="2027" />
+                  <Picker.Item label="2028" value="2028" />
+                </Picker>
+              </View>
+            </View>
+
+            {/* From / To Date */}
+            <View style={{ flexDirection: 'row-reverse', gap: 10, marginBottom: 12 }}>
+              <View style={{ flex: 1, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', overflow: 'hidden' }}>
+                <TouchableOpacity onPress={() => setShowAdvSearchDateFromPicker(true)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ color: advSearchDateFrom ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b'), fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    {advSearchDateFrom ? formatDateLocal(advSearchDateFrom) : '-- من تاريخ --'}
+                  </Text>
+                </TouchableOpacity>
+                {showAdvSearchDateFromPicker && (
+                  <DateTimePicker
+                    value={advSearchDateFrom || new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowAdvSearchDateFromPicker(false);
+                      if (date) setAdvSearchDateFrom(date);
+                    }}
+                  />
+                )}
+              </View>
+
+              <View style={{ flex: 1, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', overflow: 'hidden' }}>
+                <TouchableOpacity onPress={() => setShowAdvSearchDateToPicker(true)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ color: advSearchDateTo ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b'), fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    {advSearchDateTo ? formatDateLocal(advSearchDateTo) : '-- الى تاريخ --'}
+                  </Text>
+                </TouchableOpacity>
+                {showAdvSearchDateToPicker && (
+                  <DateTimePicker
+                    value={advSearchDateTo || new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowAdvSearchDateToPicker(false);
+                      if (date) setAdvSearchDateTo(date);
+                    }}
+                  />
+                )}
+              </View>
             </View>
 
             {/* Receipt */}
@@ -2785,17 +2961,7 @@ export default function App() {
               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><Path d="M16 2v4" /><Path d="M8 2v4" /><Path d="M3 10h18" /></Svg>
             </View>
 
-            {/* Customer Name */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <TextInput
-                style={{ flex: 1, textAlign: 'right', fontSize: 14, color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}
-                placeholder="اسم الزبون"
-                placeholderTextColor={isLightMode ? '#94a3b8' : '#64748b'}
-                value={advSearchName}
-                onChangeText={setAdvSearchName}
-              />
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><Circle cx="12" cy="7" r="4" /></Svg>
-            </View>
+            
 
             {/* Customer Phone */}
             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
@@ -2810,31 +2976,77 @@ export default function App() {
               <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></Svg>
             </View>
 
-            {/* Status Picker */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, marginBottom: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
-              <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
-                <Picker
-                  selectedValue={advSearchStatus}
-                  style={{ width: '100%', height: 48, textAlign: 'right', color: advSearchStatus ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b') }}
-                  onValueChange={(itemValue) => setAdvSearchStatus(itemValue)}
-                >
-                  <Picker.Item label="الحالة (الكل)" value="" color={isLightMode ? '#94a3b8' : '#64748b'} />
-                  <Picker.Item label="قيد الانتظار" value="pending" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="قيد الانتظار (مخزن)" value="backordered" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="جاري التجهيز" value="processing" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="تم الشحن" value="shipped" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="قيد التوصيل" value="ofd" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="مكتمل (لم تتم المحاسبة)" value="delivered" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="مكتمل (تمت المحاسبة)" value="delivered_settled" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="واصل جزئي (لم تتم المحاسبة)" value="partial" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="راجع" value="returned" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="راجع عند المندوب" value="returned_agent" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="راجع مخزن" value="returned_warehouse" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="مؤجل" value="postponed" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                  <Picker.Item label="ملغي" value="cancelled" color={isLightMode ? '#1e293b' : '#f8fafc'} />
-                </Picker>
-              </View>
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M22 2L11 13" /><Path d="M22 2l-7 20-4-9-9-4 20-7z" /></Svg>
+            {/* Status Custom Dropdown */}
+            <View style={{ marginBottom: 12 }}>
+              <TouchableOpacity 
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, paddingHorizontal: 12, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}
+                onPress={() => setShowStatusDropdown(true)}
+              >
+                <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
+                  <Text style={{ color: advSearchStatus ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b'), fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', fontSize: 14 }}>
+                    {advSearchStatus === 'pending' ? 'قيد الانتظار' :
+                     advSearchStatus === 'backordered' ? 'قيد الانتظار (مخزن)' :
+                     advSearchStatus === 'processing' ? 'جاري التجهيز' :
+                     advSearchStatus === 'shipped' ? 'تم الشحن' :
+                     advSearchStatus === 'ofd' ? 'قيد التوصيل' :
+                     advSearchStatus === 'delivered' ? 'مكتمل (لم تتم المحاسبة)' :
+                     advSearchStatus === 'delivered_settled' ? 'مكتمل (تمت المحاسبة)' :
+                     advSearchStatus === 'partial' ? 'واصل جزئي (لم تتم المحاسبة)' :
+                     advSearchStatus === 'returned' ? 'راجع' :
+                     advSearchStatus === 'returned_agent' ? 'راجع عند المندوب' :
+                     advSearchStatus === 'returned_warehouse' ? 'راجع مخزن' :
+                     advSearchStatus === 'postponed' ? 'مؤجل' :
+                     advSearchStatus === 'cancelled' ? 'ملغي' :
+                     'الحالة (الكل)'}
+                  </Text>
+                </View>
+                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#3b82f6' : '#a855f7'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><Path d="M22 2L11 13" /><Path d="M22 2l-7 20-4-9-9-4 20-7z" /></Svg>
+              </TouchableOpacity>
+
+              {/* Status Dropdown Modal */}
+              <Modal visible={showStatusDropdown} transparent={true} animationType="fade" onRequestClose={() => setShowStatusDropdown(false)}>
+                <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }} activeOpacity={1} onPress={() => setShowStatusDropdown(false)}>
+                  <TouchableOpacity activeOpacity={1} style={{ backgroundColor: isLightMode ? '#ffffff' : '#1e293b', borderRadius: 16, maxHeight: '80%', overflow: 'hidden' }}>
+                    <View style={{ padding: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155', backgroundColor: isLightMode ? '#f8fafc' : '#0f172a' }}>
+                      <Text style={{ textAlign: 'center', fontSize: 16, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc' }}>اختر حالة الطلب</Text>
+                    </View>
+                    <ScrollView style={{ padding: 10 }}>
+                      {[
+                        { val: '', label: 'الحالة (الكل)', bg: isLightMode ? '#f1f5f9' : '#334155', text: isLightMode ? '#475569' : '#cbd5e1' },
+                        { val: 'pending', label: 'قيد الانتظار', bg: 'rgba(251, 191, 36, 0.15)', text: isLightMode ? '#d97706' : '#fbbf24', border: 'rgba(251, 191, 36, 0.4)' },
+                        { val: 'backordered', label: 'قيد الانتظار (مخزن)', bg: 'rgba(139, 92, 246, 0.15)', text: isLightMode ? '#7c3aed' : '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' },
+                        { val: 'processing', label: 'جاري التجهيز', bg: 'rgba(249, 115, 22, 0.15)', text: isLightMode ? '#ea580c' : '#fb923c', border: 'rgba(249, 115, 22, 0.4)' },
+                        { val: 'shipped', label: 'تم الشحن', bg: 'rgba(56, 189, 248, 0.15)', text: isLightMode ? '#0284c7' : '#38bdf8', border: 'rgba(56, 189, 248, 0.4)' },
+                        { val: 'ofd', label: 'قيد التوصيل', bg: 'rgba(99, 102, 241, 0.15)', text: isLightMode ? '#4f46e5' : '#818cf8', border: 'rgba(99, 102, 241, 0.4)' },
+                        { val: 'delivered', label: 'مكتمل (لم تتم المحاسبة)', bg: 'rgba(16, 185, 129, 0.15)', text: isLightMode ? '#059669' : '#34d399', border: 'rgba(16, 185, 129, 0.4)' },
+                        { val: 'delivered_settled', label: 'مكتمل (تمت المحاسبة)', bg: 'rgba(20, 184, 166, 0.15)', text: isLightMode ? '#0d9488' : '#2dd4bf', border: 'rgba(20, 184, 166, 0.4)' },
+                        { val: 'partial', label: 'واصل جزئي (لم تتم المحاسبة)', bg: 'rgba(14, 165, 233, 0.15)', text: isLightMode ? '#0284c7' : '#38bdf8', border: 'rgba(14, 165, 233, 0.4)' },
+                        { val: 'returned', label: 'راجع', bg: 'rgba(244, 63, 94, 0.15)', text: isLightMode ? '#e11d48' : '#fb7185', border: 'rgba(244, 63, 94, 0.4)' },
+                        { val: 'returned_agent', label: 'راجع عند المندوب', bg: 'rgba(244, 63, 94, 0.15)', text: isLightMode ? '#e11d48' : '#fb7185', border: 'rgba(244, 63, 94, 0.4)' },
+                        { val: 'returned_warehouse', label: 'راجع مخزن', bg: 'rgba(244, 63, 94, 0.15)', text: isLightMode ? '#e11d48' : '#fb7185', border: 'rgba(244, 63, 94, 0.4)' },
+                        { val: 'postponed', label: 'مؤجل', bg: 'rgba(234, 179, 8, 0.15)', text: isLightMode ? '#ca8a04' : '#facc15', border: 'rgba(234, 179, 8, 0.4)' },
+                        { val: 'cancelled', label: 'ملغي', bg: 'rgba(100, 116, 139, 0.15)', text: isLightMode ? '#475569' : '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' }
+                      ].map((item, idx) => (
+                        <TouchableOpacity 
+                          key={idx} 
+                          style={{ 
+                            paddingVertical: 12, paddingHorizontal: 15, marginBottom: 8, borderRadius: 10,
+                            backgroundColor: item.bg, borderWidth: item.border ? 1 : 0, borderColor: item.border || 'transparent',
+                            flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between'
+                          }}
+                          onPress={() => { setAdvSearchStatus(item.val); setShowStatusDropdown(false); }}
+                        >
+                          <Text style={{ fontSize: 15, fontWeight: 'bold', color: item.text, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{item.label}</Text>
+                          {advSearchStatus === item.val && (
+                            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={item.text} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M20 6L9 17l-5-5"/></Svg>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                      <View style={{ height: 20 }} />
+                    </ScrollView>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              </Modal>
             </View>
 
             {/* Clear Button */}
@@ -2842,7 +3054,8 @@ export default function App() {
               style={{ paddingVertical: 10, alignItems: 'center', marginBottom: 10 }}
               onPress={() => {
                 setAdvSearchGov('');
-                setAdvSearchDate('');
+                setAdvSearchMonth('');
+              setAdvSearchYear('');
                 setAdvSearchReceipt('');
                 setAdvSearchName('');
                 setAdvSearchPhone('');
@@ -2856,19 +3069,30 @@ export default function App() {
             {/* Search Button */}
             <TouchableOpacity 
               style={{ backgroundColor: isLightMode ? '#3b82f6' : '#a855f7', paddingVertical: 14, borderRadius: 12, alignItems: 'center', shadowColor: isLightMode ? '#3b82f6' : '#a855f7', shadowOpacity: 0.3, shadowRadius: 5, elevation: 4 }}
-              onPress={() => Keyboard.dismiss()}
+              onPress={() => { 
+                console.log('Search Triggered with:', {advSearchGov, advSearchMonth, advSearchYear, advSearchDateFrom, advSearchDateTo, advSearchReceipt, advSearchPhone, advSearchStatus});
+                Keyboard.dismiss(); 
+                setSelectedGridStatus(null); executeAdvancedSearch(); setIsSearchModalVisible(true); 
+              }}
             >
               <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>بحث</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Search Results */}
-          <View style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, minHeight: 400, marginTop: 10 }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc', textAlign: 'right', marginBottom: 15 }}>نتائج البحث</Text>
+          {/* Search Results Modal */}
+          <Modal visible={isSearchModalVisible} animationType="slide" onRequestClose={() => { setSelectedGridStatus(null); setIsSearchModalVisible(false); }}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12' }}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: isLightMode ? '#fff' : '#1e293b', borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155' }}>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>نتائج البحث</Text>
+                <TouchableOpacity onPress={() => { setSelectedGridStatus(null); setIsSearchModalVisible(false); }} style={{ padding: 8, backgroundColor: isLightMode ? '#f1f5f9' : '#334155', borderRadius: 8 }}>
+                  <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 14 }}>إغلاق</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1, padding: 20 }}>
           
             {(() => {
               // Only filter if at least one field is filled
-              const hasSearchCriteria = !!(advSearchGov || advSearchDate || advSearchReceipt || advSearchName || advSearchPhone || advSearchStatus);
+              const hasSearchCriteria = !!(advSearchGov || advSearchMonth || advSearchYear || advSearchDateFrom || advSearchDateTo || advSearchReceipt || advSearchPhone || advSearchStatus);
 
               if (!hasSearchCriteria) {
                 return (
@@ -2879,123 +3103,144 @@ export default function App() {
                 );
               }
 
-              const filteredList = orders.filter((ord) => {
-                let match = true;
-                
-                if (advSearchGov && advSearchGov.trim()) {
-                  if (!String(ord.governorate || '').toLowerCase().includes(advSearchGov.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchDate && advSearchDate.trim()) {
-                  if (!String(ord.createdAt || '').toLowerCase().includes(advSearchDate.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchReceipt && advSearchReceipt.trim()) {
-                  if (!String(ord.receiptNumber || ord.id || '').toLowerCase().includes(advSearchReceipt.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchName && advSearchName.trim()) {
-                  if (!String(ord.customerName || '').toLowerCase().includes(advSearchName.toLowerCase().trim())) match = false;
-                }
-                
-                if (advSearchPhone && advSearchPhone.trim()) {
-                  const p1 = String(ord.customerPhone || '').toLowerCase();
-                  const p2 = String(ord.customerPhone2 || '').toLowerCase();
-                  const term = advSearchPhone.toLowerCase().trim();
-                  if (!p1.includes(term) && !p2.includes(term)) match = false;
-                }
-                
-                if (advSearchStatus && advSearchStatus.trim()) {
-                  if (ord.status !== advSearchStatus) match = false;
-                }
-                
-                return match;
+              const filteredList = (!hasSearchCriteria) ? orders : advancedSearchResults;
+              // Aggregate filtered list by status
+              const statusCounts = {};
+              filteredList.forEach(ord => {
+                 const st = ord.status || 'unknown';
+                 statusCounts[st] = (statusCounts[st] || 0) + 1;
               });
 
-              if (filteredList.length === 0) {
-                return (
-                  <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
-                    <Svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 15 }}><Circle cx="12" cy="12" r="10"/><Path d="m15 9-6 6"/><Path d="m9 9 6 6"/></Svg>
-                    <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 16, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>لا توجد طلبات تطابق بحثك</Text>
-                  </View>
-                );
+              const statusLabels = {
+                 'pending': { label: 'قيد الانتظار', bg: 'rgba(251, 191, 36, 0.15)', text: isLightMode ? '#d97706' : '#fbbf24', border: 'rgba(251, 191, 36, 0.4)' },
+                 'backordered': { label: 'قيد الانتظار (مخزن)', bg: 'rgba(139, 92, 246, 0.15)', text: isLightMode ? '#7c3aed' : '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' },
+                 'processing': { label: 'جاري التجهيز', bg: 'rgba(249, 115, 22, 0.15)', text: isLightMode ? '#ea580c' : '#fb923c', border: 'rgba(249, 115, 22, 0.4)' },
+                 'shipped': { label: 'تم الشحن', bg: 'rgba(56, 189, 248, 0.15)', text: isLightMode ? '#0284c7' : '#38bdf8', border: 'rgba(56, 189, 248, 0.4)' },
+                 'ofd': { label: 'قيد التوصيل', bg: 'rgba(99, 102, 241, 0.15)', text: isLightMode ? '#4f46e5' : '#818cf8', border: 'rgba(99, 102, 241, 0.4)' },
+                 'delivered': { label: 'مكتمل (لم تتم المحاسبة)', bg: 'rgba(16, 185, 129, 0.15)', text: isLightMode ? '#059669' : '#34d399', border: 'rgba(16, 185, 129, 0.4)' },
+                 'delivered_settled': { label: 'مكتمل (تمت المحاسبة)', bg: 'rgba(20, 184, 166, 0.15)', text: isLightMode ? '#0d9488' : '#2dd4bf', border: 'rgba(20, 184, 166, 0.4)' },
+                 'partial': { label: 'واصل جزئي (لم تتم المحاسبة)', bg: 'rgba(14, 165, 233, 0.15)', text: isLightMode ? '#0284c7' : '#38bdf8', border: 'rgba(14, 165, 233, 0.4)' },
+                 'returned': { label: 'راجع', bg: 'rgba(244, 63, 94, 0.15)', text: isLightMode ? '#e11d48' : '#fb7185', border: 'rgba(244, 63, 94, 0.4)' },
+                 'returned_agent': { label: 'راجع عند المندوب', bg: 'rgba(244, 63, 94, 0.15)', text: isLightMode ? '#e11d48' : '#fb7185', border: 'rgba(244, 63, 94, 0.4)' },
+                 'returned_warehouse': { label: 'راجع مخزن', bg: 'rgba(244, 63, 94, 0.15)', text: isLightMode ? '#e11d48' : '#fb7185', border: 'rgba(244, 63, 94, 0.4)' },
+                 'postponed': { label: 'مؤجل', bg: 'rgba(234, 179, 8, 0.15)', text: isLightMode ? '#ca8a04' : '#facc15', border: 'rgba(234, 179, 8, 0.4)' },
+                 'cancelled': { label: 'ملغي', bg: 'rgba(100, 116, 139, 0.15)', text: isLightMode ? '#475569' : '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' },
+                 'unknown': { label: 'غير معروف', bg: 'rgba(100, 116, 139, 0.15)', text: isLightMode ? '#475569' : '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' }
+              };
+
+              if (selectedGridStatus) {
+                 const statusList = filteredList.filter(o => (o.status || 'unknown') === selectedGridStatus);
+                 const info = statusLabels[selectedGridStatus] || statusLabels['unknown'];
+                 return (
+                    <View style={{ flex: 1 }}>
+                       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15, padding: 10, backgroundColor: info.bg, borderRadius: 8, borderWidth: 1, borderColor: info.border }}>
+                          <Text style={{ fontSize: 16, fontWeight: 'bold', color: info.text, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>طلبات: {info.label}</Text>
+                          <TouchableOpacity onPress={() => setSelectedGridStatus(null)} style={{ padding: 6, backgroundColor: isLightMode ? '#fff' : '#1e293b', borderRadius: 6 }}>
+                             <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 12 }}>رجوع للوحة</Text>
+                          </TouchableOpacity>
+                       </View>
+                       <FlatList 
+                          data={statusList}
+                          keyExtractor={ord => ord.id}
+                          initialNumToRender={10}
+                          maxToRenderPerBatch={10}
+                          windowSize={5}
+                          contentContainerStyle={{ paddingBottom: 50 }}
+                          renderItem={({item: ord}) => (
+                             <View key={ord.id} style={{ 
+                                backgroundColor: '#fde047', // Yellow background
+                                borderRadius: 12, 
+                                padding: 16, 
+                                marginBottom: 15, 
+                                shadowColor: '#000', 
+                                shadowOffset: { width: 0, height: 2 }, 
+                                shadowOpacity: 0.2, 
+                                shadowRadius: 4, 
+                                elevation: 3,
+                                borderWidth: 1,
+                                borderColor: '#eab308'
+                             }}>
+                                {/* Top row: Edit Pen & Status */}
+                                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                                   <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                                      رقم الوصل : {ord.receiptNumber || (ord.id ? ord.id.substring(0,6) : '')}
+                                   </Text>
+                                   <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                                      <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginLeft: 15 }}>
+                                         {info.label}
+                                      </Text>
+                                      {(!isEmployee) && (
+                                         <TouchableOpacity onPress={() => { setSelectedGridStatus(null); setIsSearchModalVisible(false); setTimeout(() => handleEditOrder(ord), 300); }} style={{ padding: 6, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 20 }}>
+                                            <Text style={{ fontSize: 18 }}>✏️</Text>
+                                         </TouchableOpacity>
+                                      )}
+                                   </View>
+                                </View>
+
+                                {/* Fields */}
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                   هاتف المستلم : {ord.customerPhone} {ord.customerPhone2 ? ` - ${ord.customerPhone2}` : ''}
+                                </Text>
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                   المحافظة : {ord.governorate}
+                                </Text>
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                   المنطقة : {ord.address || 'غير محدد'}
+                                </Text>
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                   هاتف السائق : {ord.driverPhone || ''}
+                                </Text>
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                   المنتجات : {Array.isArray(ord.products) ? ord.products.map(p => p.name).join('، ') : 'بدون منتجات'}
+                                </Text>
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                   الملاحظات : {ord.notes || 'لا توجد'}
+                                </Text>
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                   المبلغ الكلي : {(ord.totalCost || 0).toLocaleString('en-US')}
+                                </Text>
+                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 15, textAlign: 'right', fontWeight: 'bold' }}>
+                                   اخر تحديث : {ord.createdAt && typeof ord.createdAt.toDate === 'function' ? formatDateLocal(ord.createdAt.toDate()) : (ord.createdAt || '')}
+                                </Text>
+
+                                {/* Details Button */}
+                                <TouchableOpacity style={{ backgroundColor: '#eab308', paddingVertical: 10, borderRadius: 20, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
+                                   <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>عرض التفاصيل</Text>
+                                </TouchableOpacity>
+                             </View>
+                          )}
+                       />
+                    </View>
+                 );
               }
 
               return (
-                <FlatList 
-                  data={filteredList} 
-                  keyExtractor={ord => ord.id}
-                  initialNumToRender={25}
-                  maxToRenderPerBatch={50}
-                  windowSize={10}
-                  contentContainerStyle={{ paddingBottom: 50 }}
-                  renderItem={({item: ord}) => (
-                    <View key={ord.id} style={styles.orderItem}>
-                      <View style={styles.orderLeft}>
-                        <Text style={[styles.orderCustName, { color: isLightMode ? '#1e293b' : '#f8fafc', fontSize: 15 }]}>{ord.customerName}</Text>
-                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginTop: 4 }}>
-                          <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#64748b' : '#cbd5e1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></Svg>
-                          <Text style={{ marginRight: 6, color: isLightMode ? '#475569' : '#cbd5e1', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{ord.customerPhone} {ord.customerPhone2 ? ` - ${ord.customerPhone2}` : ''}</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginTop: 4 }}>
-                          <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isLightMode ? '#64748b' : '#cbd5e1'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><Circle cx="12" cy="10" r="3" /></Svg>
-                          <Text style={{ marginRight: 6, color: isLightMode ? '#475569' : '#cbd5e1', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{ord.governorate} {ord.address ? `- ${ord.address}` : ''}</Text>
-                        </View>
-                        <Text style={{ marginTop: 4, color: isLightMode ? '#475569' : '#cbd5e1', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>المنتجات: {Array.isArray(ord.products) ? ord.products.map(p => p.name).join('، ') : 'بدون منتجات'}</Text>
-                        {ord.notes && ord.notes.trim() !== '' && (
-                          <Text style={{ marginTop: 4, color: '#f59e0b', fontStyle: 'italic', fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>ملاحظة: {ord.notes}</Text>
-                        )}
-                        <Text style={{ marginTop: 6, fontSize: 11, color: isLightMode ? '#94a3b8' : '#64748b', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{ord.createdAt}</Text>
-                      </View>
-
-                      <View style={styles.orderRight}>
-                        <Text style={{ fontSize: 12, color: isLightMode ? '#64748b' : '#94a3b8', marginBottom: 6, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', fontWeight: 'bold' }}>#{ord.receiptNumber || (ord.id ? ord.id.substring(0,6) : '')}</Text>
-                        <View style={[
-                          styles.statusBadge, 
-                          ord.status === 'delivered' ? styles.badgeDelivered : 
-                          ord.status === 'returned' || ord.status === 'returned_warehouse' ? styles.badgeReturned : 
-                          ord.status === 'partial' ? styles.badgePartial :
-                          ord.status === 'cancelled' ? styles.badgeCancelled :
-                          ord.status === 'backordered' ? styles.badgeBackordered : styles.badgePending,
-                          { borderWidth: 1, borderColor: 
-                            ord.status === 'delivered' ? 'rgba(16, 185, 129, 0.3)' : 
-                            ord.status === 'returned' || ord.status === 'returned_warehouse' ? 'rgba(244, 63, 94, 0.3)' : 
-                            ord.status === 'partial' ? 'rgba(14, 165, 233, 0.3)' :
-                            ord.status === 'cancelled' ? 'rgba(244, 63, 94, 0.3)' :
-                            ord.status === 'backordered' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(251, 191, 36, 0.3)'
-                          }
-                        ]}>
-                          <Text style={[styles.statusBadgeText, {
-                            color: ord.status === 'delivered' ? (isLightMode ? '#059669' : '#34d399') :
-                                   ord.status === 'partial' ? (isLightMode ? '#0284c7' : '#38bdf8') :
-                                   ord.status === 'returned' || ord.status === 'returned_warehouse' || ord.status === 'cancelled' ? (isLightMode ? '#e11d48' : '#fb7185') :
-                                   ord.status === 'backordered' ? (isLightMode ? '#7c3aed' : '#a78bfa') :
-                                   (isLightMode ? '#d97706' : '#fbbf24')
-                          }]}>
-                            {ord.status === 'delivered' ? 'واصل' :
-                             ord.status === 'partial' ? 'واصل جزئي' :
-                             ord.status === 'returned' ? 'راجع' :
-                             ord.status === 'returned_warehouse' ? 'راجع مستلم بالمخزن' :
-                             ord.status === 'cancelled' ? 'ملغي' :
-                             ord.status === 'backordered' ? 'بانتظار المخزون' : 'قيد الانتظار'}
-                          </Text>
-                        </View>
-                        
-                        {(ord.status !== 'delivered' && ord.status !== 'cancelled' && ord.status !== 'returned_warehouse' && ord.status !== 'returned' && ord.status !== 'returned_agent') && (
-                          <TouchableOpacity 
-                            style={{ padding: 6, backgroundColor: 'rgba(168, 85, 247, 0.15)', borderRadius: 6, marginTop: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' }}
-                            onPress={() => handleEditOrder(ord)}
-                          >
-                            <Text style={{ color: '#e9d5ff', fontWeight: 'bold', fontSize: 12 }}>✏️ تعديل الطلب</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  )} 
-                />
+                <ScrollView contentContainerStyle={{ paddingBottom: 50, flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                  {Object.keys(statusCounts).map(st => {
+                     const info = statusLabels[st] || statusLabels['unknown'];
+                     return (
+                        <TouchableOpacity 
+                           key={st} 
+                           style={{ width: '48%', backgroundColor: info.bg, borderWidth: 1, borderColor: info.border, borderRadius: 12, padding: 15, marginBottom: 15, alignItems: 'center', justifyContent: 'center' }}
+                           onPress={() => setSelectedGridStatus(st)}
+                        >
+                           <Text style={{ fontSize: 28, fontWeight: 'bold', color: info.text, marginBottom: 5 }}>{statusCounts[st]}</Text>
+                           <Text style={{ fontSize: 14, fontWeight: 'bold', color: info.text, textAlign: 'center', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>{info.label}</Text>
+                        </TouchableOpacity>
+                     );
+                  })}
+                  
+                  {/* Total Card */}
+                  <View style={{ width: '100%', backgroundColor: isLightMode ? '#f1f5f9' : '#1e293b', borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', borderRadius: 12, padding: 20, marginBottom: 15, alignItems: 'center', justifyContent: 'center' }}>
+                     <Text style={{ fontSize: 32, fontWeight: 'bold', color: isLightMode ? '#0f172a' : '#f8fafc', marginBottom: 5 }}>{filteredList.length}</Text>
+                     <Text style={{ fontSize: 16, fontWeight: 'bold', color: isLightMode ? '#475569' : '#cbd5e1', textAlign: 'center', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>المجموع الكلي للطلبات</Text>
+                  </View>
+                </ScrollView>
               );
             })()}
           </View>
+          </SafeAreaView>
+          </Modal>
         </ScrollView>
       ) : activeTab === 'products_manager' ? (
         <View style={[styles.tabContent, { backgroundColor: isLightMode ? '#f8fafc' : '#0d0d12' }]}>
@@ -3822,7 +4067,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
   },
   scrollPadding: {
     padding: 15,
-    paddingBottom: 90,
+    paddingBottom: 70,
   },
   gridTitle: {
     fontSize: 14,
@@ -4387,14 +4632,14 @@ const getStyles = (isLightMode) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 70,
+    height: 55,
     backgroundColor: 'rgba(20, 20, 30, 0.95)',
     borderTopWidth: 1,
     borderTopColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     flexDirection: 'row-reverse',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 5,
   },
   navItem: {
     flex: 1,
