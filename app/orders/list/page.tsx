@@ -3743,7 +3743,7 @@ export default function OrdersListPage() {
               setFilterBySubCat('');
               setCurrentPage(1);
               const resetFilters = {
-                id: '', customerName: '', governorate: '', phone: '', totalAmount: '',
+                id: '', customerName: '', governorate: '', phone: '', phone2: '', totalAmount: '',
                 deliveryCost: '', netAmount: '', notes: '', status: '', addDate: '',
                 addTime: '', employeeName: '', bookingEmployeeName: '', shippingCompany: ''
               };
