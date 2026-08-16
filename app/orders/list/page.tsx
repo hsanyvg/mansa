@@ -9,6 +9,7 @@ import { db, auth } from "../../../lib/firebase";
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { createJenniShipment } from '../../../lib/jenni-api';
+import { createPrimeShipment } from '../../../lib/prime-api';
 import * as XLSX from 'xlsx';
 
 export default function OrdersListPage() {
@@ -1318,18 +1319,35 @@ export default function OrdersListPage() {
         }
 
         try {
-          const response = await createJenniShipment(orderData, currentUserId);
-          const shipmentId = response?.accepted_shipments?.[0]?.shipment_id || response?.shipment_id || response?.data?.shipment_id || response?.id || '';
+          let shipmentId = '';
+          if (companyName === 'Jenni Logistics') {
+            const response = await createJenniShipment(orderData, currentUserId);
+            shipmentId = response?.accepted_shipments?.[0]?.shipment_id || response?.shipment_id || response?.data?.shipment_id || response?.id || '';
+          } else if (companyName === 'Prime Logistics') {
+            const response = await createPrimeShipment(orderData, currentUserId);
+            // Assuming the Prime API response contains the shipment ID in data or an array of case ids.
+            shipmentId = response?.caseId || response?.id || (Array.isArray(response) ? response[0] : '');
+          }
 
           const batch = writeBatch(db);
           const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderData.id);
           
-          batch.update(orderRef, {
+          const updateData: any = {
              status: 'shipped',
              shipmentCompany: companyName,
-             jenniShipmentId: shipmentId,
              updatedAt: serverTimestamp()
-          });
+          };
+
+          if (companyName === 'Jenni Logistics') {
+            updateData.jenniShipmentId = shipmentId;
+          } else if (companyName === 'Prime Logistics') {
+            updateData.primeShipmentId = shipmentId;
+          } else {
+            // For other manual companies, you can assign shipment tracking id if available in orderData
+            // but normally it's entered manually later.
+          }
+
+          batch.update(orderRef, updateData);
           
           addLogToBatch(batch, orderData.id, 'إرسال لشركة التوصيل', `تم إنشاء بوليصة شحن وتحديث الحالة إلى مشحون عبر ${companyName}`);
 
@@ -2670,6 +2688,70 @@ export default function OrdersListPage() {
     }
   };
 
+  const handleExportAlBarqExcel = () => {
+    try {
+      const ordersToExport = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
+      if (ordersToExport.length === 0) {
+        setNotificationModal({ show: true, message: 'لا توجد طلبات للتصدير' });
+        return;
+      }
+
+      const exportData = ordersToExport.map((order, index) => {
+        const itemsList = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join(' + ');
+        
+        let formattedNotes = itemsList;
+        if (order.notes) {
+          formattedNotes += `\n\n*${order.notes}`;
+        }
+
+        let phone1 = order.customerPhone || order.phone || '';
+        if (phone1.includes('-')) phone1 = phone1.split('-')[0].trim();
+        else if (phone1.includes('/')) phone1 = phone1.split('/')[0].trim();
+        else if (phone1.includes(',')) phone1 = phone1.split(',')[0].trim();
+
+        let rawGov = (order.governorate || '').trim();
+        let barqGov = rawGov;
+        
+        if (rawGov.includes('الأنبار') || rawGov.includes('الرمادي') || rawGov.includes('الانبار')) barqGov = 'الأنبار';
+        else if (rawGov.includes('بابل') || rawGov.includes('الحلة')) barqGov = 'بابل';
+        else if (rawGov.includes('بغداد')) barqGov = 'بغداد';
+        else if (rawGov.includes('البصرة') || rawGov.includes('البصره')) barqGov = 'البصرة';
+        else if (rawGov.includes('ذي قار') || rawGov.includes('الناصرية')) barqGov = 'ذي قار';
+        else if (rawGov.includes('القادسية') || rawGov.includes('الديوانية')) barqGov = 'القادسية';
+        else if (rawGov.includes('ديالى') || rawGov.includes('بعقوبة')) barqGov = 'ديالى';
+        else if (rawGov.includes('دهوك')) barqGov = 'دهوك';
+        else if (rawGov.includes('أربيل') || rawGov.includes('اربيل')) barqGov = 'أربيل';
+        else if (rawGov.includes('كربلاء')) barqGov = 'كربلاء';
+        else if (rawGov.includes('كركوك')) barqGov = 'كركوك';
+        else if (rawGov.includes('ميسان') || rawGov.includes('العمارة')) barqGov = 'ميسان';
+        else if (rawGov.includes('المثنى') || rawGov.includes('السماوة')) barqGov = 'المثنى';
+        else if (rawGov.includes('النجف')) barqGov = 'النجف';
+        else if (rawGov.includes('نينوى') || rawGov.includes('الموصل') || rawGov.includes('موصل')) barqGov = 'نينوى';
+        else if (rawGov.includes('صلاح الدين') || rawGov.includes('تكريت')) barqGov = 'صلاح الدين';
+        else if (rawGov.includes('السليمانية') || rawGov.includes('السليمانيه')) barqGov = 'السليمانية';
+        else if (rawGov.includes('واسط') || rawGov.includes('الكوت')) barqGov = 'واسط';
+
+        return {
+          'رقم الهاتف': phone1,
+          'المحافظة': barqGov,
+          'المنطقة': order.region || '',
+          'العنوان': order.address || order.region || '',
+          'المبلغ الكلي': order.totalAmount || order.price || 0,
+          'الملاحظات': formattedNotes,
+          'رقم الطلب': order.id.slice(-6).toUpperCase()
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'البرق');
+      XLSX.writeFile(workbook, 'AlBarq_Orders_Export.xlsx');
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء التصدير' });
+    }
+  };
+
   const handlePrintLabels = (size = '100x150') => {
     const ordersToPrint = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
     
@@ -3871,6 +3953,7 @@ export default function OrdersListPage() {
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#8b5cf6', color: '#fff', border: 'none' }} onClick={() => { handleExportExcel(); setShowExportDropdown(false); }}>اكسل النظام</button>
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#7c3aed', color: '#fff', border: 'none' }} onClick={() => { handleExportZitaExcel(); setShowExportDropdown(false); }}>اكسل نظام (زيطة)</button>
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#6d28d9', color: '#fff', border: 'none' }} onClick={() => { handleExportPrimeExcel(); setShowExportDropdown(false); }}>اكسل لبرايم</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#5b21b6', color: '#fff', border: 'none' }} onClick={() => { handleExportAlBarqExcel(); setShowExportDropdown(false); }}>اكسل للبرق</button>
               </div>
             )}
           </div>
@@ -4281,7 +4364,7 @@ export default function OrdersListPage() {
                   {visibleColumns.bookingEmployeeName && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
-                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || '---'}</span>
+                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || order.employeeName || '---'}</span>
                       </div>
                     </td>
                   )}
@@ -4736,18 +4819,18 @@ export default function OrdersListPage() {
                   
                   {/* Right Column: Customer Details */}
                   <div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '1rem', borderInlineEnd: '1px solid rgba(255,255,255,0.08)', paddingInlineEnd: '1.5rem' }}>
-                    <h3 style={{ color: 'var(--primary)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>👤 بيانات مستخدم النظام</h3>
+                    <h3 style={{ color: 'var(--primary)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>👤 بيانات الصفحة / الموظف</h3>
                     <div className={styles.formGroup}>
-                      <label className={styles.label}>مستخدم النظام</label>
+                      <label className={styles.label}>الموظف اللي حجز الطلب (الصفحة)</label>
                       <select 
                         className={styles.input} 
-                        value={editingOrder.employeeName || ''} 
-                        onChange={e => setEditingOrder({...editingOrder, employeeName: e.target.value})} 
+                        value={editingOrder.bookingEmployeeName || ''} 
+                        onChange={e => setEditingOrder({...editingOrder, bookingEmployeeName: e.target.value})} 
                         required 
                         disabled={isPartiallyLocked} 
                         style={lockedInputStyle}
                       >
-                        <option value="">-- اختر مستخدم النظام --</option>
+                        <option value="">-- اختر الصفحة أو الموظف --</option>
                         {employeesList.map((name, idx) => (
                           <option key={idx} value={name}>{name}</option>
                         ))}
@@ -5082,6 +5165,33 @@ export default function OrdersListPage() {
                     <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>🚚</div>
                     <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
                       <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Jenni Logistics (نظام قسورة)</span>
+                      <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
+                    </div>
+                  </div>
+                  {isSendingToDelivery ? (
+                    <div style={{ width: '20px', height: '20px', border: '2px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                  ) : (
+                    <div className={styles.routeIcon} style={{ color: '#fff' }}>➔</div>
+                  )}
+                </button>
+
+                <button 
+                  className={styles.companyCard} 
+                  onClick={() => handleCompanySelection('Prime Logistics')}
+                  disabled={isSendingToDelivery}
+                  style={{ 
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', 
+                    cursor: isSendingToDelivery ? 'not-allowed' : 'pointer', 
+                    width: '100%', textAlign: 'right', display: 'flex', 
+                    justifyContent: 'space-between', alignItems: 'center', 
+                    opacity: isSendingToDelivery ? 0.5 : 1, padding: '1rem', borderRadius: '12px',
+                    fontFamily: 'inherit', marginTop: '1rem', marginBottom: '1rem'
+                  }}
+                >
+                  <div className={styles.companyInfo} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>📦</div>
+                    <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Prime Logistics</span>
                       <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
                     </div>
                   </div>

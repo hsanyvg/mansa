@@ -51,6 +51,14 @@ export default function ApiIntegrationsPage() {
   const [isDeliveryLinked, setIsDeliveryLinked] = useState(false);
   const [isDeliveryManagerOpen, setIsDeliveryManagerOpen] = useState(false);
   
+  // Prime Integration States
+  const [primeLogin, setPrimeLogin] = useState('');
+  const [primePassword, setPrimePassword] = useState('');
+  const [primeInitialToken, setPrimeInitialToken] = useState('');
+  const [primeMerchantLoginId, setPrimeMerchantLoginId] = useState('');
+  const [isPrimeLinked, setIsPrimeLinked] = useState(false);
+  const [isPrimeManagerOpen, setIsPrimeManagerOpen] = useState(false);
+
   // Webhook Integration States
   const [landingPages, setLandingPages] = useState<LandingPageWebhook[]>([]);
   const [isWebhookManagerOpen, setIsWebhookManagerOpen] = useState(false);
@@ -107,6 +115,21 @@ export default function ApiIntegrationsPage() {
       }
     });
 
+    // Prime Integration listener
+    const primeRef = doc(db, 'users', currentUserId, 'integrations', 'prime');
+    const unsubscribePrime = onSnapshot(primeRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setPrimeLogin(data.login || '');
+        setPrimePassword(data.password || '');
+        setPrimeInitialToken(data.initialToken || '');
+        setPrimeMerchantLoginId(data.merchantLoginId || '');
+        setIsPrimeLinked(!!data.login && !!data.password);
+      } else {
+        setIsPrimeLinked(false);
+      }
+    });
+
     // Webhook Integration listener (Multiple Pages)
     const webhookRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhooks');
     const unsubscribeWebhook = onSnapshot(webhookRef, (docSnap) => {
@@ -139,6 +162,7 @@ export default function ApiIntegrationsPage() {
     return () => {
       unsubscribeMeta();
       unsubscribeDelivery();
+      unsubscribePrime();
       unsubscribeWebhook();
       unsubscribeProducts();
       unsubscribeMetaPixels();
@@ -318,6 +342,45 @@ export default function ApiIntegrationsPage() {
       setDeliverySystemCode('');
       alert('تم إلغاء الربط بنجاح.');
       setIsDeliveryManagerOpen(false);
+    } catch(err) {
+      console.error(err);
+      alert('حدث خطأ أثناء إلغاء الربط');
+    }
+  };
+
+  const handleSavePrime = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'users', currentUserId, 'integrations', 'prime');
+      await setDoc(docRef, {
+        login: primeLogin,
+        password: primePassword,
+        initialToken: primeInitialToken,
+        merchantLoginId: primeMerchantLoginId,
+        updatedAt: new Date()
+      }, { merge: true });
+      alert('تم حفظ إعدادات شركة التوصيل برايم بنجاح!');
+      setIsPrimeManagerOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء الحفظ');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUnlinkPrime = async () => {
+    if (!window.confirm('هل أنت متأكد من رغبتك في إلغاء الربط مع شركة برايم؟')) return;
+    try {
+      const docRef = doc(db, 'users', currentUserId, 'integrations', 'prime');
+      await deleteDoc(docRef);
+      setPrimeLogin('');
+      setPrimePassword('');
+      setPrimeInitialToken('');
+      setPrimeMerchantLoginId('');
+      alert('تم إلغاء الربط بنجاح.');
+      setIsPrimeManagerOpen(false);
     } catch(err) {
       console.error(err);
       alert('حدث خطأ أثناء إلغاء الربط');
@@ -535,6 +598,31 @@ export default function ApiIntegrationsPage() {
             <div className={styles.cardFooter}>
               <button className={styles.btnConfig} onClick={() => setIsDeliveryManagerOpen(true)}>
                 ⚙️ {isDeliveryLinked ? 'إدارة الربط' : 'إعداد الاتصال'}
+              </button>
+            </div>
+          </div>
+
+          {/* Prime Integration Card */}
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div className={styles.cardIcon}>📦</div>
+              <span className={`${styles.statusText} ${isPrimeLinked ? styles.statusActive : styles.statusInactive}`}>
+                {isPrimeLinked ? 'مربوط نشط' : 'غير متصل'}
+              </span>
+            </div>
+            
+            <div className={styles.cardBody}>
+              <div className={styles.cardInfo}>
+                <h3>شركة التوصيل (Prime Logistics)</h3>
+              </div>
+              <p className={styles.cardDesc}>
+                الربط مع بوابات Prime Partner APIs لترحيل الشحنات واستلام حالات التتبع.
+              </p>
+            </div>
+
+            <div className={styles.cardFooter}>
+              <button className={styles.btnConfig} onClick={() => setIsPrimeManagerOpen(true)}>
+                ⚙️ {isPrimeLinked ? 'إدارة الربط' : 'إعداد الاتصال'}
               </button>
             </div>
           </div>
@@ -801,6 +889,79 @@ export default function ApiIntegrationsPage() {
               <div className={styles.actions}>
                 {isDeliveryLinked && (
                   <button type="button" className={styles.btnDelete} onClick={handleUnlinkDelivery} disabled={isSaving}>
+                    إلغاء الربط
+                  </button>
+                )}
+                <button type="submit" className={styles.btnSave} disabled={isSaving} style={{ marginLeft: 'auto' }}>
+                  {isSaving ? 'جاري الحفظ...' : '💾 حفظ وإغلاق'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Prime Manager Modal */}
+      {isPrimeManagerOpen && (
+        <div className={styles.overlay} onClick={() => setIsPrimeManagerOpen(false)}>
+          <div className={styles.modal} style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalTitle}>📦 ربط شركة التوصيل (Prime)</div>
+              <button className={styles.closeBtn} onClick={() => setIsPrimeManagerOpen(false)}>&times;</button>
+            </div>
+            
+            <form onSubmit={handleSavePrime}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>رمز النظام (Login)</label>
+                <input 
+                  type="text" 
+                  className={styles.input} 
+                  value={primeLogin} 
+                  onChange={(e) => setPrimeLogin(e.target.value)} 
+                  placeholder="رمز تسجيل دخول النظام"
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>كلمة المرور (Password)</label>
+                <input 
+                  type="password" 
+                  className={styles.input} 
+                  value={primePassword} 
+                  onChange={(e) => setPrimePassword(e.target.value)} 
+                  placeholder="كلمة المرور"
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>الرمز الأولي (Initial Token)</label>
+                <input 
+                  type="password" 
+                  className={styles.input} 
+                  value={primeInitialToken} 
+                  onChange={(e) => setPrimeInitialToken(e.target.value)} 
+                  placeholder="الرمز الأولي للحصول على JWT"
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>معرف تسجيل دخول التاجر (Merchant Login ID)</label>
+                <input 
+                  type="text" 
+                  className={styles.input} 
+                  value={primeMerchantLoginId} 
+                  onChange={(e) => setPrimeMerchantLoginId(e.target.value)} 
+                  placeholder="مثال: merchant_login"
+                  required
+                />
+                <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem'}}>
+                  تُستخدم هذه البيانات للمصادقة ولترحيل الطلبات لحساب التاجر المخصص.
+                </p>
+              </div>
+
+              <div className={styles.actions}>
+                {isPrimeLinked && (
+                  <button type="button" className={styles.btnDelete} onClick={handleUnlinkPrime} disabled={isSaving}>
                     إلغاء الربط
                   </button>
                 )}

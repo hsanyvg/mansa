@@ -392,9 +392,9 @@ export default function MobileApp() {
       }
 
       const orderData = {
-        employeeId: selectedEmployeeId,
-        employeeName: emp?.name || 'مجهول',
-        bookingEmployeeId: selectedEmployeeId, // On mobile, the data entry employee is also the booking employee
+        employeeId: auth.currentUser?.uid || 'anonymous',
+        employeeName: auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'مستخدم النظام',
+        bookingEmployeeId: selectedEmployeeId,
         bookingEmployeeName: emp?.name || 'مجهول',
         customerName: formData.customerName || 'زبون',
         customerPhone: formData.customerPhone,

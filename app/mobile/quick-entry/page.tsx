@@ -496,10 +496,10 @@ function QuickEntryContent() {
       }
 
       const orderData = {
-        employeeId: selectedResponseEmployeeId,
-        employeeName: responseEmp?.name || 'غير محدد',
-        responseEmployeeId: selectedResponseEmployeeId,
-        responseEmployeeName: responseEmp?.name || 'غير محدد',
+        employeeId: auth.currentUser?.uid || 'anonymous',
+        employeeName: auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'مستخدم النظام',
+        bookingEmployeeId: selectedResponseEmployeeId,
+        bookingEmployeeName: responseEmp?.name || 'غير محدد',
         creatorEmployeeId: orderEmployeeId,
         creatorEmployeeName: orderEmployeeName,
         customerName: orderEmployeeName,

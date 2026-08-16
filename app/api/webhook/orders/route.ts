@@ -248,9 +248,9 @@ export async function POST(request: Request) {
     const newOrder = {
       id: nextId.toString(),
       employeeId: 'landing_page_webhook',
-      employeeName: matchedLandingPage.name || 'Landing Page',
+      employeeName: 'رابط خارجي',
       bookingEmployeeId: 'landing_page_webhook',
-      bookingEmployeeName: 'Landing Page',
+      bookingEmployeeName: matchedLandingPage.name || 'Landing Page',
       customerName: customerName,
       customerPhone: phoneNumber,
       customerPhone2: '',
