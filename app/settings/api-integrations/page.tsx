@@ -59,6 +59,12 @@ export default function ApiIntegrationsPage() {
   const [isPrimeLinked, setIsPrimeLinked] = useState(false);
   const [isPrimeManagerOpen, setIsPrimeManagerOpen] = useState(false);
 
+  // Albarq Integration States
+  const [albarqApiKey, setAlbarqApiKey] = useState('');
+  const [albarqStoreId, setAlbarqStoreId] = useState('');
+  const [isAlbarqLinked, setIsAlbarqLinked] = useState(false);
+  const [isAlbarqManagerOpen, setIsAlbarqManagerOpen] = useState(false);
+
   // Webhook Integration States
   const [landingPages, setLandingPages] = useState<LandingPageWebhook[]>([]);
   const [isWebhookManagerOpen, setIsWebhookManagerOpen] = useState(false);
@@ -130,6 +136,19 @@ export default function ApiIntegrationsPage() {
       }
     });
 
+    // Albarq Integration listener
+    const albarqRef = doc(db, 'users', currentUserId, 'integrations', 'albarq');
+    const unsubscribeAlbarq = onSnapshot(albarqRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setAlbarqApiKey(data.apiKey || '');
+        setAlbarqStoreId(data.storeId || '');
+        setIsAlbarqLinked(!!data.apiKey && !!data.storeId);
+      } else {
+        setIsAlbarqLinked(false);
+      }
+    });
+
     // Webhook Integration listener (Multiple Pages)
     const webhookRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'webhooks');
     const unsubscribeWebhook = onSnapshot(webhookRef, (docSnap) => {
@@ -163,6 +182,7 @@ export default function ApiIntegrationsPage() {
       unsubscribeMeta();
       unsubscribeDelivery();
       unsubscribePrime();
+      unsubscribeAlbarq();
       unsubscribeWebhook();
       unsubscribeProducts();
       unsubscribeMetaPixels();
@@ -384,6 +404,44 @@ export default function ApiIntegrationsPage() {
     } catch(err) {
       console.error(err);
       alert('حدث خطأ أثناء إلغاء الربط');
+    }
+  };
+
+  const handleSaveAlbarq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'users', currentUserId, 'integrations', 'albarq');
+      await setDoc(docRef, {
+        apiKey: albarqApiKey,
+        storeId: albarqStoreId,
+        updatedAt: new Date()
+      }, { merge: true });
+      alert('تم حفظ إعدادات شركة البرق بنجاح!');
+      setIsAlbarqManagerOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء الحفظ.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUnlinkAlbarq = async () => {
+    if (!window.confirm('هل أنت متأكد من إلغاء الربط مع شركة البرق؟')) return;
+    setIsSaving(true);
+    try {
+      const docRef = doc(db, 'users', currentUserId, 'integrations', 'albarq');
+      await deleteDoc(docRef);
+      setAlbarqApiKey('');
+      setAlbarqStoreId('');
+      alert('تم إلغاء الربط بنجاح.');
+      setIsAlbarqManagerOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء الإلغاء.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -623,6 +681,31 @@ export default function ApiIntegrationsPage() {
             <div className={styles.cardFooter}>
               <button className={styles.btnConfig} onClick={() => setIsPrimeManagerOpen(true)}>
                 ⚙️ {isPrimeLinked ? 'إدارة الربط' : 'إعداد الاتصال'}
+              </button>
+            </div>
+          </div>
+
+          {/* Albarq Integration Card */}
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div className={styles.cardIcon}>⚡</div>
+              <span className={`${styles.statusText} ${isAlbarqLinked ? styles.statusActive : styles.statusInactive}`}>
+                {isAlbarqLinked ? 'مربوط نشط' : 'غير متصل'}
+              </span>
+            </div>
+            
+            <div className={styles.cardBody}>
+              <div className={styles.cardInfo}>
+                <h3>شركة التوصيل (Albarq Logistics)</h3>
+              </div>
+              <p className={styles.cardDesc}>
+                الربط مع شركة البرق لإنشاء شحنات التوصيل آلياً وربطها بالمتجر.
+              </p>
+            </div>
+
+            <div className={styles.cardFooter}>
+              <button className={styles.btnConfig} onClick={() => setIsAlbarqManagerOpen(true)}>
+                ⚙️ {isAlbarqLinked ? 'إدارة الربط' : 'إعداد الاتصال'}
               </button>
             </div>
           </div>
@@ -962,6 +1045,54 @@ export default function ApiIntegrationsPage() {
               <div className={styles.actions}>
                 {isPrimeLinked && (
                   <button type="button" className={styles.btnDelete} onClick={handleUnlinkPrime} disabled={isSaving}>
+                    إلغاء الربط
+                  </button>
+                )}
+                <button type="submit" className={styles.btnSave} disabled={isSaving} style={{ marginLeft: 'auto' }}>
+                  {isSaving ? 'جاري الحفظ...' : '💾 حفظ وإغلاق'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Albarq Manager Modal */}
+      {isAlbarqManagerOpen && (
+        <div className={styles.overlay} onClick={() => setIsAlbarqManagerOpen(false)}>
+          <div className={styles.modal} style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalTitle}>⚡ ربط شركة التوصيل (البرق)</div>
+              <button className={styles.closeBtn} onClick={() => setIsAlbarqManagerOpen(false)}>&times;</button>
+            </div>
+            
+            <form onSubmit={handleSaveAlbarq}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>مفتاح الربط (API Key)</label>
+                <input 
+                  type="password" 
+                  className={styles.input} 
+                  value={albarqApiKey} 
+                  onChange={(e) => setAlbarqApiKey(e.target.value)} 
+                  placeholder="أدخل مفتاح الربط الخاص بك"
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>معرف المتجر (Store ID)</label>
+                <input 
+                  type="text" 
+                  className={styles.input} 
+                  value={albarqStoreId} 
+                  onChange={(e) => setAlbarqStoreId(e.target.value)} 
+                  placeholder="أدخل معرف المتجر الخاص بك"
+                  required
+                />
+              </div>
+
+              <div className={styles.actions}>
+                {isAlbarqLinked && (
+                  <button type="button" className={styles.btnDelete} onClick={handleUnlinkAlbarq} disabled={isSaving}>
                     إلغاء الربط
                   </button>
                 )}

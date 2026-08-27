@@ -10,6 +10,7 @@ import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writ
 import { onAuthStateChanged } from 'firebase/auth';
 import { createJenniShipment } from '../../../lib/jenni-api';
 import { createPrimeShipment } from '../../../lib/prime-api';
+import { createAlbarqShipment } from '../../../lib/albarq-api';
 import * as XLSX from 'xlsx';
 
 export default function OrdersListPage() {
@@ -1327,6 +1328,9 @@ export default function OrdersListPage() {
             const response = await createPrimeShipment(orderData, currentUserId);
             // Assuming the Prime API response contains the shipment ID in data or an array of case ids.
             shipmentId = response?.caseId || response?.id || (Array.isArray(response) ? response[0] : '');
+          } else if (companyName === 'Albarq Logistics') {
+            const response = await createAlbarqShipment(currentUserId, orderData);
+            shipmentId = response?.receiptNumber || '';
           }
 
           const batch = writeBatch(db);
@@ -1342,6 +1346,8 @@ export default function OrdersListPage() {
             updateData.jenniShipmentId = shipmentId;
           } else if (companyName === 'Prime Logistics') {
             updateData.primeShipmentId = shipmentId;
+          } else if (companyName === 'Albarq Logistics') {
+            updateData.albarqReceiptNumber = shipmentId;
           } else {
             // For other manual companies, you can assign shipment tracking id if available in orderData
             // but normally it's entered manually later.
@@ -5192,6 +5198,33 @@ export default function OrdersListPage() {
                     <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>📦</div>
                     <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
                       <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Prime Logistics</span>
+                      <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
+                    </div>
+                  </div>
+                  {isSendingToDelivery ? (
+                    <div style={{ width: '20px', height: '20px', border: '2px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                  ) : (
+                    <div className={styles.routeIcon} style={{ color: '#fff' }}>➔</div>
+                  )}
+                </button>
+
+                <button 
+                  className={styles.companyCard} 
+                  onClick={() => handleCompanySelection('Albarq Logistics')}
+                  disabled={isSendingToDelivery}
+                  style={{ 
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', 
+                    cursor: isSendingToDelivery ? 'not-allowed' : 'pointer', 
+                    width: '100%', textAlign: 'right', display: 'flex', 
+                    justifyContent: 'space-between', alignItems: 'center', 
+                    opacity: isSendingToDelivery ? 0.5 : 1, padding: '1rem', borderRadius: '12px',
+                    fontFamily: 'inherit', marginBottom: '1rem'
+                  }}
+                >
+                  <div className={styles.companyInfo} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>⚡</div>
+                    <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Albarq Logistics (شركة البرق)</span>
                       <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
                     </div>
                   </div>
