@@ -4303,7 +4303,7 @@ export default function OrdersListPage() {
                           textAlign: 'center',
                           width: '100%'
                         }}
-                        value={order.status || 'pending'}
+                        value={getStatusKey(order)}
                         onChange={(e) => handleInlineStatusChange(order.id, order.status || 'pending', e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                       >
