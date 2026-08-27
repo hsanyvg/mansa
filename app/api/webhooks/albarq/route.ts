@@ -8,6 +8,10 @@ export async function POST(req: Request) {
   let userId = '';
 
   try {
+    if (!adminDb) {
+      return NextResponse.json({ success: false, message: 'Database not initialized' }, { status: 500 });
+    }
+
     // 1. Security Check (Secret Key)
     const apiKey = req.headers.get('x-api-key');
     const secret = process.env.ALBARQ_WEBHOOK_SECRET;
@@ -115,10 +119,10 @@ async function logWebhook(userId: string | null, timestamp: Date, payload: any, 
   try {
     if (userId) {
       // Log inside the specific tenant's webhook_logs collection
-      await adminDb.collection('users').doc(userId).collection('webhook_logs').add(logData);
+      await adminDb!.collection('users').doc(userId).collection('webhook_logs').add(logData);
     } else {
       // Log globally if user not identified
-      await adminDb.collection('webhook_logs').add(logData);
+      await adminDb!.collection('webhook_logs').add(logData);
     }
   } catch (e) {
     console.error('Failed to save webhook log:', e);
