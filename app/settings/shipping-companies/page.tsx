@@ -10,6 +10,7 @@ interface ShippingCompany {
   name: string;
   createdAt: any;
   rates?: Record<string, number>;
+  apiIntegration?: string;
 }
 
 const GOVERNORATES = [
@@ -103,6 +104,18 @@ export default function ShippingCompaniesPage() {
     }
   };
 
+  const handleApiIntegrationChange = async (id: string, value: string) => {
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'shipping_companies', id), {
+        apiIntegration: value
+      });
+      showToastMsg("تم حفظ الربط البرمجي بنجاح");
+    } catch (error) {
+      console.error("Error updating API integration:", error);
+      showToastMsg("حدث خطأ أثناء حفظ الربط البرمجي", "error");
+    }
+  };
+
   const handleUnifyRates = () => {
     const rate = Number(unifiedRate);
     if (!rate || rate < 0) return;
@@ -147,6 +160,7 @@ export default function ShippingCompaniesPage() {
             <thead>
               <tr>
                 <th>اسم الشركة</th>
+                <th style={{ width: '200px', textAlign: 'center' }}>الربط البرمجي (API)</th>
                 <th style={{ width: '100px', textAlign: 'center' }}>إجراءات</th>
               </tr>
             </thead>
@@ -154,6 +168,19 @@ export default function ShippingCompaniesPage() {
               {companies.map((cat) => (
                 <tr key={cat.id}>
                   <td>{cat.name}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <select 
+                      className={styles.input} 
+                      style={{ padding: '0.4rem', fontSize: '0.9rem', width: '100%', marginBottom: 0 }}
+                      value={cat.apiIntegration || ''}
+                      onChange={(e) => handleApiIntegrationChange(cat.id, e.target.value)}
+                    >
+                      <option value="">بدون ربط</option>
+                      <option value="albarq">البرق (Albarq API)</option>
+                      <option value="jenni">جيني (Jenni API)</option>
+                      <option value="prime">برايم (Prime API)</option>
+                    </select>
+                  </td>
                   <td style={{ textAlign: 'center' }}>
                     <button 
                       className={styles.editBtn} 
@@ -174,7 +201,7 @@ export default function ShippingCompaniesPage() {
               ))}
               {companies.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={2} style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  <td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                     لا توجد شركات شحن مضافة حالياً
                   </td>
                 </tr>

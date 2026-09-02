@@ -36,11 +36,17 @@ export async function POST(req: Request) {
     const normalizedStatus = status.toLowerCase();
     let targetStatus = normalizedStatus;
     
-    if (normalizedStatus.includes('deliver') || normalizedStatus === 'successful') targetStatus = 'delivered';
+    if (normalizedStatus.includes('replace') && normalizedStatus.includes('deliver')) targetStatus = 'delivered_replaced';
+    else if (normalizedStatus === 'delivered_replaced' || normalizedStatus === 'replaced') targetStatus = 'delivered_replaced';
+    else if (normalizedStatus.includes('deliver') || normalizedStatus === 'successful') targetStatus = 'delivered';
     else if (normalizedStatus.includes('return') || normalizedStatus.includes('rto')) targetStatus = 'returned';
     else if (normalizedStatus.includes('postpone')) targetStatus = 'postponed';
     else if (normalizedStatus.includes('partial')) targetStatus = 'partial';
-    else if (normalizedStatus.includes('ship') || normalizedStatus.includes('ofd')) targetStatus = 'shipped';
+    else if (normalizedStatus.includes('ship')) targetStatus = 'shipped';
+    else if (normalizedStatus.includes('ofd') || normalizedStatus.includes('out for delivery') || normalizedStatus.includes('مندوب') || normalizedStatus.includes('بطريق')) targetStatus = 'ofd';
+    else if (normalizedStatus.includes('address') || normalizedStatus === 'address_changed') targetStatus = 'address_changed';
+    else if (normalizedStatus.includes('resen') || normalizedStatus === 'resent') targetStatus = 'resent';
+    else if (normalizedStatus.includes('process') || normalizedStatus === 'processing' || normalizedStatus.includes('pend')) targetStatus = 'processing';
 
     // 3. Find Order (Multi-tenant support)
     let orderDoc = null;
@@ -74,7 +80,8 @@ export async function POST(req: Request) {
     
     const updateData: any = {
       status: targetStatus,
-      updatedAt: timestamp
+      updatedAt: timestamp,
+      updatedBy: 'albarq_webhook'
     };
     
     if (note) {

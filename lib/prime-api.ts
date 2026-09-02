@@ -113,7 +113,7 @@ export async function createPrimeShipment(order: any, userId: string) {
       receiverHp1: order.customerPhone || order.phone1 || order.phone || '07700000000',
       state: primeStateCode,
       district: order.districtId || 1, // Fallback district
-      receiptAmtIqd: Number(order.totalAmount || 0)
+      receiptAmtIqd: Number(order.totalAmount || 0) + Number(order.deliveryCost || 0)
     }
   ];
 

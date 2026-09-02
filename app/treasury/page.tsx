@@ -176,7 +176,8 @@ export default function TreasurySettlementPage() {
   const [showSelectedOrdersList, setShowSelectedOrdersList] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [showBulkSelectModal, setShowBulkSelectModal] = useState(false);
-  const [bulkSelectText, setBulkSelectText] = useState('');
+  const [bulkOrderIdsText, setBulkOrderIdsText] = useState('');
+  const [bulkAmountsText, setBulkAmountsText] = useState('');
   const [bulkSettlementAmounts, setBulkSettlementAmounts] = useState<Record<string, number>>({});
   const [reconciliationReport, setReconciliationReport] = useState<{
     show: boolean;
@@ -184,6 +185,7 @@ export default function TreasurySettlementPage() {
     notFound: string[];
     unselectedExtra: { id: string, name: string, expected: number }[];
     matchedCount: number;
+    duplicates?: string[];
   } | null>(null);
   const [reportSearchTerm, setReportSearchTerm] = useState('');
 
@@ -564,7 +566,11 @@ export default function TreasurySettlementPage() {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-      // Update mismatched orders with a flag and a note
+      // Create a deposit transaction record in treasury_transactions
+      const dateStr = now.toISOString().split('T')[0];
+      const transactionRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'));
+
+      // Update mismatched orders with a flag, note, amounts, and link to the statement
       if (reconciliationReport && reconciliationReport.mismatchedAmounts && reconciliationReport.mismatchedAmounts.length > 0) {
         const statementNameStr = externalStatementId ? `"${externalStatementId}"` : "كشف غير مسمى";
         const todayStr = now.toISOString().split('T')[0];
@@ -572,22 +578,21 @@ export default function TreasurySettlementPage() {
           const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', mismatch.id);
           batch.update(orderRef, {
             has_discrepancy: true,
-            discrepancy_note: `تمت محاولة تسوية هذا الوصل ضمن كشف ${statementNameStr} بتاريخ ${todayStr}، ولم يتم الاستلام لأن مبلغ الكشف كان ${mismatch.inputted} بينما المطلوب ${mismatch.expected}.`
+            discrepancy_note: `تمت محاولة تسوية هذا الوصل ضمن كشف ${statementNameStr} بتاريخ ${todayStr}، ولم يتم الاستلام لأن مبلغ الكشف كان ${mismatch.inputted} بينما المطلوب ${mismatch.expected}.`,
+            discrepancy_statement_id: transactionRef.id,
+            discrepancy_inputted_amount: mismatch.inputted,
+            discrepancy_expected_amount: mismatch.expected
           });
         });
       }
 
-      // Create a deposit transaction record in treasury_transactions
-      const dateStr = now.toISOString().split('T')[0];
-
-      const transactionRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'));
       batch.set(transactionRef, {
         type: 'deposit',
         amount: totalAmountToDeposit,
         currency: 'IQD',
         date: dateStr,
         time: timeStr,
-        details: `تسوية تلقائية للطلبات ذات الأرقام: ${Array.from(selectedOrders).join(', ')}`,
+        details: externalStatementId ? `تسوية كشف مجمعة (${selectedOrders.size} طلبات)` : `تسوية تلقائية (${selectedOrders.size} طلبات)`,
         walletId: selectedWallet.id,
         createdAt: serverTimestamp(),
         externalStatementId: externalStatementId || '',
@@ -717,28 +722,44 @@ export default function TreasurySettlementPage() {
   }, 0);
 
   const handleBulkSelect = () => {
-    const lines = bulkSelectText.split('\n').filter(l => l.trim().length > 0);
+    const linesIds = bulkOrderIdsText.split('\n');
+    const linesAmounts = bulkAmountsText.split('\n');
     const newSelected = new Set<string>(selectedOrders);
     const newAmounts: Record<string, number> = { ...bulkSettlementAmounts };
     let notFound: string[] = [];
     let addedCount = 0;
     const mismatchedAmounts: { id: string, expected: number, inputted: number }[] = [];
     const processedOrderIds = new Set<string>();
+    const duplicateOrderIds = new Set<string>();
     let matchedCount = 0;
 
-    lines.forEach(line => {
-      const parts = line.trim().split(/[\t\s]+/);
+    linesIds.forEach((rawLine, index) => {
+      const parts = rawLine.trim().split(/[\t\s]+/);
+      
       const identifier = parts[0];
-      const amountStr = parts.length > 1 ? parts[parts.length - 1] : null;
 
+      let amountStr = parts.length > 1 ? parts[parts.length - 1] : null;
+      
+      // If no amount on the same line, check the amounts textarea
+      if (!amountStr && linesAmounts[index] && linesAmounts[index].trim()) {
+        amountStr = linesAmounts[index].trim();
+      }
+
+      if (!identifier) return; // Skip empty lines
+
+      // Allow exact matches on any length, but only allow partial (endsWith) matches if the identifier is at least 5 characters long
+      // This prevents a short serial number (like "10") from falsely matching a long order number (like "107910")
       const order = pendingOrders.find(o => 
         o.id === identifier || 
-        o.id.endsWith(identifier) || 
+        (identifier.length >= 5 && o.id.endsWith(identifier)) || 
         (o as any).orderNumber === identifier || 
         (o as any).shipmentNumber === identifier
       );
 
       if (order) {
+        if (processedOrderIds.has(order.id)) {
+          duplicateOrderIds.add(identifier);
+        }
         processedOrderIds.add(order.id);
         
         let hasAmount = false;
@@ -746,6 +767,11 @@ export default function TreasurySettlementPage() {
         if (amountStr) {
           parsedAmount = parseFloat(amountStr.replace(/,/g, ''));
           if (!isNaN(parsedAmount)) {
+            // Handle shorthand or dot separators (e.g. 12.000 or 12.5 becomes 12 or 12.5)
+            // Since amounts are in IQD, any amount < 1000 is clearly a shorthand for thousands
+            if (parsedAmount > 0 && parsedAmount < 1000) {
+              parsedAmount *= 1000;
+            }
             hasAmount = true;
           }
         }
@@ -778,7 +804,8 @@ export default function TreasurySettlementPage() {
     setSelectedOrders(newSelected);
     setBulkSettlementAmounts(newAmounts);
     setShowBulkSelectModal(false);
-    setBulkSelectText('');
+    setBulkOrderIdsText('');
+    setBulkAmountsText('');
 
     const unselectedExtra = pendingOrders
        .filter(o => !newSelected.has(o.id) && !processedOrderIds.has(o.id))
@@ -789,7 +816,8 @@ export default function TreasurySettlementPage() {
        mismatchedAmounts,
        notFound,
        unselectedExtra,
-       matchedCount
+       matchedCount,
+       duplicates: Array.from(duplicateOrderIds)
     });
   };
 
@@ -2107,36 +2135,58 @@ export default function TreasurySettlementPage() {
           <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <h2 className={styles.modalTitle} style={{ color: '#60a5fa' }}>📋 تحديد متعدد عبر الإكسل</h2>
             <div style={{ marginBottom: '1.5rem', color: '#94a3b8', fontSize: '0.95rem', lineHeight: '1.6' }}>
-              قم بنسخ ولصق أرقام الطلبات أو بوليصات الشحن من ملف الإكسل هنا. يمكنك لصق عمود واحد للمعرفات فقط (للتسوية الكاملة)، أو عمودين (رقم الطلب ثم المبلغ المستلم مفصولين بمسافة أو Tab) لتسجيل المبالغ الجزئية تلقائياً.
-              <br /><br />
-              <strong>مثال للإدخال:</strong><br />
-              <code style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', display: 'block', borderRadius: '6px', color: '#10b981', marginTop: '0.5rem' }}>
-                ORD-001<br />
-                ORD-002&nbsp;&nbsp;&nbsp;45000<br />
-                ORD-003&nbsp;&nbsp;&nbsp;20,000
-              </code>
+              قم بنسخ ولصق أرقام الطلبات أو بوليصات الشحن في الحقل الأول.
+              وإذا أردت تسجيل مبالغ جزئية، قم بلصق المبالغ في الحقل الثاني بحيث يكون كل مبلغ مقابل رقم الطلب الخاص به (نفس السطر).
             </div>
             
-            <textarea
-              value={bulkSelectText}
-              onChange={(e) => setBulkSelectText(e.target.value)}
-              placeholder="الصق المعرفات هنا..."
-              style={{
-                width: '100%',
-                height: '250px',
-                padding: '1rem',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.1)',
-                backgroundColor: 'rgba(0,0,0,0.2)',
-                color: '#fff',
-                fontFamily: 'monospace',
-                fontSize: '1rem',
-                resize: 'vertical',
-                outline: 'none',
-                direction: 'ltr',
-                textAlign: 'left'
-              }}
-            />
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontSize: '0.9rem' }}>أرقام الطلبات / البوليصات</label>
+                <textarea
+                  value={bulkOrderIdsText}
+                  onChange={(e) => setBulkOrderIdsText(e.target.value)}
+                  placeholder="الصق أرقام الطلبات هنا..."
+                  style={{
+                    width: '100%',
+                    height: '250px',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    backgroundColor: 'rgba(0,0,0,0.2)',
+                    color: '#fff',
+                    fontFamily: 'monospace',
+                    fontSize: '1rem',
+                    resize: 'vertical',
+                    outline: 'none',
+                    direction: 'ltr',
+                    textAlign: 'left'
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontSize: '0.9rem' }}>المبالغ (اختياري)</label>
+                <textarea
+                  value={bulkAmountsText}
+                  onChange={(e) => setBulkAmountsText(e.target.value)}
+                  placeholder="الصق المبالغ هنا..."
+                  style={{
+                    width: '100%',
+                    height: '250px',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    backgroundColor: 'rgba(0,0,0,0.2)',
+                    color: '#fff',
+                    fontFamily: 'monospace',
+                    fontSize: '1rem',
+                    resize: 'vertical',
+                    outline: 'none',
+                    direction: 'ltr',
+                    textAlign: 'left'
+                  }}
+                />
+              </div>
+            </div>
             
             <div className={styles.modalActions} style={{ marginTop: '1.5rem' }}>
               <button 
@@ -2174,6 +2224,17 @@ export default function TreasurySettlementPage() {
             </div>
 
             <div style={{ marginTop: '2rem' }}>
+              {reconciliationReport.duplicates && reconciliationReport.duplicates.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ color: '#f59e0b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    ⚠️ أرقام مكررة في الإكسل (تم تجاهل التكرار):
+                  </h3>
+                  <div style={{ background: 'rgba(245, 158, 11, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#fcd34d', lineHeight: '1.6' }}>
+                    {reconciliationReport.duplicates.join('، ')}
+                  </div>
+                </div>
+              )}
+
               {reconciliationReport.mismatchedAmounts.length > 0 && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h3 style={{ color: '#ef4444', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

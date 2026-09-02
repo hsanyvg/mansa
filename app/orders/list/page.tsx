@@ -17,6 +17,7 @@ export default function OrdersListPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [printModalState, setPrintModalState] = useState({ show: false, size: '100x150' });
   const [dateFilter, setDateFilter] = useState('الكل'); // Modified to show All conceptually first
   const [showArchivedInFilter, setShowArchivedInFilter] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
@@ -360,20 +361,31 @@ export default function OrdersListPage() {
 
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
-    'pending': { label: 'قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
-    'backordered': { label: 'قيد الانتظار (مخزن)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
-    'processing': { label: 'جاري التجهيز', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
-    'shipped': { label: 'تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
-    'ofd': { label: 'قيد التوصيل', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
-    'delivered': { label: 'مكتمل (لم تتم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
-    'delivered_settled': { label: 'مكتمل (تم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
-    'partial': { label: 'واصل جزئي (لم تتم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
-    'partial_settled': { label: 'واصل جزئي (تم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
-    'cancelled': { label: 'ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
-    'returned_agent': { label: 'راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
-    'returned_warehouse': { label: 'راجع مخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
-    'postponed': { label: 'مؤجل', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' }
+    'pending': { label: '📦 قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
+    'backordered': { label: '📦 قيد الانتظار (مخزن)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+    'processing': { label: '⚙️ جاري التجهيز', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
+    'shipped': { label: '🚚 تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
+    'ofd': { label: '🛵 قيد التوصيل', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
+    'delivered': { label: '✅ مكتمل (لم تتم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'delivered_settled': { label: '✅ مكتمل (تم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'partial': { label: '🌖 واصل جزئي (لم تتم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
+    'partial_settled': { label: '🌖 واصل جزئي (تم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
+    'delivered_replaced': { label: '🔄 واصل تم الاستبدال (لم تتم المحاسبة)', color: '#059669', bg: 'rgba(5, 150, 105, 0.15)' },
+    'cancelled': { label: '❌ ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+    'returned_agent': { label: '↩️ راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
+    'returned_warehouse': { label: '↩️ راجع مخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
+    'postponed': { label: '⏰ مؤجل', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' },
+    'address_changed': { label: '📍 تغير عنوان', color: '#d946ef', bg: 'rgba(217, 70, 239, 0.15)' },
+    'resent': { label: '🔁 إعادة ارسال', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' }
   };
+
+  const statusGroups = [
+    { label: '📦 قسم التجهيز', keys: ['pending', 'backordered', 'processing'] },
+    { label: '🚚 قسم التوصيل', keys: ['shipped', 'ofd'] },
+    { label: '✅ قسم التسليم', keys: ['delivered', 'partial', 'delivered_replaced'] },
+    { label: '⚠️ قسم المؤجلات', keys: ['postponed', 'address_changed', 'resent'] },
+    { label: '↩️ قسم المرتجعات والإلغاء', keys: ['returned_agent', 'returned_warehouse', 'cancelled'] }
+  ];
 
   const getStatusKey = (order: any) => {
     const status = (order.status || 'pending').toLowerCase();
@@ -1302,7 +1314,7 @@ export default function OrdersListPage() {
     }
   };
 
-  const handleCompanySelection = async (companyName: string) => {
+  const handleCompanySelection = async (company: any) => {
     if (selectedOrderIds.length === 0) return;
     
     setIsSendingToDelivery(true);
@@ -1319,16 +1331,56 @@ export default function OrdersListPage() {
            continue;
         }
 
+        const apiIntegration = company.apiIntegration || '';
+        const companyName = company.name;
+
+        // Calculate delivery cost
+        let deliveryCostToDeduct = 0;
+        if (company.rates && orderData.governorate) {
+          const oGov = orderData.governorate.toLowerCase();
+          let matchedKey = Object.keys(company.rates).find(k => k.toLowerCase() === oGov);
+          if (!matchedKey) {
+            // company.rates keys are standard Arabic names like 'بغداد', 'ذي قار'
+            const GOV_ALIASES: Record<string, string[]> = {
+              'بغداد': ['بغداد'],
+              'البصرة': ['البصرة', 'بصرة'],
+              'نينوى': ['نينوى', 'الموصل', 'موصل'],
+              'أربيل': ['أربيل', 'اربيل'],
+              'بابل': ['بابل', 'الحلة', 'حلة'],
+              'ذي قار': ['ذي قار', 'الناصرية', 'ناصرية'],
+              'الأنبار': ['الأنبار', 'الانبار', 'الرمادي', 'رمادي'],
+              'واسط': ['واسط', 'الكوت', 'كوت'],
+              'النجف': ['النجف', 'نجف'],
+              'كربلاء': ['كربلاء'],
+              'السليمانية': ['السليمانية', 'سليمانية'],
+              'كركوك': ['كركوك'],
+              'ميسان': ['ميسان', 'العمارة', 'عمارة'],
+              'ديالى': ['ديالى', 'بعقوبة'],
+              'القادسية': ['القادسية', 'الديوانية', 'ديوانية'],
+              'المثنى': ['المثنى', 'السماوة', 'سماوة'],
+              'دهوك': ['دهوك'],
+              'صلاح الدين': ['صلاح الدين', 'تكريت']
+            };
+            
+            matchedKey = Object.keys(company.rates).find(rKey => {
+              const aliases = GOV_ALIASES[rKey] || [rKey];
+              return aliases.some(alias => oGov.includes(alias) || alias.includes(oGov));
+            });
+          }
+          if (matchedKey) {
+            deliveryCostToDeduct = company.rates[matchedKey] || 0;
+          }
+        }
+
         try {
           let shipmentId = '';
-          if (companyName === 'Jenni Logistics') {
+          if (apiIntegration === 'jenni') {
             const response = await createJenniShipment(orderData, currentUserId);
             shipmentId = response?.accepted_shipments?.[0]?.shipment_id || response?.shipment_id || response?.data?.shipment_id || response?.id || '';
-          } else if (companyName === 'Prime Logistics') {
+          } else if (apiIntegration === 'prime') {
             const response = await createPrimeShipment(orderData, currentUserId);
-            // Assuming the Prime API response contains the shipment ID in data or an array of case ids.
             shipmentId = response?.caseId || response?.id || (Array.isArray(response) ? response[0] : '');
-          } else if (companyName === 'Albarq Logistics') {
+          } else if (apiIntegration === 'albarq') {
             const response = await createAlbarqShipment(currentUserId, orderData);
             shipmentId = response?.receiptNumber || '';
           }
@@ -1338,24 +1390,36 @@ export default function OrdersListPage() {
           
           const updateData: any = {
              status: 'shipped',
-             shipmentCompany: companyName,
              updatedAt: serverTimestamp()
           };
 
-          if (companyName === 'Jenni Logistics') {
+          if (apiIntegration === 'jenni') {
+            updateData.shipmentCompany = 'Jenni Logistics';
             updateData.jenniShipmentId = shipmentId;
-          } else if (companyName === 'Prime Logistics') {
+            updateData.shippingCompany = companyName;
+          } else if (apiIntegration === 'prime') {
+            updateData.shipmentCompany = 'Prime Logistics';
             updateData.primeShipmentId = shipmentId;
-          } else if (companyName === 'Albarq Logistics') {
+            updateData.shippingCompany = companyName;
+          } else if (apiIntegration === 'albarq') {
+            updateData.shipmentCompany = 'Albarq Logistics';
             updateData.albarqReceiptNumber = shipmentId;
+            updateData.shippingCompany = companyName;
           } else {
-            // For other manual companies, you can assign shipment tracking id if available in orderData
-            // but normally it's entered manually later.
+            updateData.shippingCompany = companyName;
+            updateData.shipmentCompany = companyName;
+          }
+
+          // Deduct delivery cost if not already deducted
+          if (deliveryCostToDeduct > 0 && !orderData.deliveryCost) {
+             updateData.deliveryCost = deliveryCostToDeduct;
+             const currentTotal = orderData.totalAmount || orderData.price || 0;
+             updateData.totalAmount = currentTotal - deliveryCostToDeduct;
           }
 
           batch.update(orderRef, updateData);
           
-          addLogToBatch(batch, orderData.id, 'إرسال لشركة التوصيل', `تم إنشاء بوليصة شحن وتحديث الحالة إلى مشحون عبر ${companyName}`);
+          addLogToBatch(batch, orderData.id, 'ترحيل الطلب', `تم التحديث إلى مشحون عبر ${companyName}${apiIntegration ? ' (عبر API)' : ''}`);
 
           await syncStockForStatusChange(orderData.items || [], orderData.status, 'shipped', batch);
           await batch.commit();
@@ -1368,7 +1432,6 @@ export default function OrdersListPage() {
             await new Promise(resolve => setTimeout(resolve, 3000));
           }
         } finally {
-          // تأخير إجباري بعد كل طلب لتجنب الحظر
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
       }
@@ -1377,11 +1440,11 @@ export default function OrdersListPage() {
       setSelectedOrderIds([]);
       
       if (failCount === 0) {
-        setNotificationModal({ show: true, message: '✅ تم إرسال الطلب لشركة التوصيل بنجاح!' });
+        setNotificationModal({ show: true, message: '✅ تم ترحيل الطلبات بنجاح!' });
       } else if (successCount > 0) {
-        setNotificationModal({ show: true, message: `✅ تم إرسال ${successCount} بنجاح. ❌ فشل ${failCount}. السبب: ${lastError}` });
+        setNotificationModal({ show: true, message: `✅ تم ترحيل ${successCount} بنجاح. ❌ فشل ${failCount}. السبب: ${lastError}` });
       } else {
-        setNotificationModal({ show: true, message: `❌ فشل الإرسال: ${lastError}` });
+        setNotificationModal({ show: true, message: `❌ فشل الترحيل: ${lastError}` });
       }
 
     } catch (error: any) {
@@ -2758,7 +2821,7 @@ export default function OrdersListPage() {
     }
   };
 
-  const handlePrintLabels = (size = '100x150') => {
+  const handlePrintLabels = (size = '100x150', includeDeliveryCost = false) => {
     const ordersToPrint = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
     
     if (ordersToPrint.length === 0) {
@@ -2873,7 +2936,7 @@ export default function OrdersListPage() {
                          معلومات الزبون <span style="font-size: 12pt;">👤</span>
                       </div>
                       <div style="background: #000; color: #fff; padding: 4px 15px 4px 5px; font-weight: bold; font-size: 10pt; clip-path: polygon(0 0, 100% 0, 85% 50%, 100% 100%, 0 100%); width: 110px; text-align: center; margin-left: -10px;">
-                         ${new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع
+                         ${new Intl.NumberFormat('en-US').format((order.totalAmount || order.price || 0) + (includeDeliveryCost ? (order.deliveryCost || 0) : 0))} د.ع
                       </div>
                    </div>
                    
@@ -3246,12 +3309,19 @@ export default function OrdersListPage() {
                 }}
               >
                 <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem'}}>اختر الحالة...</option>
-                {Object.entries(statusMap).map(([key, info]) => {
-                  if (key === 'returned_warehouse' || key === 'delivered_settled' || key === 'partial_settled') return null;
-                  return (
-                    <option key={key} value={key} style={{color: info.color, backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>{info.label} ({key})</option>
-                  );
-                })}
+                {statusGroups.map((group, idx) => (
+                  <optgroup key={idx} label={group.label} style={{backgroundColor: '#2a2d3d', color: '#94a3b8', fontStyle: 'normal'}}>
+                    {group.keys.map(key => {
+                      const info = statusMap[key];
+                      if (!info || key === 'returned_warehouse' || key === 'delivered_settled' || key === 'partial_settled') return null;
+                      return (
+                        <option key={key} value={key} disabled={key === 'shipped' || key === 'ofd'} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
+                          {info.label} {(key === 'shipped' || key === 'ofd') ? '(استخدم الترحيل)' : ''}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                ))}
               </select>
               <button 
                 onClick={() => setSelectedOrderIds([])}
@@ -3935,9 +4005,9 @@ export default function OrdersListPage() {
                 borderRadius: '8px', padding: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
                 display: 'flex', flexDirection: 'column', gap: '5px'
               }}>
-                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right' }} onClick={() => { handlePrintLabels('100x150'); setShowPrintDropdown(false); }}>🖨️ قياس 100x150</button>
-                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right', backgroundColor: '#475569' }} onClick={() => { handlePrintLabels('80x120'); setShowPrintDropdown(false); }}>🖨️ قياس 80x120</button>
-                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right', backgroundColor: '#64748b' }} onClick={() => { handlePrintLabels('100x100'); setShowPrintDropdown(false); }}>🖨️ قياس 100x100</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right' }} onClick={() => { setPrintModalState({show: true, size: '100x150'}); setShowPrintDropdown(false); }}>🖨️ قياس 100x150</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right', backgroundColor: '#475569' }} onClick={() => { setPrintModalState({show: true, size: '80x120'}); setShowPrintDropdown(false); }}>🖨️ قياس 80x120</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'right', backgroundColor: '#64748b' }} onClick={() => { setPrintModalState({show: true, size: '100x100'}); setShowPrintDropdown(false); }}>🖨️ قياس 100x100</button>
               </div>
             )}
           </div>
@@ -4307,14 +4377,19 @@ export default function OrdersListPage() {
                         onChange={(e) => handleInlineStatusChange(order.id, order.status || 'pending', e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {Object.entries(statusMap).map(([key, info]) => {
-                          if ((key === 'returned_warehouse' && order.status !== 'returned_warehouse') || key === 'delivered_settled' || key === 'partial_settled') return null;
-                          return (
-                            <option key={key} value={key} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
-                              {info.label} ({key})
-                            </option>
-                          );
-                        })}
+                        {statusGroups.map((group, idx) => (
+                          <optgroup key={idx} label={group.label} style={{backgroundColor: '#2a2d3d', color: '#94a3b8', fontStyle: 'normal'}}>
+                            {group.keys.map(key => {
+                              const info = statusMap[key];
+                              if (!info || (key === 'returned_warehouse' && order.status !== 'returned_warehouse') || key === 'delivered_settled' || key === 'partial_settled') return null;
+                              return (
+                                <option key={key} value={key} disabled={key === 'shipped' || key === 'ofd'} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
+                                  {info.label} {(key === 'shipped' || key === 'ofd') ? '(استخدم الترحيل)' : ''}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        ))}
                       </select>
                       {order.status === 'backordered' && (
                          <div style={{ fontSize: '0.8rem', color: '#f59e0b', width: '100%', textAlign: 'center', marginTop: '-4px', fontWeight: 'bold' }}>
@@ -5154,108 +5229,92 @@ export default function OrdersListPage() {
             
             <div className={styles.modalBody}>
               <div className={styles.companyList}>
+                {shippingCompanies.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                    لم تقم بإضافة أي شركة شحن في الإعدادات. يرجى إضافتها من "إدارة شركات الشحن".
+                  </div>
+                ) : (
+                  shippingCompanies.map((company) => (
+                    <button 
+                      key={company.id}
+                      className={styles.companyCard} 
+                      onClick={() => handleCompanySelection(company)}
+                      disabled={isSendingToDelivery}
+                      style={{ 
+                        background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', 
+                        cursor: isSendingToDelivery ? 'not-allowed' : 'pointer', 
+                        width: '100%', textAlign: 'right', display: 'flex', 
+                        justifyContent: 'space-between', alignItems: 'center', 
+                        opacity: isSendingToDelivery ? 0.5 : 1, padding: '1rem', borderRadius: '12px',
+                        fontFamily: 'inherit', marginBottom: '1rem'
+                      }}
+                    >
+                      <div className={styles.companyInfo} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>
+                          {company.apiIntegration ? '⚡' : '🚚'}
+                        </div>
+                        <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>{company.name}</span>
+                          <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: company.apiIntegration ? '#10b981' : '#94a3b8' }}>
+                            {company.apiIntegration ? `إرسال تلقائي عبر API (${company.apiIntegration})` : 'بدون ربط API (ترحيل في النظام فقط)'}
+                          </span>
+                        </div>
+                      </div>
+                      {isSendingToDelivery ? (
+                        <div style={{ width: '20px', height: '20px', border: '2px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                      ) : (
+                        <div className={styles.routeIcon} style={{ color: '#fff' }}>➔</div>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Options Modal */}
+      {printModalState.show && (
+        <div className={styles.modalOverlay} onClick={() => setPrintModalState({ show: false, size: '' })}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2>خيارات الطباعة</h2>
+              <button 
+                className={styles.closeButton}
+                onClick={() => setPrintModalState({ show: false, size: '' })}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className={styles.modalBody}>
+              <div style={{ padding: '1rem', textAlign: 'center', marginBottom: '1rem', fontSize: '1.1rem', color: '#e2e8f0' }}>
+                هل تريد طباعة الملصق بالمبلغ الإجمالي أم الصافي؟
+              </div>
+              <div className={styles.companyList} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <button 
                   className={styles.companyCard} 
-                  onClick={() => handleCompanySelection('Jenni Logistics')}
-                  disabled={isSendingToDelivery}
+                  onClick={() => { handlePrintLabels(printModalState.size, true); setPrintModalState({ show: false, size: '' }); }}
                   style={{ 
-                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', 
-                    cursor: isSendingToDelivery ? 'not-allowed' : 'pointer', 
-                    width: '100%', textAlign: 'right', display: 'flex', 
-                    justifyContent: 'space-between', alignItems: 'center', 
-                    opacity: isSendingToDelivery ? 0.5 : 1, padding: '1rem', borderRadius: '12px',
-                    fontFamily: 'inherit'
+                    background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', 
+                    cursor: 'pointer', width: '100%', textAlign: 'center', padding: '1rem', borderRadius: '12px',
+                    fontFamily: 'inherit', color: '#10b981', fontWeight: 'bold', fontSize: '1.1rem'
                   }}
                 >
-                  <div className={styles.companyInfo} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>🚚</div>
-                    <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Jenni Logistics (نظام قسورة)</span>
-                      <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
-                    </div>
-                  </div>
-                  {isSendingToDelivery ? (
-                    <div style={{ width: '20px', height: '20px', border: '2px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                  ) : (
-                    <div className={styles.routeIcon} style={{ color: '#fff' }}>➔</div>
-                  )}
+                  طباعة بالمبلغ الإجمالي (بدون خصم التوصيل)
                 </button>
-
                 <button 
                   className={styles.companyCard} 
-                  onClick={() => handleCompanySelection('Prime Logistics')}
-                  disabled={isSendingToDelivery}
+                  onClick={() => { handlePrintLabels(printModalState.size, false); setPrintModalState({ show: false, size: '' }); }}
                   style={{ 
-                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', 
-                    cursor: isSendingToDelivery ? 'not-allowed' : 'pointer', 
-                    width: '100%', textAlign: 'right', display: 'flex', 
-                    justifyContent: 'space-between', alignItems: 'center', 
-                    opacity: isSendingToDelivery ? 0.5 : 1, padding: '1rem', borderRadius: '12px',
-                    fontFamily: 'inherit', marginTop: '1rem', marginBottom: '1rem'
+                    background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', 
+                    cursor: 'pointer', width: '100%', textAlign: 'center', padding: '1rem', borderRadius: '12px',
+                    fontFamily: 'inherit', color: '#3b82f6', fontWeight: 'bold', fontSize: '1.1rem'
                   }}
                 >
-                  <div className={styles.companyInfo} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>📦</div>
-                    <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Prime Logistics</span>
-                      <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
-                    </div>
-                  </div>
-                  {isSendingToDelivery ? (
-                    <div style={{ width: '20px', height: '20px', border: '2px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                  ) : (
-                    <div className={styles.routeIcon} style={{ color: '#fff' }}>➔</div>
-                  )}
+                  طباعة بالمبلغ الصافي (مخصوم منه التوصيل)
                 </button>
-
-                <button 
-                  className={styles.companyCard} 
-                  onClick={() => handleCompanySelection('Albarq Logistics')}
-                  disabled={isSendingToDelivery}
-                  style={{ 
-                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', 
-                    cursor: isSendingToDelivery ? 'not-allowed' : 'pointer', 
-                    width: '100%', textAlign: 'right', display: 'flex', 
-                    justifyContent: 'space-between', alignItems: 'center', 
-                    opacity: isSendingToDelivery ? 0.5 : 1, padding: '1rem', borderRadius: '12px',
-                    fontFamily: 'inherit', marginBottom: '1rem'
-                  }}
-                >
-                  <div className={styles.companyInfo} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div className={styles.companyIcon} style={{ fontSize: '1.8rem' }}>⚡</div>
-                    <div className={styles.companyDetails} style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span className={styles.companyName} style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>Albarq Logistics (شركة البرق)</span>
-                      <span className={styles.companyDesc} style={{ fontSize: '0.85rem', color: '#10b981' }}>إرسال تلقائي عبر API</span>
-                    </div>
-                  </div>
-                  {isSendingToDelivery ? (
-                    <div style={{ width: '20px', height: '20px', border: '2px solid #10b981', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                  ) : (
-                    <div className={styles.routeIcon} style={{ color: '#fff' }}>➔</div>
-                  )}
-                </button>
-
-                <div className={styles.companyCard} onClick={() => handleCompanySelection('أرامكس')}>
-                  <div className={styles.companyInfo}>
-                    <div className={styles.companyIcon}>✈️</div>
-                    <div className={styles.companyDetails}>
-                      <span className={styles.companyName}>أرامكس (Aramex)</span>
-                      <span className={styles.companyDesc}>شحن دولي ومحلي</span>
-                    </div>
-                  </div>
-                  <div className={styles.routeIcon}>➔</div>
-                </div>
-
-                <div className={styles.companyCard} onClick={() => handleCompanySelection('البريد العراقي')}>
-                  <div className={styles.companyInfo}>
-                    <div className={styles.companyIcon}>📮</div>
-                    <div className={styles.companyDetails}>
-                      <span className={styles.companyName}>البريد العراقي</span>
-                      <span className={styles.companyDesc}>أسعار اقتصادية</span>
-                    </div>
-                  </div>
-                  <div className={styles.routeIcon}>➔</div>
-                </div>
               </div>
             </div>
           </div>

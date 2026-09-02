@@ -149,7 +149,7 @@ export async function createJenniShipment(order: any, userId: string) {
         governorate_code: getGovernorateCode(order.governorate),
         city: order.region || order.district || order.city || 'المركز',
         address: order.address || order.region || 'غير محدد',
-        amount_iqd: Number(order.totalAmount || 0),
+        amount_iqd: Number(order.totalAmount || 0) + Number(order.deliveryCost || 0),
         note: shipmentNote,
         notes: shipmentNote
       }

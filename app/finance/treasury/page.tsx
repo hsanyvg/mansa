@@ -5,7 +5,8 @@ import styles from './page.module.css';
 import { db, auth } from "../../../lib/firebase";
 import { 
   collection, onSnapshot, addDoc, deleteDoc, doc,
-  serverTimestamp, query, orderBy, getDocs, getDoc, writeBatch
+  serverTimestamp, query, orderBy, getDocs, getDoc, writeBatch, where, updateDoc,
+  increment, arrayUnion
 } from 'firebase/firestore';
 
 // Types
@@ -31,6 +32,8 @@ interface Transaction {
   notes?: string;
   images?: string[];
   settledOrderIds?: string[];
+  resolvedDiscrepancyOrderIds?: string[];
+  hasSubsequentModifications?: boolean;
 }
 
 
@@ -54,9 +57,29 @@ export default function TreasuryPage() {
   const [modalPhoneSearch, setModalPhoneSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [discrepantOrders, setDiscrepantOrders] = useState<any[]>([]);
+  const [showDiscrepanciesModal, setShowDiscrepanciesModal] = useState(false);
+  const [resolvingOrderId, setResolvingOrderId] = useState<string | null>(null);
+  const [editingCustomAmountId, setEditingCustomAmountId] = useState<string | null>(null);
+  const [customAmountValue, setCustomAmountValue] = useState<string>('');
 
   const handleViewTransactionDetails = async (t: Transaction) => {
     setSelectedTransaction(t);
+    setDiscrepantOrders([]);
+    
+    // Fetch discrepant orders linked to this transaction
+    try {
+      const discrepantQuery = query(
+        collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'),
+        where('discrepancy_statement_id', '==', t.id)
+      );
+      const discrepantSnap = await getDocs(discrepantQuery);
+      const discrepantList = discrepantSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDiscrepantOrders(discrepantList);
+    } catch (err) {
+      console.error("Error fetching discrepant orders:", err);
+    }
+
     if (t.settledOrderIds && t.settledOrderIds.length > 0) {
       setLoadingOrders(true);
       setSettledOrders([]);
@@ -83,6 +106,139 @@ export default function TreasuryPage() {
       } finally {
         setLoadingOrders(false);
       }
+    }
+  };
+
+  const handleAcceptPartialAmount = async (order: any) => {
+    if (!selectedTransaction) return;
+    setResolvingOrderId(order.id);
+    try {
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
+      
+      const inputtedAmount = order.discrepancy_inputted_amount || 0;
+      
+      const batch = writeBatch(db);
+      
+      const newPaidAmount = (order.paidAmount || 0) + inputtedAmount;
+      const isFullySettled = newPaidAmount >= (order.totalAmount || 0);
+
+      batch.update(orderRef, {
+        paidAmount: newPaidAmount,
+        has_discrepancy: false,
+        discrepancy_note: null,
+        discrepancy_statement_id: null,
+        discrepancy_inputted_amount: null,
+        discrepancy_expected_amount: null,
+        paymentStatus: isFullySettled ? 'settled' : 'partially_settled',
+        settledWalletId: selectedTransaction.walletId,
+        settledAt: serverTimestamp(),
+        settlementStatementId: selectedTransaction.externalStatementId || selectedTransaction.id
+      });
+
+      // Add money to treasury by modifying existing transaction
+      const transactionRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions', selectedTransaction.id);
+      batch.update(transactionRef, {
+        amount: increment(inputtedAmount),
+        settledOrderIds: arrayUnion(order.id),
+        resolvedDiscrepancyOrderIds: arrayUnion(order.id),
+        hasSubsequentModifications: true
+      });
+      
+      await batch.commit();
+      
+      // Update UI
+      setDiscrepantOrders(prev => prev.filter(o => o.id !== order.id));
+      setToast({ message: 'تم تسوية الطلب بالمبلغ الناقص بنجاح.', type: 'success' });
+      if (discrepantOrders.length === 1) {
+        setShowDiscrepanciesModal(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: 'حدث خطأ أثناء المعالجة.', type: 'error' });
+    } finally {
+      setResolvingOrderId(null);
+    }
+  };
+
+  const handleAcceptCustomAmount = async (order: any) => {
+    if (!selectedTransaction) return;
+    const customAmount = Number(customAmountValue);
+    if (isNaN(customAmount) || customAmount <= 0) {
+      setToast({ message: 'يرجى إدخال مبلغ صحيح.', type: 'error' });
+      return;
+    }
+    
+    setResolvingOrderId(order.id);
+    try {
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
+      
+      const batch = writeBatch(db);
+      
+      const newPaidAmount = (order.paidAmount || 0) + customAmount;
+      const isFullySettled = newPaidAmount >= (order.totalAmount || 0);
+
+      batch.update(orderRef, {
+        paidAmount: newPaidAmount,
+        has_discrepancy: false,
+        discrepancy_note: null,
+        discrepancy_statement_id: null,
+        discrepancy_inputted_amount: null,
+        discrepancy_expected_amount: null,
+        paymentStatus: isFullySettled ? 'settled' : 'partially_settled',
+        settledWalletId: selectedTransaction.walletId,
+        settledAt: serverTimestamp(),
+        settlementStatementId: selectedTransaction.externalStatementId || selectedTransaction.id
+      });
+
+      // Add money to treasury by modifying existing transaction
+      const transactionRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions', selectedTransaction.id);
+      batch.update(transactionRef, {
+        amount: increment(customAmount),
+        settledOrderIds: arrayUnion(order.id),
+        resolvedDiscrepancyOrderIds: arrayUnion(order.id),
+        hasSubsequentModifications: true
+      });
+      
+      await batch.commit();
+      
+      // Update UI
+      setDiscrepantOrders(prev => prev.filter(o => o.id !== order.id));
+      setToast({ message: 'تم تسوية الطلب بالمبلغ المخصص بنجاح.', type: 'success' });
+      setEditingCustomAmountId(null);
+      setCustomAmountValue('');
+      
+      if (discrepantOrders.length === 1) {
+        setShowDiscrepanciesModal(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: 'حدث خطأ أثناء المعالجة.', type: 'error' });
+    } finally {
+      setResolvingOrderId(null);
+    }
+  };
+
+  const handleClearDiscrepancyFlag = async (order: any) => {
+    setResolvingOrderId(order.id);
+    try {
+      const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
+      await updateDoc(orderRef, {
+        has_discrepancy: false,
+        discrepancy_note: null,
+        discrepancy_statement_id: null,
+        discrepancy_inputted_amount: null,
+        discrepancy_expected_amount: null
+      });
+      setDiscrepantOrders(prev => prev.filter(o => o.id !== order.id));
+      setToast({ message: 'تم إعادة الطلب لقيد الانتظار بنجاح.', type: 'success' });
+      if (discrepantOrders.length === 1) {
+        setShowDiscrepanciesModal(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: 'حدث خطأ أثناء المعالجة.', type: 'error' });
+    } finally {
+      setResolvingOrderId(null);
     }
   };
 
@@ -421,13 +577,18 @@ export default function TreasuryPage() {
                     )}
                   </td>
                   <td>
-                    <div style={{ fontWeight: '600', color: t.settledOrderIds && t.settledOrderIds.length > 0 ? '#38bdf8' : 'inherit' }}>
-                      {t.settledOrderIds && t.settledOrderIds.length > 0 ? (
+                    <div style={{ fontWeight: '600', color: t.settledOrderIds && t.settledOrderIds.length > 0 && !t.details?.includes('تسوية') ? '#38bdf8' : 'inherit' }}>
+                      {t.details?.startsWith('تسوية تلقائية للطلبات ذات الأرقام') ? (
+                        `🧾 تسوية كشف تلقائية (${t.settledOrderIds?.length || 'مجموعة'} طلبات)`
+                      ) : t.settledOrderIds && t.settledOrderIds.length > 0 && !t.details?.includes('تسوية يدوية') && !t.details?.includes('تسوية مبلغ') && !t.details?.includes('تسوية تلقائية') ? (
                         `🧾 تسوية كشف تلقائية (${t.settledOrderIds.length} طلبات)`
                       ) : (
                         t.details
                       )}
                     </div>
+                    {t.hasSubsequentModifications && (
+                       <div style={{ fontSize: '0.8rem', color: '#f59e0b', marginTop: '4px' }}>⚠️ تم التعديل لاحقاً (معالجة نواقص)</div>
+                    )}
                     {t.notes && t.settledOrderIds && t.settledOrderIds.length > 0 && (
                       <div style={{ fontSize: '0.85rem', opacity: 0.8, marginTop: '2px' }}>{t.notes}</div>
                     )}
@@ -671,6 +832,14 @@ export default function TreasuryPage() {
             </div>
             
             <div className={styles.modalBody}>
+              {selectedTransaction.hasSubsequentModifications && (
+                <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem', color: '#fcd34d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+                  <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.5' }}>
+                    <strong>ملاحظة:</strong> تم تعديل مبلغ هذه الحركة لاحقاً بعد إنشائها (بسبب معالجة نواقص وتسويات إضافية).
+                  </p>
+                </div>
+              )}
               {/* Transaction Information Grid */}
               <div className={styles.detailsGrid} style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.5rem' }}>
                 <div className={styles.detailsItem}>
@@ -716,6 +885,26 @@ export default function TreasuryPage() {
                   </div>
                 )}
               </div>
+
+              {/* Discrepancies Alert */}
+              {discrepantOrders.length > 0 && (
+                <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem', color: '#fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h3 style={{ color: '#ef4444', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>🚨</span> هناك طلبات لم تتم المحاسبة عليها
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.5' }}>
+                      يوجد {discrepantOrders.length} طلبات ضمن هذا الكشف كان بها اختلاف في المبالغ ولم يتم تسويتها.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setShowDiscrepanciesModal(true)}
+                    style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '0.25rem', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    حل المشاكل
+                  </button>
+                </div>
+              )}
 
               {/* Orders List Table inside Transaction */}
               {selectedTransaction.settledOrderIds && selectedTransaction.settledOrderIds.length > 0 && (
@@ -769,10 +958,12 @@ export default function TreasuryPage() {
                             return matchId && matchPhone;
                           });
                           return filteredSettledOrders.length > 0 ? (
-                            filteredSettledOrders.map((order, idx) => (
-                            <tr key={order.id}>
-                              <td>{idx + 1}</td>
-                              <td style={{ fontWeight: 'bold' }}>{order.id}</td>
+                            filteredSettledOrders.map((order, idx) => {
+                              const isResolvedLater = selectedTransaction.resolvedDiscrepancyOrderIds?.includes(order.id);
+                              return (
+                              <tr key={order.id} style={{ backgroundColor: isResolvedLater ? 'rgba(245, 158, 11, 0.15)' : 'transparent' }}>
+                                <td>{idx + 1} {isResolvedLater && <span title="تم التعديل عليه ومعالجته لاحقاً" style={{ cursor: 'help', fontSize: '0.9em', marginRight: '4px' }}>⚠️</span>}</td>
+                                <td style={{ fontWeight: 'bold' }}>{order.id}</td>
                               <td>{order.customerName}</td>
                               <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || '---'}</td>
                               <td>{order.governorate} - {order.region}</td>
@@ -794,7 +985,8 @@ export default function TreasuryPage() {
                                 </button>
                               </td>
                             </tr>
-                          ))
+                            );
+                          })
                         ) : (
                           <tr>
                             <td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8' }}>
@@ -894,6 +1086,85 @@ export default function TreasuryPage() {
                 <span>المبلغ:</span>
                 <span>{selectedTransaction.amount.toLocaleString()} {selectedTransaction.currency === 'IQD' ? 'د.ع' : '$'}</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Discrepancies Modal */}
+      {showDiscrepanciesModal && selectedTransaction && (
+        <div className={styles.modalOverlay} onClick={() => setShowDiscrepanciesModal(false)}>
+          <div className={styles.modalContent} onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className={styles.modalHeader}>
+              <h2>🚨 طلبات غير مطابقة للكشف</h2>
+              <button className={styles.closeButton} onClick={() => setShowDiscrepanciesModal(false)}>×</button>
+            </div>
+            
+            <div className={styles.modalBody}>
+              {discrepantOrders.map(order => (
+                <div key={order.id} style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div>
+                      <h3 style={{ margin: '0 0 0.25rem 0', color: '#38bdf8' }}>طلب #{order.id.slice(-6).toUpperCase()}</h3>
+                      <p style={{ margin: 0, fontSize: '0.9rem', color: '#94a3b8' }}>المستلم (الإكسل): <span style={{color: '#ef4444', fontWeight: 'bold'}}>{(order.discrepancy_inputted_amount || 0).toLocaleString()}</span> د.ع | المطلوب (النظام): <span style={{color: '#10b981', fontWeight: 'bold'}}>{(order.discrepancy_expected_amount || 0).toLocaleString()}</span> د.ع</p>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {editingCustomAmountId === order.id ? (
+                      <div style={{ flex: 1, display: 'flex', gap: '0.5rem' }}>
+                        <input 
+                          type="number" 
+                          value={customAmountValue}
+                          onChange={(e) => setCustomAmountValue(e.target.value)}
+                          placeholder="المبلغ الجديد..."
+                          style={{ flex: 1, padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #38bdf8', background: 'rgba(0,0,0,0.2)', color: '#fff' }}
+                        />
+                        <button 
+                          onClick={() => handleAcceptCustomAmount(order)}
+                          disabled={resolvingOrderId === order.id}
+                          style={{ background: '#38bdf8', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}
+                        >
+                          تأكيد
+                        </button>
+                        <button 
+                          onClick={() => { setEditingCustomAmountId(null); setCustomAmountValue(''); }}
+                          style={{ background: 'rgba(255,255,255,0.1)', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button 
+                          onClick={() => handleAcceptPartialAmount(order)}
+                          disabled={resolvingOrderId === order.id}
+                          style={{ flex: 1, background: '#10b981', color: 'white', padding: '0.5rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', opacity: resolvingOrderId === order.id ? 0.5 : 1 }}
+                        >
+                          {resolvingOrderId === order.id ? 'جاري المعالجة...' : 'قبول مبلغ الإكسل'}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setEditingCustomAmountId(order.id);
+                            setCustomAmountValue(String(order.discrepancy_inputted_amount || 0));
+                          }}
+                          disabled={resolvingOrderId === order.id}
+                          style={{ flex: 1, background: '#38bdf8', color: 'white', padding: '0.5rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', opacity: resolvingOrderId === order.id ? 0.5 : 1 }}
+                        >
+                          تسوية بمبلغ آخر
+                        </button>
+                        <button 
+                          onClick={() => handleClearDiscrepancyFlag(order)}
+                          disabled={resolvingOrderId === order.id}
+                          style={{ flex: 1, background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', opacity: resolvingOrderId === order.id ? 0.5 : 1 }}
+                        >
+                          {resolvingOrderId === order.id ? 'جاري المعالجة...' : 'تجاهل وإعادة للانتظار'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
