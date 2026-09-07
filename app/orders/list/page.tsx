@@ -5,7 +5,8 @@ import Link from 'next/link';
 import QRCode from 'react-qr-code';
 import styles from './page.module.css';
 import DateRangePicker from '../../../components/DateRangePicker';
-import { db, auth } from "../../../lib/firebase";
+import { db, auth, storage } from "../../../lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, updateDoc, writeBatch, getDoc, serverTimestamp, limit, runTransaction, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { createJenniShipment } from '../../../lib/jenni-api';
@@ -142,6 +143,8 @@ export default function OrdersListPage() {
   // Settlement states and wallets removed (Moved to Treasury Page)
   const [receiverEmployee, setReceiverEmployee] = useState('');
   const [deliveryAgent, setDeliveryAgent] = useState('');
+  const [returnBatchFile, setReturnBatchFile] = useState<File | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [employeesList, setEmployeesList] = useState<string[]>([]);
   const [returnsArchive, setReturnsArchive] = useState<any[]>([]);
   const [selectedReturnBatch, setSelectedReturnBatch] = useState<any | null>(null);
@@ -2454,6 +2457,18 @@ export default function OrdersListPage() {
     if (!receiverEmployee || !deliveryAgent || selectedOrderIds.length === 0) return;
     setIsUpdating(true);
     try {
+      let fileUrl = null;
+      if (returnBatchFile) {
+        setIsUploadingFile(true);
+        const uid = auth.currentUser?.uid || 'anonymous';
+        const fileExt = returnBatchFile.name.split('.').pop();
+        const fileName = `returns_${Date.now()}.${fileExt}`;
+        const storageRef = ref(storage, `users/${uid}/returns/${fileName}`);
+        const snapshot = await uploadBytes(storageRef, returnBatchFile);
+        fileUrl = await getDownloadURL(snapshot.ref);
+        setIsUploadingFile(false);
+      }
+
       // 0. Generate Sequential Batch ID
       const counterRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'metadata', 'returnBatchCounter');
       const batchId = await runTransaction(db, async (transaction) => {
@@ -2507,12 +2522,14 @@ export default function OrdersListPage() {
         timestamp: serverTimestamp(),
         totalOrders: selectedOrderIds.length,
         orderIds: selectedOrderIds,
-        orders: orderDetailsForBatch // Storing basic info for easy preview
+        orders: orderDetailsForBatch, // Storing basic info for easy preview
+        fileUrl: fileUrl
       });
 
       await batch.commit();
       setShowReturnReceiptModal(false);
       setSelectedOrderIds([]);
+      setReturnBatchFile(null);
       setNotificationModal({ show: true, message: `✅ تم إنشاء كشف المرتجعات رقم ${batchId} بنجاح` });
     } catch (error) {
       console.error("Error confirming return receipt batch:", error);
@@ -5573,11 +5590,17 @@ export default function OrdersListPage() {
 
       {/* Return Receipt Documentation Modal */}
       {showReturnReceiptModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowReturnReceiptModal(false)}>
+        <div className={styles.modalOverlay} onClick={() => {
+          setShowReturnReceiptModal(false);
+          setReturnBatchFile(null);
+        }}>
           <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className={styles.modalHeader}>
               <h2>📝 توثيق استلام المرجوعات</h2>
-              <button className={styles.closeButton} onClick={() => setShowReturnReceiptModal(false)}>×</button>
+              <button className={styles.closeButton} onClick={() => {
+                setShowReturnReceiptModal(false);
+                setReturnBatchFile(null);
+              }}>×</button>
             </div>
             <div className={styles.modalBody} style={{ padding: '2rem' }}>
               <p style={{ textAlign: 'center', marginBottom: '1.5rem', color: 'var(--text-muted)' }}>
@@ -5611,20 +5634,41 @@ export default function OrdersListPage() {
                     required
                   />
                 </div>
+
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>إرفاق ملف الكشف (Excel أو PDF)</label>
+                  <input 
+                    type="file" 
+                    className={styles.input} 
+                    accept=".xlsx,.xls,.pdf"
+                    onChange={e => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        setReturnBatchFile(e.target.files[0]);
+                      } else {
+                        setReturnBatchFile(null);
+                      }
+                    }}
+                    style={{ padding: '0.5rem', backgroundColor: 'var(--surface)' }}
+                  />
+                  {returnBatchFile && <small style={{ color: 'var(--accent-primary)', marginTop: '0.5rem', display: 'block' }}>تم اختيار: {returnBatchFile.name}</small>}
+                </div>
               </div>
             </div>
             <div className={styles.modalFooter} style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
               <button 
                 className={styles.submitButton} 
                 onClick={handleConfirmReturnReceipt}
-                disabled={isUpdating || !receiverEmployee || !deliveryAgent}
+                disabled={isUpdating || !receiverEmployee || !deliveryAgent || isUploadingFile}
                 style={{ flex: 1, backgroundColor: '#f97316' }}
               >
-                {isUpdating ? 'جاري الحفظ...' : 'تأكيد وحفظ الكشف'}
+                {isUpdating || isUploadingFile ? 'جاري الحفظ...' : 'تأكيد وحفظ الكشف'}
               </button>
               <button 
                 className={styles.cancelButton} 
-                onClick={() => setShowReturnReceiptModal(false)}
+                onClick={() => {
+                  setShowReturnReceiptModal(false);
+                  setReturnBatchFile(null);
+                }}
                 style={{ flex: 1 }}
               >
                 إلغاء
@@ -5648,6 +5692,11 @@ export default function OrdersListPage() {
                 <div><strong>المندوب المسلم:</strong> {selectedReturnBatch.driverName}</div>
                 <div><strong>تاريخ الكشف:</strong> {selectedReturnBatch.formattedDate}</div>
                 <div><strong>إجمالي الطلبات:</strong> {selectedReturnBatch.totalOrders}</div>
+                {selectedReturnBatch.fileUrl && (
+                  <div style={{ gridColumn: '1 / -1', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
+                    <strong>ملف الكشف المرفق:</strong> <a href={selectedReturnBatch.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', textDecoration: 'underline', marginRight: '0.5rem' }}>عرض / تنزيل الملف 📥</a>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
