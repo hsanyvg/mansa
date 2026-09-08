@@ -158,6 +158,7 @@ export async function POST(req: Request) {
                   deliveryNote: shipment.note || '',
                   shipmentId: shipmentNumber || orderInfo.id,
                   jenniShipmentId: resolvedShipmentId,
+                  updatedBy: 'jenni_webhook',
                   updatedAt: new Date()
                 };
 

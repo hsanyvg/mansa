@@ -115,7 +115,7 @@ export default function OrdersListPage() {
   const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState('all'); 
   const [selectedStatus, setSelectedStatus] = useState('all');
-  const [showOnlySelected, setShowOnlySelected] = useState(false);
+  const [isolatedOrderIds, setIsolatedOrderIds] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [isBarcodeMode, setIsBarcodeMode] = useState(false);
   const [showReturnReceiptModal, setShowReturnReceiptModal] = useState(false);
@@ -355,12 +355,12 @@ export default function OrdersListPage() {
 
   useEffect(() => {
     setSelectedStatus('all');
-    setShowOnlySelected(false);
+    setIsolatedOrderIds([]);
   }, [activeTab]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [globalSearch, columnFilters, activeTab, selectedStatus, showOnlySelected]);
+  }, [globalSearch, columnFilters, activeTab, selectedStatus, isolatedOrderIds]);
 
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
@@ -776,7 +776,7 @@ export default function OrdersListPage() {
     
     if (matchedIds.length > 0) {
       setSelectedOrderIds(matchedIds);
-      setShowOnlySelected(true);
+      setIsolatedOrderIds(matchedIds);
       setNotificationModal({ show: true, message: `✅ تم تحديد وتصفية الشاشة لعرض ${matchedIds.length} طلب فقط.` });
     } else {
       setNotificationModal({ show: true, message: `❌ لم يتم العثور على أي طلب يطابق الأرقام المدخلة.` });
@@ -943,8 +943,8 @@ export default function OrdersListPage() {
 
   const statusCounts = React.useMemo(() => {
     const counts: Record<string, number> = {};
-    const listToCount = showOnlySelected 
-      ? dateFilteredOrders.filter(o => selectedOrderIds.includes(o.id))
+    const listToCount = isolatedOrderIds.length > 0 
+      ? dateFilteredOrders.filter(o => isolatedOrderIds.includes(o.id))
       : baseList;
 
     listToCount.forEach(order => {
@@ -952,7 +952,7 @@ export default function OrdersListPage() {
       counts[status] = (counts[status] || 0) + 1;
     });
     return counts;
-  }, [baseList, showOnlySelected, selectedOrderIds, dateFilteredOrders]);
+  }, [baseList, isolatedOrderIds, dateFilteredOrders]);
 
   const baseListAfterStatus = React.useMemo(() => {
     let list = baseList;
@@ -1097,11 +1097,11 @@ export default function OrdersListPage() {
 
 
   const baseFilteredOrders = React.useMemo(() => {
-    return (showOnlySelected 
-      ? dateFilteredOrders.filter(o => selectedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || getStatusKey(o) === selectedStatus)
+    return (isolatedOrderIds.length > 0 
+      ? dateFilteredOrders.filter(o => isolatedOrderIds.includes(o.id)).filter(o => selectedStatus === 'all' || getStatusKey(o) === selectedStatus)
       : baseListAfterStatus)
       .filter(matchOrderSearchAndColumns);
-  }, [showOnlySelected, dateFilteredOrders, selectedOrderIds, selectedStatus, baseListAfterStatus, matchOrderSearchAndColumns]);
+  }, [isolatedOrderIds, dateFilteredOrders, selectedStatus, baseListAfterStatus, matchOrderSearchAndColumns]);
 
   const filteredOrders = React.useMemo(() => {
     return baseFilteredOrders.filter(matchHierarchyFilters);
@@ -1118,10 +1118,10 @@ export default function OrdersListPage() {
   }, [dateFilteredOrders, selectedOrderIds, selectedStatus, matchOrderSearchAndColumns, matchHierarchyFilters]);
 
   const statsData = React.useMemo(() => {
-    const prodMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; amount: number }> = {};
-    const pageMap: Record<string, { id: string; name: string; orderCount: number; quantity: number }> = {};
-    const mainCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number }> = {};
-    const subCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number }> = {};
+    const prodMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; amount: number; orderIds: string[] }> = {};
+    const pageMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; orderIds: string[] }> = {};
+    const mainCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; orderIds: string[] }> = {};
+    const subCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; orderIds: string[] }> = {};
 
     let totalOrdersCount = statsFilteredOrders.length;
     let totalItemsQuantity = 0;
@@ -1162,42 +1162,46 @@ export default function OrdersListPage() {
 
         const pKey = h.productId || h.productName || 'unknown';
         if (!prodMap[pKey]) {
-          prodMap[pKey] = { id: h.productId, name: h.productName, orderCount: 0, quantity: 0, amount: 0 };
+          prodMap[pKey] = { id: h.productId, name: h.productName, orderCount: 0, quantity: 0, amount: 0, orderIds: [] };
         }
         prodMap[pKey].quantity += qty;
         prodMap[pKey].amount += itemPrice;
         if (!seenProdInOrder.has(pKey)) {
           prodMap[pKey].orderCount += 1;
+          prodMap[pKey].orderIds.push(order.id);
           seenProdInOrder.add(pKey);
         }
 
         const pgKey = h.pageId || h.pageName || 'unknown_page';
         if (!pageMap[pgKey]) {
-          pageMap[pgKey] = { id: h.pageId, name: h.pageName, orderCount: 0, quantity: 0 };
+          pageMap[pgKey] = { id: h.pageId, name: h.pageName, orderCount: 0, quantity: 0, orderIds: [] };
         }
         pageMap[pgKey].quantity += qty;
         if (!seenPageInOrder.has(pgKey)) {
           pageMap[pgKey].orderCount += 1;
+          pageMap[pgKey].orderIds.push(order.id);
           seenPageInOrder.add(pgKey);
         }
 
         const mKey = h.categoryId || h.categoryName || 'unknown_cat';
         if (!mainCatMap[mKey]) {
-          mainCatMap[mKey] = { id: h.categoryId, name: h.categoryName, orderCount: 0, quantity: 0 };
+          mainCatMap[mKey] = { id: h.categoryId, name: h.categoryName, orderCount: 0, quantity: 0, orderIds: [] };
         }
         mainCatMap[mKey].quantity += qty;
         if (!seenMainInOrder.has(mKey)) {
           mainCatMap[mKey].orderCount += 1;
+          mainCatMap[mKey].orderIds.push(order.id);
           seenMainInOrder.add(mKey);
         }
 
         const sKey = h.subcategoryId || h.subcategoryName || 'unknown_subcat';
         if (!subCatMap[sKey]) {
-          subCatMap[sKey] = { id: h.subcategoryId, name: h.subcategoryName, orderCount: 0, quantity: 0 };
+          subCatMap[sKey] = { id: h.subcategoryId, name: h.subcategoryName, orderCount: 0, quantity: 0, orderIds: [] };
         }
         subCatMap[sKey].quantity += qty;
         if (!seenSubInOrder.has(sKey)) {
           subCatMap[sKey].orderCount += 1;
+          subCatMap[sKey].orderIds.push(order.id);
           seenSubInOrder.add(sKey);
         }
       });
@@ -2266,7 +2270,6 @@ export default function OrdersListPage() {
       }
       setShowBulkStatusModal(false);
       setBulkStatusValue('');
-      setSelectedOrderIds([]);
       setDeliveryCompany('');
       setCustomDeliveryCompany('');
     } catch (error) {
@@ -2501,8 +2504,10 @@ export default function OrdersListPage() {
           isArchived: true,
           archivedAt: serverTimestamp(),
           deliveryCost: 0,
-          totalAmount: restoredTotal
+          totalAmount: restoredTotal,
+          returnBatchId: batchId
         });
+        addLogToBatch(batch, orderId, 'استلام راجع', `تم استلام الطلب كراجع مخزن في كشف رقم ${batchId}`);
 
         if (orderData) {
           orderDetailsForBatch.push({
@@ -3720,7 +3725,7 @@ export default function OrdersListPage() {
         </div>
       )}
 
-      {showOnlySelected && (
+      {isolatedOrderIds.length > 0 && (
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -3736,7 +3741,7 @@ export default function OrdersListPage() {
         }}>
           <span>📌 يتم الآن عرض الطلبات المحددة بالقائمة فقط ({filteredOrders.length} طلب)</span>
           <button 
-            onClick={() => setShowOnlySelected(false)}
+            onClick={() => setIsolatedOrderIds([])}
             style={{
               backgroundColor: '#f59e0b',
               color: '#fff',
@@ -3911,7 +3916,7 @@ export default function OrdersListPage() {
               setGlobalSearch('');
               setDateFilter('الكل');
               setSelectedStatus('all');
-              setShowOnlySelected(false);
+              setIsolatedOrderIds([]);
               setFilterByProduct('');
               setFilterByPage('');
               setFilterByMainCat('');
@@ -4416,6 +4421,26 @@ export default function OrdersListPage() {
                       {(order.status === 'delivered' || order.status === 'partial') && (
                          <div style={{ fontSize: '0.8rem', color: order.paymentStatus === 'settled' ? '#10b981' : '#ef4444', width: '100%', textAlign: 'center', marginTop: '-4px', fontWeight: 'bold' }}>
                             {order.paymentStatus === 'settled' ? '(تم المحاسبة)' : '(لم تتم المحاسبة)'}
+                         </div>
+                      )}
+                      {order.returnBatchId && (
+                         <div style={{ fontSize: '0.85rem', color: '#a78bfa', width: '100%', textAlign: 'center', marginTop: '2px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                           <span>📁 كشف: {order.returnBatchId}</span>
+                         </div>
+                      )}
+                      {order.paymentStatus === 'settled' && order.settlementStatementId && (
+                         <div style={{ fontSize: '0.85rem', color: '#10b981', width: '100%', textAlign: 'center', marginTop: '2px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                           <span>📄 كشف المحاسبة: {order.settlementStatementId}</span>
+                         </div>
+                      )}
+                      {order.updatedBy === 'albarq_webhook' && (
+                         <div style={{ fontSize: '0.75rem', color: '#6366f1', width: '100%', textAlign: 'center', marginTop: '4px', fontWeight: 'bold' }}>
+                           ⚡ تم التحديث من البرق
+                         </div>
+                      )}
+                      {order.updatedBy === 'jenni_webhook' && (
+                         <div style={{ fontSize: '0.75rem', color: '#ec4899', width: '100%', textAlign: 'center', marginTop: '4px', fontWeight: 'bold' }}>
+                           🚚 تم التحديث من جيني
                          </div>
                       )}
                       {/* {order.paymentStatus === 'settled' && (
@@ -6171,7 +6196,13 @@ export default function OrdersListPage() {
                             </div>
                             <button
                               onClick={() => {
-                                setFilterByProduct(isFiltered ? '' : (prod.id || prod.name));
+                                if (isFiltered) {
+                                  setFilterByProduct('');
+                                  setSelectedOrderIds([]);
+                                } else {
+                                  setFilterByProduct(prod.id || prod.name);
+                                  setSelectedOrderIds(prod.orderIds);
+                                }
                                 setFilterByPage('');
                                 setFilterByMainCat('');
                                 setFilterBySubCat('');
@@ -6221,7 +6252,13 @@ export default function OrdersListPage() {
                             </div>
                             <button
                               onClick={() => {
-                                setFilterByPage(isFiltered ? '' : (pg.id || pg.name));
+                                if (isFiltered) {
+                                  setFilterByPage('');
+                                  setSelectedOrderIds([]);
+                                } else {
+                                  setFilterByPage(pg.id || pg.name);
+                                  setSelectedOrderIds(pg.orderIds);
+                                }
                                 setFilterByProduct('');
                                 setFilterByMainCat('');
                                 setFilterBySubCat('');
@@ -6271,7 +6308,13 @@ export default function OrdersListPage() {
                             </div>
                             <button
                               onClick={() => {
-                                setFilterByMainCat(isFiltered ? '' : (mCat.id || mCat.name));
+                                if (isFiltered) {
+                                  setFilterByMainCat('');
+                                  setSelectedOrderIds([]);
+                                } else {
+                                  setFilterByMainCat(mCat.id || mCat.name);
+                                  setSelectedOrderIds(mCat.orderIds);
+                                }
                                 setFilterByProduct('');
                                 setFilterByPage('');
                                 setFilterBySubCat('');
@@ -6319,7 +6362,13 @@ export default function OrdersListPage() {
                             </div>
                             <button
                               onClick={() => {
-                                setFilterBySubCat(isFiltered ? '' : (sCat.id || sCat.name));
+                                if (isFiltered) {
+                                  setFilterBySubCat('');
+                                  setSelectedOrderIds([]);
+                                } else {
+                                  setFilterBySubCat(sCat.id || sCat.name);
+                                  setSelectedOrderIds(sCat.orderIds);
+                                }
                                 setFilterByProduct('');
                                 setFilterByPage('');
                                 setFilterByMainCat('');

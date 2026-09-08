@@ -129,7 +129,8 @@ export default function TreasuryPage() {
         discrepancy_statement_id: null,
         discrepancy_inputted_amount: null,
         discrepancy_expected_amount: null,
-        paymentStatus: isFullySettled ? 'settled' : 'partially_settled',
+        paymentStatus: 'settled',
+        is_settled: true,
         settledWalletId: selectedTransaction.walletId,
         settledAt: serverTimestamp(),
         settlementStatementId: selectedTransaction.externalStatementId || selectedTransaction.id
@@ -184,7 +185,8 @@ export default function TreasuryPage() {
         discrepancy_statement_id: null,
         discrepancy_inputted_amount: null,
         discrepancy_expected_amount: null,
-        paymentStatus: isFullySettled ? 'settled' : 'partially_settled',
+        paymentStatus: 'settled',
+        is_settled: true,
         settledWalletId: selectedTransaction.walletId,
         settledAt: serverTimestamp(),
         settlementStatementId: selectedTransaction.externalStatementId || selectedTransaction.id
