@@ -293,11 +293,7 @@ export default function OrdersListPage() {
     };
   }, [resizingCol, startX, startWidth]);
 
-  useEffect(() => {
-    if (resizingCol === null && Object.keys(columnWidths).length > 0) {
-      localStorage.setItem('orders_column_widths', JSON.stringify(columnWidths));
-    }
-  }, [resizingCol]);
+
 
   const toggleColumnVisibility = (colKey: string) => {
     setVisibleColumns(prev => {
