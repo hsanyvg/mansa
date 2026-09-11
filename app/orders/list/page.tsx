@@ -5019,6 +5019,70 @@ export default function OrdersListPage() {
         </div>
       )}
 
+      {showReturnReceiptModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowReturnReceiptModal(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className={styles.modalHeader}>
+              <h2>إنشاء كشف الرواجع (وثيقة)</h2>
+              <button className={styles.closeButton} onClick={() => setShowReturnReceiptModal(false)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>المندوب / شركة التوصيل <span style={{color: '#ef4444'}}>*</span></label>
+                <input 
+                  type="text"
+                  className={styles.input} 
+                  value={deliveryAgent}
+                  onChange={(e) => setDeliveryAgent(e.target.value)}
+                  placeholder="اسم المندوب أو الشركة"
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>الموظف المستلم <span style={{color: '#ef4444'}}>*</span></label>
+                <select 
+                  className={styles.input} 
+                  value={receiverEmployee}
+                  onChange={(e) => setReceiverEmployee(e.target.value)}
+                  required
+                >
+                  <option value="">اختر الموظف...</option>
+                  {employeesList.map((emp, idx) => (
+                    <option key={idx} value={emp}>{emp}</option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>إرفاق صورة الكشف (اختياري)</label>
+                <input 
+                  type="file" 
+                  className={styles.input} 
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setReturnBatchFile(e.target.files[0]);
+                    }
+                  }}
+                  accept="image/*,.pdf"
+                />
+              </div>
+              <p style={{ marginTop: '1rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                سيتم تغيير حالة الطلبات المحددة ({selectedOrderIds.length}) إلى "راجع مخزن" وأرشفتها تحت رقم كشف جديد.
+              </p>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.cancelButton} onClick={() => setShowReturnReceiptModal(false)}>إلغاء</button>
+              <button 
+                className={styles.saveButton} 
+                onClick={handleConfirmReturnReceipt}
+                disabled={!receiverEmployee || !deliveryAgent || isUpdating}
+              >
+                {isUpdating ? 'جاري الإنشاء...' : 'إنشاء وتأكيد ✅'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
