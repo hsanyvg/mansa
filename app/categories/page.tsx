@@ -10,16 +10,10 @@ interface PageStore {
   name: string;
 }
 
-interface SubCategory {
-  id: string;
-  name: string;
-}
-
 interface MainCategory {
   id: string;
   pageId: string; // Relates to PageStore
   name: string;
-  subcategories: SubCategory[];
 }
 
 export default function CategoriesPage() {
@@ -31,22 +25,17 @@ export default function CategoriesPage() {
   // Expanded states
   const [expandedPageId, setExpandedPageId] = useState<string | null>(null);
   const [expandedMainCatId, setExpandedMainCatId] = useState<string | null>(null);
-  const [expandedSubCatId, setExpandedSubCatId] = useState<string | null>(null);
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'addPage' | 'editPage' | 'addMain' | 'editMain' | 'addSub' | 'editSub' | 'addProduct'>('addPage');
+  const [modalMode, setModalMode] = useState<'addPage' | 'editPage' | 'addMain' | 'editMain' | 'addProduct'>('addPage');
   const [targetPageId, setTargetPageId] = useState<string | null>(null);
   const [targetMainId, setTargetMainId] = useState<string | null>(null);
-  const [targetSubId, setTargetSubId] = useState<string | null>(null);
   const [inputName, setInputName] = useState('');
-  
-  const [hasSubCategory, setHasSubCategory] = useState(false);
-  const [inputSubName, setInputSubName] = useState('');
 
   // Delete Modal states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteMode, setDeleteMode] = useState<'page' | 'main' | 'sub'>('page');
+  const [deleteMode, setDeleteMode] = useState<'page' | 'main'>('page');
   const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string, parentId?: string, grandParentId?: string } | null>(null);
 
   // Toast
@@ -60,11 +49,7 @@ export default function CategoriesPage() {
 
     const unsubCats = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
       const catsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as MainCategory[];
-      const processed = catsData.map(c => ({
-        ...c,
-        subcategories: c.subcategories || []
-      }));
-      setCategories(processed);
+      setCategories(catsData);
     });
     
     const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
@@ -99,11 +84,8 @@ export default function CategoriesPage() {
 
     const currentMode = modalMode;
     const currentName = inputName.trim();
-    const currentSubName = inputSubName.trim();
     const currentTargetPageId = targetPageId;
     const currentTargetMainId = targetMainId;
-    const currentTargetSubId = targetSubId;
-    const currentHasSubCategory = hasSubCategory;
 
     closeModal();
 
@@ -116,37 +98,16 @@ export default function CategoriesPage() {
           await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores', currentTargetPageId), { name: currentName });
           showToastMsg("تم التعديل بنجاح");
         } else if (currentMode === 'addMain' && currentTargetPageId) {
-          let subs: SubCategory[] = [];
-          if (currentHasSubCategory && currentSubName) {
-            subs.push({ id: Date.now().toString(), name: currentSubName });
-          }
-          await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), { name: currentName, pageId: currentTargetPageId, subcategories: subs });
+          await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), { name: currentName, pageId: currentTargetPageId });
           setExpandedPageId(currentTargetPageId);
           showToastMsg("تم إضافة الفئة الرئيسية بنجاح");
         } else if (currentMode === 'editMain' && currentTargetMainId) {
           await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', currentTargetMainId), { name: currentName });
           showToastMsg("تم التعديل بنجاح");
-        } else if (currentMode === 'addSub' && currentTargetMainId) {
-          const cat = categories.find(c => c.id === currentTargetMainId);
-          if (cat) {
-            const newSubId = Date.now().toString();
-            const subcategories = [...cat.subcategories, { id: newSubId, name: currentName }];
-            await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', currentTargetMainId), { subcategories });
-            setExpandedMainCatId(currentTargetMainId);
-            showToastMsg("تم إضافة الفئة الفرعية بنجاح");
-          }
-        } else if (currentMode === 'editSub' && currentTargetMainId && currentTargetSubId) {
-          const cat = categories.find(c => c.id === currentTargetMainId);
-          if (cat) {
-            const subcategories = cat.subcategories.map(s => s.id === currentTargetSubId ? { ...s, name: currentName } : s);
-            await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', currentTargetMainId), { subcategories });
-            showToastMsg("تم التعديل بنجاح");
-          }
         } else if (currentMode === 'addProduct' && currentTargetMainId) {
           await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), {
             name: currentName,
             categoryId: currentTargetMainId,
-            subcategoryId: currentTargetSubId || "",
             barcode: "",
             model: "",
             trackingCode: "",
@@ -173,18 +134,15 @@ export default function CategoriesPage() {
   const openAddPageModal = () => { setModalMode('addPage'); setInputName(''); setShowModal(true); };
   const openEditPageModal = (id: string, name: string) => { setModalMode('editPage'); setTargetPageId(id); setInputName(name); setShowModal(true); };
   
-  const openAddMainModal = (pageId: string) => { setModalMode('addMain'); setTargetPageId(pageId); setInputName(''); setHasSubCategory(false); setInputSubName(''); setShowModal(true); };
+  const openAddMainModal = (pageId: string) => { setModalMode('addMain'); setTargetPageId(pageId); setInputName(''); setShowModal(true); };
   const openEditMainModal = (id: string, name: string) => { setModalMode('editMain'); setTargetMainId(id); setInputName(name); setShowModal(true); };
   
-  const openAddSubModal = (mainId: string) => { setModalMode('addSub'); setTargetMainId(mainId); setInputName(''); setShowModal(true); };
-  const openEditSubModal = (mainId: string, subId: string, name: string) => { setModalMode('editSub'); setTargetMainId(mainId); setTargetSubId(subId); setInputName(name); setShowModal(true); };
-  const openAddProductModal = (mainId: string, subId: string) => { setModalMode('addProduct'); setTargetMainId(mainId); setTargetSubId(subId); setInputName(''); setShowModal(true); };
+  const openAddProductModal = (mainId: string) => { setModalMode('addProduct'); setTargetMainId(mainId); setInputName(''); setShowModal(true); };
 
   const closeModal = () => {
     setShowModal(false);
     setTargetPageId(null);
     setTargetMainId(null);
-    setTargetSubId(null);
   };
 
   // --- Handlers for Delete ---
@@ -193,9 +151,6 @@ export default function CategoriesPage() {
   };
   const clickDeleteMain = (id: string, name: string) => {
     setDeleteMode('main'); setItemToDelete({ id, name }); setShowDeleteModal(true);
-  };
-  const clickDeleteSub = (mainId: string, subId: string, name: string) => {
-    setDeleteMode('sub'); setItemToDelete({ id: subId, name, parentId: mainId }); setShowDeleteModal(true);
   };
 
   const confirmDelete = async () => {
@@ -213,13 +168,6 @@ export default function CategoriesPage() {
         await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', itemToDelete.id));
         if (expandedMainCatId === itemToDelete.id) setExpandedMainCatId(null);
         showToastMsg("تم حذف الفئة الرئيسية");
-      } else if (deleteMode === 'sub' && itemToDelete.parentId) {
-        const cat = categories.find(c => c.id === itemToDelete.parentId);
-        if (cat) {
-          const subcategories = cat.subcategories.filter(s => s.id !== itemToDelete.id);
-          await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories', itemToDelete.parentId), { subcategories });
-          showToastMsg("تم حذف الفئة الفرعية");
-        }
       }
     } catch (err) {
       console.error(err);
@@ -303,7 +251,6 @@ export default function CategoriesPage() {
                             onClick={() => setExpandedMainCatId(isMainExpanded ? null : mainCat.id)}
                           >
                             <h4 className={styles.mainCatTitle}>{mainCat.name}</h4>
-                            <span className={styles.subCatCount}>{mainCat.subcategories.length} فروع</span>
                             
                             <div className={styles.cardActionsHover}>
                                <button onClick={(e) => { e.stopPropagation(); openEditMainModal(mainCat.id, mainCat.name); }} className={styles.iconBtn}>✏️</button>
@@ -311,17 +258,17 @@ export default function CategoriesPage() {
                             </div>
                           </div>
 
-                          {/* Level 3: Sub Categories Area + Main Cat Items */}
+                          {/* Level 3: Main Cat Items */}
                           {isMainExpanded && (
                             <div className={styles.subCatsContainer}>
                               {/* Show items directly under Main Category */}
                               {(() => {
-                                const directProducts = products.filter(p => p.categoryId === mainCat.id && !p.subcategoryId);
-                                if (directProducts.length > 0) {
-                                  return (
-                                    <div style={{ marginBottom: '1rem', background: 'var(--surface)', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                      <h5 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.4rem' }}>أصناف مباشرة في {mainCat.name}</h5>
-                                      <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                                const directProducts = products.filter(p => p.categoryId === mainCat.id);
+                                return (
+                                  <div style={{ marginBottom: '1rem', background: 'var(--surface)', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                    <h5 style={{ color: 'var(--text-main)', marginBottom: '0.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.4rem' }}>أصناف في {mainCat.name}</h5>
+                                    {directProducts.length > 0 ? (
+                                      <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse', marginBottom: '1rem' }}>
                                         <tbody>
                                           {directProducts.map(prod => (
                                              <tr key={prod.id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -331,69 +278,18 @@ export default function CategoriesPage() {
                                           ))}
                                         </tbody>
                                       </table>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })()}
-
-                              {/* Show Sub Categories */}
-                              <ul className={styles.subList}>
-                                {mainCat.subcategories.map(subCat => {
-                                  const isSubExpanded = expandedSubCatId === subCat.id;
-                                  const subProducts = products.filter(p => p.subcategoryId === subCat.id);
-                                  
-                                  return (
-                                    <li 
-                                      key={subCat.id} 
-                                      className={styles.subItem} 
-                                      onClick={() => setExpandedSubCatId(isSubExpanded ? null : subCat.id)}
-                                      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
+                                    ) : (
+                                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0', marginBottom: '1rem' }}>لا توجد أصناف في هذه الفئة.</div>
+                                    )}
+                                    <button 
+                                      className={styles.addProductBtnSmall}
+                                      onClick={(e) => { e.stopPropagation(); openAddProductModal(mainCat.id); }}
                                     >
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                                        <span style={{ fontWeight: isSubExpanded ? 'bold' : 'normal', color: isSubExpanded ? 'var(--primary)' : 'inherit' }}>
-                                          {isSubExpanded ? '▼' : '▶'} {subCat.name} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({subProducts.length} أصناف)</span>
-                                        </span>
-                                        <div className={styles.subItemActions}>
-                                          <button onClick={(e) => { e.stopPropagation(); openEditSubModal(mainCat.id, subCat.id, subCat.name); }} className={styles.textBtn}>تعديل</button>
-                                          <button onClick={(e) => { e.stopPropagation(); clickDeleteSub(mainCat.id, subCat.id, subCat.name); }} className={styles.textBtnDelete}>حذف</button>
-                                        </div>
-                                      </div>
-                                      
-                                      {isSubExpanded && (
-                                        <div 
-                                          style={{ marginTop: '0.5rem', background: '#111827', padding: '0.5rem', borderRadius: '4px', border: '1px dashed #374151' }}
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          {subProducts.length === 0 ? (
-                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>لا توجد أصناف في هذا الفرع.</div>
-                                          ) : (
-                                            <table style={{ width: '100%', fontSize: '0.9rem', color: 'var(--text-main)', borderCollapse: 'collapse' }}>
-                                              <tbody>
-                                                {subProducts.map(prod => (
-                                                   <tr key={prod.id} style={{ borderBottom: '1px solid #1f2937' }}>
-                                                     <td style={{ padding: '0.4rem', paddingLeft: '1rem' }}>{prod.name}</td>
-                                                     <td style={{ padding: '0.4rem', textAlign: 'left', color: '#10b981', fontWeight: 'bold' }}>الكمية: {getProductQuantity(prod)}</td>
-                                                   </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
-                                          )}
-                                          <button 
-                                            className={styles.addProductBtnSmall}
-                                            onClick={(e) => { e.stopPropagation(); openAddProductModal(mainCat.id, subCat.id); }}
-                                          >
-                                            ➕ إضافة صنف في هذا الفرع
-                                          </button>
-                                        </div>
-                                      )}
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                              <button className={styles.addSubBtnSmall} onClick={() => openAddSubModal(mainCat.id)}>
-                                + إضافة فئة فرعية
-                              </button>
+                                      ➕ إضافة صنف في هذه الفئة
+                                    </button>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -423,8 +319,7 @@ export default function CategoriesPage() {
                  modalMode === 'editPage' ? 'تعديل البيج/المحل' :
                  modalMode === 'addMain' ? 'إضافة فئة رئيسية' :
                  modalMode === 'editMain' ? 'تعديل الفئة الرئيسية' :
-                 modalMode === 'addSub' ? 'إضافة فئة فرعية' :
-                 modalMode === 'addProduct' ? 'إضافة صنف جديد (منتج)' : 'تعديل الفئة الفرعية'}
+                 modalMode === 'addProduct' ? 'إضافة صنف جديد (منتج)' : ''}
               </h2>
               <button type="button" className={styles.closeButton} onClick={closeModal}>×</button>
             </div>
@@ -439,34 +334,6 @@ export default function CategoriesPage() {
                   autoFocus
                 />
               </div>
-
-              {modalMode === 'addMain' && (
-                <div style={{ marginTop: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <input 
-                      type="checkbox" 
-                      id="hasSubCatCheck" 
-                      checked={hasSubCategory} 
-                      onChange={(e) => setHasSubCategory(e.target.checked)} 
-                      style={{ width: '1.2rem', height: '1.2rem', accentColor: 'var(--primary)', cursor: 'pointer' }}
-                    />
-                    <label htmlFor="hasSubCatCheck" style={{ cursor: 'pointer', color: 'var(--text-main)' }}>هل توجد فئة فرعية؟</label>
-                  </div>
-                  
-                  {hasSubCategory && (
-                    <div className={styles.formGroup} style={{ marginTop: '0.5rem' }}>
-                      <label className={styles.label}>اسم الفئة الفرعية اليمنى لحفظها</label>
-                      <input 
-                        type="text" 
-                        className={styles.input}
-                        value={inputSubName}
-                        onChange={(e) => setInputSubName(e.target.value)}
-                        placeholder="أدخل اسم الفئة الفرعية..."
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
             <div className={styles.modalFooter}>
               <button type="submit" className={styles.saveButton}>حفظ</button>
@@ -485,7 +352,7 @@ export default function CategoriesPage() {
             </div>
             <div className={styles.modalBody} style={{ padding: '2rem', textAlign: 'center', fontSize: '1.2rem', color: 'var(--text-main)' }}>
               هل أنت متأكد من حذف 
-              {deleteMode === 'page' ? ' البيج/المحل' : deleteMode === 'main' ? ' الفئة الرئيسية' : ' الفئة الفرعية'} 
+              {deleteMode === 'page' ? ' البيج/المحل' : ' الفئة الرئيسية'} 
               <strong> "{itemToDelete?.name}"</strong>؟ <br/>
               {deleteMode === 'page' && <span style={{color: '#f87171', fontSize: '0.9rem', display: 'block', marginTop: '1rem'}}>تنبيه: سيتم حذف جميع الفئات المرتبطة بهذا البيج!</span>}
             </div>

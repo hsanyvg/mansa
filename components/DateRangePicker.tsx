@@ -66,9 +66,12 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
         start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
         break;
+      case 'الشهر':
       case 'هذا الشهر':
         start.setDate(1);
         start.setHours(0, 0, 0, 0);
+        end.setMonth(today.getMonth() + 1);
+        end.setDate(0);
         end.setHours(23, 59, 59, 999);
         break;
       case 'تاريخ مخصص':
@@ -213,9 +216,9 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
                     setPreset('تاريخ مخصص');
                   }}
                 >
-                  <option value="" style={{ color: 'black' }}>اختر الشهر...</option>
+                  <option value="" style={{ color: 'white', backgroundColor: '#1a1a2e' }}>اختر الشهر...</option>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m} style={{ color: 'black' }}>شهر {m}</option>
+                    <option key={m} value={m} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>شهر {m}</option>
                   ))}
                 </select>
 
@@ -236,7 +239,7 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
                   }}
                 >
                   {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
-                    <option key={y} value={y} style={{ color: 'black' }}>{y}</option>
+                    <option key={y} value={y} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>{y}</option>
                   ))}
                 </select>
               </div>

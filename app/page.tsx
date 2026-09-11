@@ -274,8 +274,24 @@ export default function Dashboard() {
 
   const selectMainShortcut = (shortcut: string) => {
     setTempMainFilter(shortcut);
-    setTempMainStart('');
-    setTempMainEnd('');
+    if (shortcut === 'الشهر') {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = today.getMonth() + 1;
+      const start = new Date(year, month - 1, 1);
+      const end = new Date(year, month, 0);
+      const formatObj = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+      setTempMainStart(formatObj(start));
+      setTempMainEnd(formatObj(end));
+    } else {
+      setTempMainStart('');
+      setTempMainEnd('');
+    }
   };
 
   const handleCustomMainDateChange = (type: 'start' | 'end', val: string) => {
@@ -877,22 +893,16 @@ export default function Dashboard() {
     // 1. Resolve product hierarchy helper
     const resolveProductHierarchy = (prodName: string) => {
       const prod = allProducts.find(p => p.name === prodName);
-      if (!prod) return { page: 'عامة (بدون بيج)', branch: 'غير محدد', subcat: 'بدون فئة فرعية' };
+      if (!prod) return { page: 'عامة (بدون بيج)', branch: 'غير محدد' };
 
       const cat = allCategories.find(c => c.id === prod.categoryId);
-      if (!cat) return { page: 'عامة (بدون بيج)', branch: 'غير محدد', subcat: 'بدون فئة فرعية' };
+      if (!cat) return { page: 'عامة (بدون بيج)', branch: 'غير محدد' };
 
       const pg = pages.find(p => p.id === cat.pageId);
       const pageName = pg ? pg.name : 'عامة (بدون بيج)';
       const branchName = cat.name || 'غير محدد';
 
-      let subcatName = 'بدون فئة فرعية';
-      if (prod.subcategoryId && cat.subcategories) {
-        const sub = cat.subcategories.find((s: any) => s.id === prod.subcategoryId);
-        if (sub) subcatName = sub.name;
-      }
-
-      return { page: pageName, branch: branchName, subcat: subcatName };
+      return { page: pageName, branch: branchName };
     };
 
     // 2. Initialize tree data structure
@@ -908,23 +918,17 @@ export default function Dashboard() {
         revenue: number;
         expenses: number;
         netProfit: number;
-        subcategories: Record<string, {
+        items: Record<string, {
           name: string;
           revenue: number;
           expenses: number;
           netProfit: number;
-          items: Record<string, {
-            name: string;
-            revenue: number;
-            expenses: number;
-            netProfit: number;
-          }>
         }>
       }>
     }> = {};
 
     // Helper to ensure path exists in tree
-    const ensurePath = (page: string, branch: string, subcat: string, item: string) => {
+    const ensurePath = (page: string, branch: string, item: string) => {
       if (!tree[page]) {
         tree[page] = {
           name: page,
@@ -943,22 +947,12 @@ export default function Dashboard() {
           revenue: 0,
           expenses: 0,
           netProfit: 0,
-          subcategories: {}
-        };
-      }
-      const b = p.branches[branch];
-      if (!b.subcategories[subcat]) {
-        b.subcategories[subcat] = {
-          name: subcat,
-          revenue: 0,
-          expenses: 0,
-          netProfit: 0,
           items: {}
         };
       }
-      const s = b.subcategories[subcat];
-      if (!s.items[item]) {
-        s.items[item] = {
+      const b = p.branches[branch];
+      if (!b.items[item]) {
+        b.items[item] = {
           name: item,
           revenue: 0,
           expenses: 0,
@@ -997,7 +991,7 @@ export default function Dashboard() {
         const pName = item.productName || item.name || 'غير مصنف';
         
         const hierarchy = resolveProductHierarchy(pName);
-        ensurePath(hierarchy.page, hierarchy.branch, hierarchy.subcat, pName);
+        ensurePath(hierarchy.page, hierarchy.branch, pName);
 
         const qty = Number(item.quantity) || 1;
         const price = Number(item.unitPrice) || Number(item.price) || 0;
@@ -1012,13 +1006,11 @@ export default function Dashboard() {
         pGrp.deliveredOrdersCount += proportion;
         pGrp.revenue += allocatedRevenue;
 
-        // Branch/Subcategory/Item level nodes
+        // Branch/Item level nodes
         const bGrp = pGrp.branches[hierarchy.branch];
-        const sGrp = bGrp.subcategories[hierarchy.subcat];
-        const iGrp = sGrp.items[pName];
+        const iGrp = bGrp.items[pName];
 
         bGrp.revenue += allocatedRevenue;
-        sGrp.revenue += allocatedRevenue;
         iGrp.revenue += allocatedRevenue;
       });
     });
@@ -1030,11 +1022,6 @@ export default function Dashboard() {
       const pageKey = exp.pageName || 'عامة (بدون بيج)';
       const branchKey = exp.branchName || '';
       const itemKey = exp.itemName || '';
-      
-      let subcatKey = '';
-      if (itemKey) {
-        subcatKey = resolveProductHierarchy(itemKey).subcat;
-      }
 
       if (!tree[pageKey]) {
         tree[pageKey] = {
@@ -1057,35 +1044,22 @@ export default function Dashboard() {
             revenue: 0,
             expenses: 0,
             netProfit: 0,
-            subcategories: {}
+            items: {}
           };
         }
         const bGrp = pGrp.branches[branchKey];
         bGrp.expenses += expAmount;
 
-        const finalSubcatKey = subcatKey || 'بدون فئة فرعية';
-        if (!bGrp.subcategories[finalSubcatKey]) {
-          bGrp.subcategories[finalSubcatKey] = {
-            name: finalSubcatKey,
-            revenue: 0,
-            expenses: 0,
-            netProfit: 0,
-            items: {}
-          };
-        }
-        const sGrp = bGrp.subcategories[finalSubcatKey];
-        sGrp.expenses += expAmount;
-
         if (itemKey) {
-          if (!sGrp.items[itemKey]) {
-            sGrp.items[itemKey] = {
+          if (!bGrp.items[itemKey]) {
+            bGrp.items[itemKey] = {
               name: itemKey,
               revenue: 0,
               expenses: 0,
               netProfit: 0
             };
           }
-          const iGrp = sGrp.items[itemKey];
+          const iGrp = bGrp.items[itemKey];
           iGrp.expenses += expAmount;
         }
       }
@@ -1102,16 +1076,10 @@ export default function Dashboard() {
         branch.expenses = Math.round(branch.expenses);
         branch.netProfit = branch.revenue - branch.expenses;
 
-        Object.values(branch.subcategories).forEach(subcat => {
-          subcat.revenue = Math.round(subcat.revenue);
-          subcat.expenses = Math.round(subcat.expenses);
-          subcat.netProfit = subcat.revenue - subcat.expenses;
-
-          Object.values(subcat.items).forEach(item => {
-            item.revenue = Math.round(item.revenue);
-            item.expenses = Math.round(item.expenses);
-            item.netProfit = item.revenue - item.expenses;
-          });
+        Object.values(branch.items).forEach(item => {
+          item.revenue = Math.round(item.revenue);
+          item.expenses = Math.round(item.expenses);
+          item.netProfit = item.revenue - item.expenses;
         });
       });
     });
@@ -1285,9 +1253,9 @@ export default function Dashboard() {
                           handleCustomMainDateChange('end', formatObj(end));
                         }}
                       >
-                        <option value="" style={{ color: 'black' }}>اختر الشهر...</option>
+                        <option value="" style={{ color: 'white', backgroundColor: '#1a1a2e' }}>اختر الشهر...</option>
                         {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                          <option key={m} value={m} style={{ color: 'black' }}>شهر {m}</option>
+                          <option key={m} value={m} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>شهر {m}</option>
                         ))}
                       </select>
 
@@ -1313,7 +1281,7 @@ export default function Dashboard() {
                         }}
                       >
                         {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
-                          <option key={y} value={y} style={{ color: 'black' }}>{y}</option>
+                          <option key={y} value={y} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>{y}</option>
                         ))}
                       </select>
                     </div>
@@ -2253,17 +2221,17 @@ export default function Dashboard() {
                           {Object.values(page.branches).map(branch => {
                             const branchKey = `${pageKey}::${branch.name}`;
                             const isBranchExpanded = !!expandedAnalysisBranches[branchKey];
-                            const hasSubcats = Object.keys(branch.subcategories).length > 0;
+                            const hasItems = Object.keys(branch.items).length > 0;
 
                             return (
                               <div key={branchKey} className={styles.treeNode}>
                                 <div 
                                   className={`${styles.nodeHeader} ${styles.branchNode}`}
-                                  onClick={() => hasSubcats && toggleAnalysisBranch(branchKey)}
-                                  style={{ cursor: hasSubcats ? 'pointer' : 'default' }}
+                                  onClick={() => hasItems && toggleAnalysisBranch(branchKey)}
+                                  style={{ cursor: hasItems ? 'pointer' : 'default' }}
                                 >
                                   <div className={styles.nodeLeft}>
-                                    {hasSubcats && <span className={styles.arrowIcon}>{isBranchExpanded ? '▼' : '▶'}</span>}
+                                    {hasItems && <span className={styles.arrowIcon}>{isBranchExpanded ? '▼' : '▶'}</span>}
                                     <span className={styles.nodeName}>🌿 {branch.name}</span>
                                   </div>
                                   <div className={styles.nodeAmount}>
@@ -2279,62 +2247,26 @@ export default function Dashboard() {
                                   </div>
                                 </div>
 
-                                {isBranchExpanded && hasSubcats && (
+                                {isBranchExpanded && hasItems && (
                                   <div className={styles.nodeChildren}>
-                                    {Object.values(branch.subcategories).map(subcat => {
-                                      const subcatKey = `${branchKey}::${subcat.name}`;
-                                      const isSubcatExpanded = !!expandedAnalysisSubcats[subcatKey];
-                                      const hasItems = Object.keys(subcat.items).length > 0;
-
-                                      return (
-                                        <div key={subcatKey} className={styles.treeNode}>
-                                          <div 
-                                            className={`${styles.nodeHeader} ${styles.subcatNode}`}
-                                            onClick={() => hasItems && toggleAnalysisSubcat(subcatKey)}
-                                            style={{ cursor: hasItems ? 'pointer' : 'default' }}
-                                          >
-                                            <div className={styles.nodeLeft}>
-                                              {hasItems && <span className={styles.arrowIcon}>{isSubcatExpanded ? '▼' : '▶'}</span>}
-                                              <span className={styles.nodeName}>🍂 {subcat.name}</span>
-                                            </div>
-                                            <div className={styles.nodeAmount}>
-                                              <span className={styles.revenueText}>
-                                                مبيعات: <span dir="ltr">{subcat.revenue.toLocaleString()}</span> د.ع
-                                              </span>
-                                              <span className={styles.expensesText} style={{ color: '#c084fc' }}>
-                                                مصاريف: <span dir="ltr">{subcat.expenses.toLocaleString()}</span> د.ع
-                                              </span>
-                                              <span className={subcat.netProfit >= 0 ? styles.profitText : styles.lossText}>
-                                                الصافي: <span dir="ltr">{subcat.netProfit >= 0 ? '+' : ''}{subcat.netProfit.toLocaleString()}</span> د.ع
-                                              </span>
-                                            </div>
-                                          </div>
-
-                                          {isSubcatExpanded && hasItems && (
-                                            <div className={styles.nodeChildren}>
-                                              {Object.values(subcat.items).map(item => (
-                                                <div key={item.name} className={`${styles.nodeHeader} ${styles.itemNode}`}>
-                                                  <div className={styles.nodeLeft}>
-                                                    <span className={styles.nodeName}>🏷️ {item.name}</span>
-                                                  </div>
-                                                  <div className={styles.nodeAmount}>
-                                                    <span className={styles.revenueText}>
-                                                      مبيعات: <span dir="ltr">{item.revenue.toLocaleString()}</span> د.ع
-                                                    </span>
-                                                    <span className={styles.expensesText} style={{ color: '#c084fc' }}>
-                                                      مصاريف: <span dir="ltr">{item.expenses.toLocaleString()}</span> د.ع
-                                                    </span>
-                                                    <span className={item.netProfit >= 0 ? styles.profitText : styles.lossText}>
-                                                      الصافي: <span dir="ltr">{item.netProfit >= 0 ? '+' : ''}{item.netProfit.toLocaleString()}</span> د.ع
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          )}
+                                    {Object.values(branch.items).map(item => (
+                                      <div key={item.name} className={`${styles.nodeHeader} ${styles.itemNode}`}>
+                                        <div className={styles.nodeLeft}>
+                                          <span className={styles.nodeName}>🏷️ {item.name}</span>
                                         </div>
-                                      );
-                                    })}
+                                        <div className={styles.nodeAmount}>
+                                          <span className={styles.revenueText}>
+                                            مبيعات: <span dir="ltr">{item.revenue.toLocaleString()}</span> د.ع
+                                          </span>
+                                          <span className={styles.expensesText} style={{ color: '#c084fc' }}>
+                                            مصاريف: <span dir="ltr">{item.expenses.toLocaleString()}</span> د.ع
+                                          </span>
+                                          <span className={item.netProfit >= 0 ? styles.profitText : styles.lossText}>
+                                            الصافي: <span dir="ltr">{item.netProfit >= 0 ? '+' : ''}{item.netProfit.toLocaleString()}</span> د.ع
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
                                 )}
                               </div>

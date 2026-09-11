@@ -24,15 +24,10 @@ export default function CompositeProductsPage() {
     name: '',
     pageId: '',
     categoryId: '',
-    subcategoryId: '',
     sellingPrice: 0,
     estimatedCost: 0,
     notes: ''
   });
-
-  // Derived state for Subcategories
-  const activeCategory = categories.find(c => c.id === productDetails.categoryId);
-  const availableSubcategories = activeCategory ? activeCategory.subcategories : [];
 
   // Form State - Recipe Builder (Left Section)
   const [recipeItems, setRecipeItems] = useState<RecipeItem[]>([]);
@@ -163,7 +158,6 @@ export default function CompositeProductsPage() {
         name: productDetails.name,
         pageId: productDetails.pageId,
         categoryId: productDetails.categoryId,
-        subcategoryId: productDetails.subcategoryId,
         sellingPrice: productDetails.sellingPrice,
         cost: totalCost, // saving the explicitly calculated total cost
         notes: productDetails.notes,
@@ -185,7 +179,6 @@ export default function CompositeProductsPage() {
         name: '',
         pageId: '',
         categoryId: '',
-        subcategoryId: '',
         sellingPrice: 0,
         estimatedCost: 0,
         notes: ''
@@ -283,7 +276,7 @@ export default function CompositeProductsPage() {
             <select 
               className={styles.select}
               value={productDetails.pageId}
-              onChange={(e) => setProductDetails({...productDetails, pageId: e.target.value, categoryId: '', subcategoryId: ''})}
+              onChange={(e) => setProductDetails({...productDetails, pageId: e.target.value, categoryId: ''})}
             >
               <option value="" disabled hidden>إختر البيج</option>
               {pagesStoresDb.map(page => (
@@ -297,27 +290,12 @@ export default function CompositeProductsPage() {
             <select 
               className={styles.select}
               value={productDetails.categoryId}
-              onChange={(e) => setProductDetails({...productDetails, categoryId: e.target.value, subcategoryId: ''})}
+              onChange={(e) => setProductDetails({...productDetails, categoryId: e.target.value})}
               disabled={!productDetails.pageId}
             >
               <option value="" disabled hidden>إختر الفئة</option>
               {categories.filter(c => c.pageId === productDetails.pageId).map(cat => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.formGroup}>
-            <label className={styles.label}>الفئة الفرعية (إختياري)</label>
-            <select 
-              className={styles.select}
-              value={productDetails.subcategoryId}
-              onChange={(e) => setProductDetails({...productDetails, subcategoryId: e.target.value})}
-              disabled={!productDetails.categoryId || availableSubcategories.length === 0}
-            >
-              <option value="">بدون فئة فرعية</option>
-              {availableSubcategories.map((sub: any) => (
-                <option key={sub.id} value={sub.id}>{sub.name}</option>
               ))}
             </select>
           </div>

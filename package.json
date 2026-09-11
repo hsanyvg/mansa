@@ -21,6 +21,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@babel/parser": "^8.0.4",
     "@capacitor/android": "^8.4.0",
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",

@@ -50,17 +50,16 @@ export default function ProductsPage() {
   const [categoriesDb, setCategoriesDb] = useState<any[]>([]);
   const [selectedPage, setSelectedPage] = useState('');
   const [selectedMainCat, setSelectedMainCat] = useState('');
-  const [selectedSubCat, setSelectedSubCat] = useState('');
   const [filterPage, setFilterPage] = useState('');
   const [filterMainCat, setFilterMainCat] = useState('');
-  const [filterSubCat, setFilterSubCat] = useState('');
   
   const [availableUnits, setAvailableUnits] = useState<{id: string, name: string}[]>([]);
   const [storesDb, setStoresDb] = useState<any[]>([]);
   const [pagesStoresDb, setPagesStoresDb] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [productStock, setProductStock] = useState<Record<string, { quantity: number, unit: string, reserved?: number }>>({});
-
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [selectedPaymentWallet, setSelectedPaymentWallet] = useState('');
   // Form State
   const [formData, setFormData] = useState({
     name: '',
@@ -135,6 +134,14 @@ export default function ProductsPage() {
         subcategories: c.subcategories || []
       }));
       setCategoriesDb(processed);
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch wallets from Firebase
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'wallets'), (snapshot) => {
+      setWallets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
   }, []);
@@ -320,17 +327,14 @@ export default function ProductsPage() {
   const handlePageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedPage(e.target.value);
     setSelectedMainCat('');
-    setSelectedSubCat('');
   };
 
   const handleMainCatChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const mainId = e.target.value;
     setSelectedMainCat(mainId);
-    setSelectedSubCat('');
   };
 
   const activeMainCatObj = categoriesDb.find(c => c.id === selectedMainCat);
-  const availableSubCats = activeMainCatObj ? activeMainCatObj.subcategories : [];
 
   const handleEditProduct = (prod: any) => {
     setEditingProductId(prod.id);
@@ -346,7 +350,6 @@ export default function ProductsPage() {
     const catObj = categoriesDb.find(c => c.id === prod.categoryId);
     setSelectedPage(catObj ? catObj.pageId : '');
     setSelectedMainCat(prod.categoryId || '');
-    setSelectedSubCat(prod.subcategoryId || '');
     if (prod.units && prod.units.length > 0) {
       setUnits(prod.units);
     } else {
@@ -367,6 +370,28 @@ export default function ProductsPage() {
   const handleConfirmDelete = async () => {
     if (!productToDelete) return;
     try {
+      // Fetch orders that are NOT returned_warehouse or cancelled
+      const ordersRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
+      const q = query(ordersRef, where('status', 'not-in', ['returned_warehouse', 'cancelled', 'canceled']));
+      const snapshot = await getDocs(q);
+      
+      let isProductInActiveOrder = false;
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.items && Array.isArray(data.items)) {
+          if (data.items.some((item: any) => item.productId === productToDelete.id)) {
+            isProductInActiveOrder = true;
+          }
+        }
+      });
+
+      if (isProductInActiveOrder) {
+        showToast("لا يمكن الحذف! الصنف مرتبط بطلبات (قيد الانتظار، واصل، وغيرها). يُسمح الحذف فقط إذا كانت طلباته ملغاة أو راجع مخزن.", "error");
+        setShowDeleteModal(false);
+        setProductToDelete(null);
+        return;
+      }
+
       await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', productToDelete.id));
       showToast("تم حذف الصنف بنجاح", "success");
       setShowDeleteModal(false);
@@ -402,6 +427,14 @@ export default function ProductsPage() {
       }));
       const totalBaseQuantity = calculateTotalBaseQuantity(warehousesArray, mappedUnitsForUtils);
 
+      const basePurchasePrice = Number(units[0]?.purchase || 0);
+      const totalCost = totalBaseQuantity * basePurchasePrice;
+
+      if (!editingProductId && totalCost > 0 && !selectedPaymentWallet) {
+        alert("يرجى اختيار الخزنة المستخدمة للدفع لإتمام سحب تكلفة البضاعة.");
+        return;
+      }
+
       const updatedProductStock = { ...productStock };
       for (const storeId in updatedProductStock) {
         if (updatedProductStock[storeId].reserved === undefined) {
@@ -412,7 +445,6 @@ export default function ProductsPage() {
       const productPayload = {
         ...formData,
         categoryId: selectedMainCat,
-        subcategoryId: selectedSubCat,
         units: units,
         stock: updatedProductStock,
         totalBaseQuantity: totalBaseQuantity,
@@ -422,6 +454,69 @@ export default function ProductsPage() {
       if (editingProductId) {
         await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'products', editingProductId), productPayload);
         
+        try {
+          const oldProduct = products.find(p => p.id === editingProductId);
+          if (oldProduct) {
+            const oldName = oldProduct.name || '';
+            const oldCatId = oldProduct.categoryId || '';
+            const newName = formData.name || '';
+            const newCatId = selectedMainCat || '';
+
+            const categoryChanged = oldCatId !== newCatId;
+            const nameChanged = oldName !== newName;
+
+            if (categoryChanged || nameChanged) {
+              const expensesRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses');
+              const qExp = query(expensesRef, where('itemName', '==', oldName), where('categoryId', '==', oldCatId));
+              const expSnap = await getDocs(qExp);
+
+              const expChunks: any[][] = [[]];
+              
+              let newPageId = '';
+              let newBranchName = '';
+              let newPageName = '';
+              if (categoryChanged) {
+                const newCat = categoriesDb.find((c: any) => c.id === newCatId);
+                if (newCat) {
+                  newPageId = newCat.pageId;
+                  newBranchName = newCat.name;
+                  const newPage = pagesStoresDb.find((p: any) => p.id === newPageId);
+                  if (newPage) newPageName = newPage.name;
+                }
+              }
+
+              expSnap.forEach(expDoc => {
+                if (expChunks[expChunks.length - 1].length >= 490) {
+                  expChunks.push([]);
+                }
+                const updates: any = {};
+                if (categoryChanged) {
+                  updates.categoryId = newCatId;
+                  if (newPageId) updates.pageId = newPageId;
+                  if (newBranchName) updates.branchName = newBranchName;
+                  if (newPageName) updates.pageName = newPageName;
+                }
+                if (nameChanged) {
+                  updates.itemName = newName;
+                }
+                expChunks[expChunks.length - 1].push({ ref: expDoc.ref, data: updates });
+              });
+
+              for (const chunk of expChunks) {
+                if (chunk.length > 0) {
+                  const batch = writeBatch(db);
+                  chunk.forEach(op => {
+                    batch.update(op.ref, op.data);
+                  });
+                  await batch.commit();
+                }
+              }
+            }
+          }
+        } catch (updateErr) {
+          console.error("Failed to update expenses with new product category/name", updateErr);
+        }
+
         try {
           const ordersRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
           const ordersSnap = await getDocs(ordersRef);
@@ -466,6 +561,21 @@ export default function ProductsPage() {
           ...productPayload,
           createdAt: serverTimestamp()
         });
+        
+        if (totalCost > 0 && selectedPaymentWallet) {
+          const now = new Date();
+          await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'treasury_transactions'), {
+            type: 'withdraw',
+            walletId: selectedPaymentWallet,
+            amount: totalCost,
+            currency: 'IQD',
+            date: now.toISOString().split('T')[0],
+            time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+            details: `شراء بضاعة لصنف جديد: ${formData.name}`,
+            createdAt: serverTimestamp()
+          });
+        }
+
         showToast("تم إضافة الصنف بنجاح!", "success");
       }
 
@@ -473,6 +583,7 @@ export default function ProductsPage() {
       // Reset form
       setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
       setEditingProductId(null);
+      setSelectedPaymentWallet('');
       setUnits([
         { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
         { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
@@ -480,7 +591,6 @@ export default function ProductsPage() {
       ]);
       setSelectedPage('');
       setSelectedMainCat('');
-      setSelectedSubCat('');
       setProductStock({});
     } catch (e) {
       console.error("Error saving product: ", e);
@@ -550,7 +660,6 @@ export default function ProductsPage() {
             ]);
             setSelectedPage('');
             setSelectedMainCat('');
-            setSelectedSubCat('');
             setProductStock({});
             setShowAddModal(true);
           }}>
@@ -568,7 +677,6 @@ export default function ProductsPage() {
             onChange={(e) => {
               setFilterPage(e.target.value);
               setFilterMainCat('');
-              setFilterSubCat('');
             }}
           >
             <option value="">كل البيجات</option>
@@ -582,7 +690,6 @@ export default function ProductsPage() {
             value={filterMainCat}
             onChange={(e) => {
               setFilterMainCat(e.target.value);
-              setFilterSubCat('');
             }}
           >
             <option value="">كل الفئات الرئيسية</option>
@@ -591,35 +698,6 @@ export default function ProductsPage() {
               .map(cat => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
-          </select>
-
-          <select 
-            className={styles.filterSelect} 
-            value={filterSubCat}
-            onChange={(e) => setFilterSubCat(e.target.value)}
-          >
-            <option value="">كل الفئات الفرعية</option>
-            {(() => {
-              if (filterMainCat) {
-                const mainCatObj = categoriesDb.find(c => c.id === filterMainCat);
-                return (mainCatObj?.subcategories || []).map((sub: any) => (
-                  <option key={sub.id} value={sub.id}>{sub.name}</option>
-                ));
-              }
-              if (filterPage) {
-                return categoriesDb
-                  .filter(c => c.pageId === filterPage)
-                  .flatMap(c => c.subcategories || [])
-                  .map((sub: any) => (
-                    <option key={sub.id} value={sub.id}>{sub.name}</option>
-                  ));
-              }
-              return categoriesDb
-                .flatMap(c => c.subcategories || [])
-                .map((sub: any) => (
-                  <option key={sub.id} value={sub.id}>{sub.name}</option>
-                ));
-            })()}
           </select>
 
           <button 
@@ -634,7 +712,6 @@ export default function ProductsPage() {
             onClick={() => {
               setFilterPage('');
               setFilterMainCat('');
-              setFilterSubCat('');
               setSearchTerm('');
             }}
           >
@@ -686,7 +763,6 @@ export default function ProductsPage() {
                 <th>الصنف</th>
                 <th>الباركود</th>
                 <th>فئة رئيسية</th>
-                <th>فئة فرعية</th>
                 <th>التكلفة</th>
                 <th>البيع</th>
                 <th>الفعلي</th>
@@ -709,21 +785,10 @@ export default function ProductsPage() {
                   const isMainCatName = categoriesDb.some(cat => cat.name?.trim().toLowerCase() === pNameClean);
                   if (isMainCatName) return false;
 
-                  const isSubCatName = categoriesDb.some(cat => 
-                    cat.subcategories?.some((sub: any) => sub.name?.trim().toLowerCase() === pNameClean)
-                  );
-                  if (isSubCatName) return false;
-
-                  const matchesSearch = prod.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                        prod.barcode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        prod.model?.toLowerCase().includes(searchTerm.toLowerCase());
-                  const matchesPage = filterPage ? (
-                    prod.pageId === filterPage || 
-                    categoriesDb.find(c => c.id === prod.categoryId)?.pageId === filterPage
-                  ) : true;
+                  const matchesSearch = prod.name?.toLowerCase().includes(searchTerm.toLowerCase()) || prod.barcode?.toLowerCase().includes(searchTerm.toLowerCase());
+                  const matchesPage = filterPage ? (categoriesDb.find((c: any) => c.id === prod.categoryId)?.pageId === filterPage) : true;
                   const matchesMainCat = filterMainCat ? prod.categoryId === filterMainCat : true;
-                  const matchesSubCat = filterSubCat ? prod.subcategoryId === filterSubCat : true;
-                  return matchesSearch && matchesPage && matchesMainCat && matchesSubCat;
+                  return matchesSearch && matchesPage && matchesMainCat;
                 });
 
                 if (filtered.length === 0) {
@@ -738,7 +803,6 @@ export default function ProductsPage() {
 
                 return filtered.map((prod, index) => {
                   const mainCat = categoriesDb.find(c => c.id === prod.categoryId);
-                  const subCat = mainCat?.subcategories?.find((s: any) => s.id === prod.subcategoryId);
                   const firstUnit = prod.units && prod.units.length > 0 ? prod.units[0] : null;
 
                   return (
@@ -776,7 +840,6 @@ export default function ProductsPage() {
                         )}
                       </td>
                       <td>{mainCat ? mainCat.name : '---'}</td>
-                      <td>{subCat ? subCat.name : '---'}</td>
                       <td>{firstUnit ? `${firstUnit.type} : ${new Intl.NumberFormat('en-US').format(firstUnit.purchase)}` : '---'}</td>
                       <td>{firstUnit ? `${firstUnit.type} : ${new Intl.NumberFormat('en-US').format(firstUnit.selling)}` : '---'}</td>
                       <td style={{ fontWeight: 'bold', direction: 'rtl', verticalAlign: 'middle' }}>
@@ -995,13 +1058,6 @@ export default function ProductsPage() {
                     </select>
                   </div>
                   <div className={styles.formGroup}>
-                    <label className={styles.label}>فئة فرعية (إختياري)</label>
-                    <select className={styles.select} value={selectedSubCat} onChange={(e) => setSelectedSubCat(e.target.value)}>
-                      <option value="">بدون فئة فرعية</option>
-                      {availableSubCats.map((sub: any) => (<option key={sub.id} value={sub.id}>{sub.name}</option>))}
-                    </select>
-                  </div>
-                  <div className={styles.formGroup}>
                     <label className={styles.label}>باركود الأصناف</label>
                     <input type="text" className={styles.input} value={formData.barcode} onChange={(e) => setFormData({...formData, barcode: e.target.value})} />
                   </div>
@@ -1013,6 +1069,17 @@ export default function ProductsPage() {
                     <label className={styles.label}>كود التتبع الإعلاني (CPO)</label>
                     <input type="text" className={styles.input} value={formData.trackingCode} onChange={(e) => setFormData({...formData, trackingCode: e.target.value})} placeholder="مثال: SVA, SW1" />
                   </div>
+                  {!editingProductId && (
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>الخزنة المستخدمة للدفع</label>
+                      <select className={styles.select} value={selectedPaymentWallet} onChange={(e) => setSelectedPaymentWallet(e.target.value)}>
+                        <option value="" disabled hidden>إختر الخزنة</option>
+                        {wallets.map(w => (
+                          <option key={w.id} value={w.id}>{w.name || 'بدون اسم'}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 

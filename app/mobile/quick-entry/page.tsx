@@ -27,7 +27,6 @@ interface Product {
   isComposite?: boolean;
   composition?: any[];
   categoryId?: string;
-  subcategoryId?: string;
 }
 
 interface CartItem {

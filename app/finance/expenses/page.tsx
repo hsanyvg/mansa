@@ -92,6 +92,8 @@ export default function ExpensesPage() {
   
   // Form State
   const [categoryId, setCategoryId] = useState('');
+  const [catSearch, setCatSearch] = useState('');
+  const [catOpen, setCatOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('IQD');
   const [date, setDate] = useState('');
@@ -144,7 +146,7 @@ export default function ExpensesPage() {
   const [showSummary, setShowSummary] = useState(false);
   const [expandedSummaryPages, setExpandedSummaryPages] = useState<Record<string, boolean>>({});
   const [expandedSummaryBranches, setExpandedSummaryBranches] = useState<Record<string, boolean>>({});
-  const [expandedSummarySubcats, setExpandedSummarySubcats] = useState<Record<string, boolean>>({});
+
 
   useEffect(() => {
     setIsMounted(true);
@@ -445,9 +447,7 @@ export default function ExpensesPage() {
     setExpandedSummaryBranches(prev => ({ ...prev, [branchKey]: !prev[branchKey] }));
   };
 
-  const toggleSummarySubcat = (subcatKey: string) => {
-    setExpandedSummarySubcats(prev => ({ ...prev, [subcatKey]: !prev[subcatKey] }));
-  };
+
 
   const getAggregatedSummary = () => {
     let totalIQD = 0;
@@ -465,15 +465,10 @@ export default function ExpensesPage() {
         name: string;
         totalIQD: number;
         totalUSD: number;
-        subcategories: Record<string, {
+        items: Record<string, {
           name: string;
           totalIQD: number;
           totalUSD: number;
-          items: Record<string, {
-            name: string;
-            totalIQD: number;
-            totalUSD: number;
-          }>
         }>
       }>
     }> = {};
@@ -512,48 +507,23 @@ export default function ExpensesPage() {
             name: bKey,
             totalIQD: 0,
             totalUSD: 0,
-            subcategories: {}
+            items: {}
           };
         }
         const bGrp = pGrp.branches[bKey];
         if (curr === 'IQD') bGrp.totalIQD += amt;
         else bGrp.totalUSD += amt;
 
-        // Resolve subcategory dynamically from product data or category
-        let subName = 'بدون فئة فرعية';
-        if (exp.itemName) {
-          const product = allProducts.find(p => p.name === exp.itemName);
-          if (product && product.subcategoryId) {
-            const category = allCategories.find(c => c.id === product.categoryId);
-            if (category && category.subcategories) {
-              const sub = category.subcategories.find((s: any) => s.id === product.subcategoryId);
-              if (sub) subName = sub.name;
-            }
-          }
-        }
-
-        if (!bGrp.subcategories[subName]) {
-          bGrp.subcategories[subName] = {
-            name: subName,
-            totalIQD: 0,
-            totalUSD: 0,
-            items: {}
-          };
-        }
-        const sGrp = bGrp.subcategories[subName];
-        if (curr === 'IQD') sGrp.totalIQD += amt;
-        else sGrp.totalUSD += amt;
-
         if (exp.itemName) {
           const iKey = exp.itemName;
-          if (!sGrp.items[iKey]) {
-            sGrp.items[iKey] = {
+          if (!bGrp.items[iKey]) {
+            bGrp.items[iKey] = {
               name: iKey,
               totalIQD: 0,
               totalUSD: 0
             };
           }
-          const iGrp = sGrp.items[iKey];
+          const iGrp = bGrp.items[iKey];
           if (curr === 'IQD') iGrp.totalIQD += amt;
           else iGrp.totalUSD += amt;
         }
@@ -743,8 +713,50 @@ export default function ExpensesPage() {
       {activeTab === 'current' && (
         <form className={styles.card} onSubmit={handleSave}>
           <div className={styles.formGrid}>
-            <div className={styles.formGroup}><label className={styles.label}>الفئة</label><select className={styles.select} value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="">اختر الفئة...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-            <div className={styles.formGroup}><label className={styles.label}>المبلغ</label><div className={styles.amountWrapper}><input type="number" className={`${styles.input} ${styles.amountInput}`} value={amount} onChange={e => setAmount(e.target.value)} required placeholder="0.00" /><select className={styles.select} value={currency} onChange={e => setCurrency(e.target.value)}><option value="IQD">د.ع</option><option value="USD">$</option></select></div></div>
+            <div className={styles.formGroup} style={{ position: 'relative' }}>
+              <label className={styles.label}>الفئة</label>
+              <div 
+                className={styles.select} 
+                onClick={() => setCatOpen(true)}
+                style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <span>{categories.find(c => c.id === categoryId)?.name || 'اختر الفئة...'}</span>
+                <span style={{ fontSize: '0.8em' }}>▼</span>
+              </div>
+              <input type="text" value={categoryId} required style={{ opacity: 0, position: 'absolute', height: 0, width: 0 }} readOnly />
+              {catOpen && (
+                <>
+                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setCatOpen(false)} />
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e1e2d', border: '1px solid #3b3b4f', borderRadius: '8px', zIndex: 100, maxHeight: '250px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', marginTop: '4px' }}>
+                    <div style={{ padding: '8px', position: 'sticky', top: 0, background: '#1e1e2d', borderBottom: '1px solid #3b3b4f' }}>
+                      <input 
+                        autoFocus 
+                        type="text" 
+                        style={{ width: '100%', padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: '#fff', outline: 'none' }} 
+                        placeholder="ابحث عن الفئة..."
+                        value={catSearch}
+                        onChange={e => setCatSearch(e.target.value)}
+                      />
+                    </div>
+                    {categories.filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase())).map(c => (
+                      <div 
+                        key={c.id} 
+                        style={{ padding: '10px 12px', cursor: 'pointer', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                        onClick={() => { setCategoryId(c.id); setCatOpen(false); setCatSearch(''); }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        {c.name}
+                      </div>
+                    ))}
+                    {categories.filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && (
+                      <div style={{ padding: '10px 12px', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>لا توجد نتائج</div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className={styles.formGroup}><label className={styles.label}>المبلغ</label><div className={styles.amountWrapper}><input type="text" inputMode="numeric" className={`${styles.input} ${styles.amountInput}`} value={amount ? amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : ""} onChange={e => setAmount(e.target.value.replace(/,/g, ""))} required placeholder="0.00" /><select className={styles.select} value={currency} onChange={e => setCurrency(e.target.value)}><option value="IQD">د.ع</option><option value="USD">$</option></select></div></div>
             <div className={styles.formGroup}><label className={styles.label}>دُفع من محفظة (إلزامي)</label><select className={styles.select} value={selectedWalletId} onChange={e => setSelectedWalletId(e.target.value)} required disabled={!!editingId}><option value="">اختر المحفظة...</option>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
             <div className={styles.formGroup}>
               <label className={styles.label}>التاريخ</label>
@@ -977,17 +989,17 @@ export default function ExpensesPage() {
                         {Object.values(page.branches).map(branch => {
                           const branchKey = `${pageKey}::${branch.name}`;
                           const isBranchExpanded = !!expandedSummaryBranches[branchKey];
-                          const hasSubcats = Object.keys(branch.subcategories).length > 0;
+                          const hasItems = Object.keys(branch.items).length > 0;
 
                           return (
                             <div key={branchKey} className={styles.treeNode}>
                               <div 
                                 className={`${styles.nodeHeader} ${styles.branchNode}`}
-                                onClick={() => hasSubcats && toggleSummaryBranch(branchKey)}
-                                style={{ cursor: hasSubcats ? 'pointer' : 'default' }}
+                                onClick={() => hasItems && toggleSummaryBranch(branchKey)}
+                                style={{ cursor: hasItems ? 'pointer' : 'default' }}
                               >
                                 <div className={styles.nodeLeft}>
-                                  {hasSubcats && <span className={styles.arrowIcon}>{isBranchExpanded ? '▼' : '▶'}</span>}
+                                  {hasItems && <span className={styles.arrowIcon}>{isBranchExpanded ? '▼' : '▶'}</span>}
                                   <span className={styles.nodeName}>🌿 {branch.name}</span>
                                 </div>
                                 <div className={styles.nodeAmount}>
@@ -996,48 +1008,19 @@ export default function ExpensesPage() {
                                 </div>
                               </div>
 
-                              {isBranchExpanded && hasSubcats && (
+                              {isBranchExpanded && hasItems && (
                                 <div className={styles.nodeChildren}>
-                                  {Object.values(branch.subcategories).map(subcat => {
-                                    const subcatKey = `${branchKey}::${subcat.name}`;
-                                    const isSubcatExpanded = !!expandedSummarySubcats[subcatKey];
-                                    const hasItems = Object.keys(subcat.items).length > 0;
-
-                                    return (
-                                      <div key={subcatKey} className={styles.treeNode}>
-                                        <div 
-                                          className={`${styles.nodeHeader} ${styles.subcatNode}`}
-                                          onClick={() => hasItems && toggleSummarySubcat(subcatKey)}
-                                          style={{ cursor: hasItems ? 'pointer' : 'default' }}
-                                        >
-                                          <div className={styles.nodeLeft}>
-                                            {hasItems && <span className={styles.arrowIcon}>{isSubcatExpanded ? '▼' : '▶'}</span>}
-                                            <span className={styles.nodeName}>🍂 {subcat.name}</span>
-                                          </div>
-                                          <div className={styles.nodeAmount}>
-                                            {subcat.totalIQD > 0 && <span className={styles.iqdBadge}>{subcat.totalIQD.toLocaleString()} د.ع</span>}
-                                            {subcat.totalUSD > 0 && <span className={styles.usdBadge}>${subcat.totalUSD.toLocaleString()}</span>}
-                                          </div>
-                                        </div>
-
-                                        {isSubcatExpanded && hasItems && (
-                                          <div className={styles.nodeChildren}>
-                                            {Object.values(subcat.items).map(item => (
-                                              <div key={item.name} className={`${styles.nodeHeader} ${styles.itemNode}`}>
-                                                <div className={styles.nodeLeft}>
-                                                  <span className={styles.nodeName}>🏷️ {item.name}</span>
-                                                </div>
-                                                <div className={styles.nodeAmount}>
-                                                  {item.totalIQD > 0 && <span className={styles.iqdBadge}>{item.totalIQD.toLocaleString()} د.ع</span>}
-                                                  {item.totalUSD > 0 && <span className={styles.usdBadge}>${item.totalUSD.toLocaleString()}</span>}
-                                                </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
+                                  {Object.values(branch.items).map(item => (
+                                    <div key={item.name} className={`${styles.nodeHeader} ${styles.itemNode}`}>
+                                      <div className={styles.nodeLeft}>
+                                        <span className={styles.nodeName}>🏷️ {item.name}</span>
                                       </div>
-                                    );
-                                  })}
+                                      <div className={styles.nodeAmount}>
+                                        {item.totalIQD > 0 && <span className={styles.iqdBadge}>{item.totalIQD.toLocaleString()} د.ع</span>}
+                                        {item.totalUSD > 0 && <span className={styles.usdBadge}>${item.totalUSD.toLocaleString()}</span>}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>
