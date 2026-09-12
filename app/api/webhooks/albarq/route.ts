@@ -51,17 +51,35 @@ export async function POST(req: Request) {
     // 3. Find Order (Multi-tenant support)
     let orderDoc = null;
 
-    let snapshot = await adminDb.collectionGroup('orders').where('id', '==', receiptNumber).get();
-    
-    if (snapshot.empty) {
-      snapshot = await adminDb.collectionGroup('orders').where('orderNumber', '==', receiptNumber).get();
-    }
-    
-    if (snapshot.empty) {
-      snapshot = await adminDb.collectionGroup('orders').where('albarqReceiptNumber', '==', receiptNumber).get();
+    // 1. Try to find by Document ID across all tenants
+    const usersSnapshot = await adminDb.collection('users').get();
+    for (const userDoc of usersSnapshot.docs) {
+      const docRef = adminDb.collection('users').doc(userDoc.id).collection('orders').doc(receiptNumber);
+      const snap = await docRef.get();
+      if (snap.exists) {
+        orderDoc = snap;
+        break;
+      }
     }
 
-    if (snapshot.empty) {
+    // 2. Fallback to searching by orderNumber or albarqReceiptNumber
+    if (!orderDoc) {
+      let snapshot = await adminDb.collectionGroup('orders').where('orderNumber', '==', receiptNumber).get();
+      
+      if (snapshot.empty) {
+        snapshot = await adminDb.collectionGroup('orders').where('albarqReceiptNumber', '==', receiptNumber).get();
+      }
+      
+      if (snapshot.empty) {
+        snapshot = await adminDb.collectionGroup('orders').where('id', '==', receiptNumber).get();
+      }
+
+      if (!snapshot.empty) {
+        orderDoc = snapshot.docs[0];
+      }
+    }
+
+    if (!orderDoc) {
       statusMessage = 'Order not found in the system';
       await logWebhook(null, timestamp, body, 'failed', statusMessage);
       return NextResponse.json({ success: false, message: statusMessage }, { status: 404 });

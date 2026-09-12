@@ -49,9 +49,15 @@ const mapGovernorateToAlbarq = (governorate: string): string => {
 export const createAlbarqShipment = async (userId: string, orderData: any) => {
   try {
     // 1. Read API Key and Store ID from Firestore
-    const integrationRef = doc(db, 'users', userId, 'integrations', 'albarq');
-    const docSnap = await getDoc(integrationRef);
+    let integrationRef = doc(db, 'users', userId, 'integrations', 'albarq');
+    let docSnap = await getDoc(integrationRef);
     
+    // Fallback to default_tenant since the settings page currently saves there
+    if (!docSnap.exists()) {
+      integrationRef = doc(db, 'users', 'default_tenant', 'integrations', 'albarq');
+      docSnap = await getDoc(integrationRef);
+    }
+
     if (!docSnap.exists()) {
       throw new Error('MISSING_CREDENTIALS');
     }
