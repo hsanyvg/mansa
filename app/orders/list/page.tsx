@@ -1105,6 +1105,7 @@ export default function OrdersListPage() {
     const prodMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; amount: number; orderIds: string[] }> = {};
     const pageMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; orderIds: string[] }> = {};
     const mainCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; orderIds: string[] }> = {};
+    const subCatMap: Record<string, { id: string; name: string; orderCount: number; quantity: number; orderIds: string[] }> = {};
 
     let totalOrdersCount = statsFilteredOrders.length;
     let totalItemsQuantity = 0;
@@ -1130,6 +1131,7 @@ export default function OrdersListPage() {
       const seenProdInOrder = new Set<string>();
       const seenPageInOrder = new Set<string>();
       const seenMainInOrder = new Set<string>();
+      const seenSubInOrder = new Set<string>();
 
       const statusKey = getStatusKey(order);
       const orderTotalAmount = Number(order.totalAmount || order.price || 0);
@@ -1175,6 +1177,17 @@ export default function OrdersListPage() {
           mainCatMap[mKey].orderIds.push(order.id);
           seenMainInOrder.add(mKey);
         }
+
+        const sKey = h.subcategoryId || h.subcategoryName || 'unknown_subcat';
+        if (!subCatMap[sKey]) {
+          subCatMap[sKey] = { id: h.subcategoryId, name: h.subcategoryName, orderCount: 0, quantity: 0, orderIds: [] };
+        }
+        subCatMap[sKey].quantity += qty;
+        if (!seenSubInOrder.has(sKey)) {
+          subCatMap[sKey].orderCount += 1;
+          subCatMap[sKey].orderIds.push(order.id);
+          seenSubInOrder.add(sKey);
+        }
       });
 
       if (statusKey === 'delivered' || statusKey === 'delivered_settled' || statusKey === 'partial' || statusKey === 'partial_settled') {
@@ -1205,11 +1218,13 @@ export default function OrdersListPage() {
     const productsList = Object.values(prodMap).sort((a, b) => b.orderCount - a.orderCount);
     const pagesList = Object.values(pageMap).sort((a, b) => b.orderCount - a.orderCount);
     const mainCatList = Object.values(mainCatMap).sort((a, b) => b.orderCount - a.orderCount);
+    const subCatList = Object.values(subCatMap).sort((a, b) => b.orderCount - a.orderCount);
 
     return {
       productsList,
       pagesList,
       mainCatList,
+      subCatList,
       totalOrdersCount,
       totalItemsQuantity,
       deliveredCount, deliveredAmount, deliveredQty, deliveredPct,
