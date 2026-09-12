@@ -85,8 +85,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: statusMessage }, { status: 404 });
     }
 
-    orderDoc = snapshot.docs[0];
-    
     // Extract userId from the path: users/{userId}/orders/{orderId}
     const orderPath = orderDoc.ref.path;
     const pathParts = orderPath.split('/');
@@ -115,8 +113,115 @@ export async function POST(req: Request) {
       }
     }
 
-    // Update order in database
-    await orderDoc.ref.update(updateData);
+    // --- STOCK SYNC LOGIC ---
+    const batch = adminDb.batch();
+    batch.update(orderDoc.ref, updateData);
+
+    const oldStatus = currentData.status || 'pending';
+    const newStatus = targetStatus;
+
+    if (oldStatus !== newStatus && currentData.items && currentData.items.length > 0) {
+      const getStockState = (st: string) => {
+        if (['shipped', 'delivered', 'partial', 'returned_agent', 'returned'].includes(st)) return 'HARD_DEDUCTED';
+        if (['cancelled', 'returned_warehouse'].includes(st)) return 'FREE';
+        return 'SOFT_ALLOCATED';
+      };
+
+      const applyStockTransition = (stock: any, oldState: string, newState: string, qty: number, defaultUnit: string) => {
+        const changeReserved = (amount: number) => {
+           const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+           if (!stock[firstStoreKey]) stock[firstStoreKey] = { quantity: 0, reserved: 0, unit: defaultUnit };
+           stock[firstStoreKey].reserved = (stock[firstStoreKey].reserved || 0) + amount;
+        };
+
+        const changeQuantity = (amount: number) => {
+           if (amount > 0) {
+             const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+             if (!stock[firstStoreKey]) stock[firstStoreKey] = { quantity: 0, reserved: 0, unit: defaultUnit };
+             stock[firstStoreKey].quantity += amount;
+           } else {
+             let remaining = Math.abs(amount);
+             for (const storeId in stock) {
+               if (remaining <= 0) break;
+               if (stock[storeId].quantity > 0) {
+                 const deduct = Math.min(stock[storeId].quantity, remaining);
+                 stock[storeId].quantity -= deduct;
+                 remaining -= deduct;
+               }
+             }
+             if (remaining > 0) {
+               const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+               if (!stock[firstStoreKey]) stock[firstStoreKey] = { quantity: 0, reserved: 0, unit: defaultUnit };
+               stock[firstStoreKey].quantity -= remaining;
+             }
+           }
+        };
+
+        if (oldState === 'SOFT_ALLOCATED' && newState === 'HARD_DEDUCTED') {
+           changeReserved(-qty);
+           changeQuantity(-qty);
+        } else if (oldState === 'SOFT_ALLOCATED' && newState === 'FREE') {
+           changeReserved(-qty);
+        } else if (oldState === 'HARD_DEDUCTED' && newState === 'FREE') {
+           changeQuantity(qty);
+        } else if (oldState === 'FREE' && newState === 'SOFT_ALLOCATED') {
+           changeReserved(qty);
+        } else if (oldState === 'FREE' && newState === 'HARD_DEDUCTED') {
+           changeQuantity(-qty);
+        } else if (oldState === 'HARD_DEDUCTED' && newState === 'SOFT_ALLOCATED') {
+           changeQuantity(qty);
+           changeReserved(qty);
+        }
+      };
+
+      const oldState = getStockState(oldStatus);
+      const newState = getStockState(newStatus);
+
+      if (oldState !== newState) {
+        for (const item of currentData.items) {
+          if (item.isComposite && item.composition) {
+            for (const comp of item.composition) {
+              const rawProdRef = adminDb.collection('users').doc(userId).collection('products').doc(comp.itemId);
+              const rawSnap = await rawProdRef.get();
+              if (rawSnap.exists) {
+                const rawData = rawSnap.data();
+                let stock = { ...rawData.stock };
+                let qty = comp.quantityNeeded * item.quantity;
+                
+                applyStockTransition(stock, oldState, newState, qty, rawData.units?.[0]?.type || 'قطعة');
+                
+                let newTotalBaseQuantity = 0;
+                Object.values(stock).forEach((s: any) => {
+                  const uMul = rawData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                  newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+                });
+                batch.update(rawProdRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+              }
+            }
+          } else {
+            if (!item.productId) continue;
+            const prodRef = adminDb.collection('users').doc(userId).collection('products').doc(item.productId);
+            const prodSnap = await prodRef.get();
+            if (prodSnap.exists) {
+              const prodData = prodSnap.data();
+              let stock = { ...prodData.stock };
+              let qty = item.quantity;
+
+              applyStockTransition(stock, oldState, newState, qty, prodData.units?.[0]?.type || 'قطعة');
+
+              let newTotalBaseQuantity = 0;
+              Object.values(stock).forEach((s: any) => {
+                const uMul = prodData.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+              });
+              batch.update(prodRef, { stock, totalBaseQuantity: newTotalBaseQuantity });
+            }
+          }
+        }
+      }
+    }
+
+    await batch.commit();
 
     // 4. Logging for specific tenant
     statusMessage = 'Order status updated successfully';

@@ -1,0 +1,473 @@
+[
+  {
+    "id": "5j6nhic2kbwl1qkq6hwb",
+    "name": "عطر فيروكس الفاخر"
+  },
+  {
+    "id": "GVbp0r8yQDUmeUsKsAFf",
+    "name": "سيروم العناية بالبشرة"
+  },
+  {
+    "id": "23mhNmwYpcMQbzzFob4E",
+    "name": "عرض الوحتين",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "quantity": 2,
+        "unit": "قطعة",
+        "reserved": 1
+      }
+    }
+  },
+  {
+    "id": "25KnWl4Crv1bS2HYLek8",
+    "name": "(العباس) حسب الطلب",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "quantity": 0,
+        "unit": "قطعة",
+        "reserved": 0
+      }
+    }
+  },
+  {
+    "id": "5rG2Wv8OQQaiFopT5DdH",
+    "name": "قاصة 15",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "quantity": -146,
+        "unit": "قطعة",
+        "reserved": 47
+      }
+    }
+  },
+  {
+    "id": "6bZE02XvekFZAbQEBle6",
+    "name": "غلاف قنينة",
+    "stock": {}
+  },
+  {
+    "id": "8zFEJ6MuvF3LHLUNRDOL",
+    "name": "قاصة 100 الف ",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 7,
+        "unit": "حصالة",
+        "quantity": 5
+      }
+    }
+  },
+  {
+    "id": "DYB8OLFYuOz3heOC9Wb6",
+    "name": "راية ام البنين",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 2,
+        "unit": "قطعة",
+        "quantity": 4
+      }
+    }
+  },
+  {
+    "id": "FNQL97sGo8cCAVkL6Myr",
+    "name": "رحلة صلاة",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "unit": "قطعة",
+        "quantity": -1,
+        "reserved": 2
+      }
+    }
+  },
+  {
+    "id": "FkYqTYlfwRrsG2DtDOPe",
+    "name": "عرض نوكيا",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 14,
+        "unit": "قطعة",
+        "quantity": 0
+      },
+      "default_store": {
+        "reserved": 8,
+        "quantity": 0,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "GP3AVkBh4xeFO2A6OMXM",
+    "name": "قاصة 250 الف",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "quantity": 1,
+        "unit": "حصالة",
+        "reserved": 1
+      }
+    }
+  },
+  {
+    "id": "MURoAkjGZr4GUVbDry02",
+    "name": "قضاء صلاة 10 سنوات",
+    "stock": {
+      "default_store": {
+        "unit": "قطعة",
+        "reserved": 1,
+        "quantity": -14
+      }
+    }
+  },
+  {
+    "id": "NHes9bEByWZj3xDf52vQ",
+    "name": "(علي) حسب الطلب",
+    "stock": {}
+  },
+  {
+    "id": "NRzWx47eZTsY8pj0aUH2",
+    "name": "قفص طير",
+    "stock": {
+      "default_store": {
+        "reserved": 0,
+        "quantity": -3,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "NU14TlkuzIFpP6kYsbfx",
+    "name": "بكج حلويات ",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "quantity": 0,
+        "unit": "بكج حلويات ",
+        "reserved": 0
+      }
+    }
+  },
+  {
+    "id": "Q1xPnHf03ssEZBQYXtCX",
+    "name": "قاصة 25",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 74,
+        "quantity": -235,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "R9s6zsZGWanqfUo4JRcs",
+    "name": "صورة خاصة متر في مترين",
+    "stock": {}
+  },
+  {
+    "id": "RkyBT2Py2OP8jyJJSyxM",
+    "name": "قاصة 10",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "unit": "قطعة",
+        "reserved": 91,
+        "quantity": -330
+      }
+    }
+  },
+  {
+    "id": "T0vunCipBO6DGw2pty7E",
+    "name": "قضاء صلاة 5 سنوات",
+    "stock": {
+      "k2GzrY0lHEWBogC6HNvA": {
+        "unit": "قطعة",
+        "quantity": 11,
+        "reserved": 0
+      }
+    }
+  },
+  {
+    "id": "WN4fh6jDmskWNmosrP65",
+    "name": "مزاج",
+    "stock": {
+      "default_store": {
+        "unit": "محبس",
+        "reserved": -88,
+        "quantity": -139
+      },
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 88,
+        "quantity": 68,
+        "unit": "محبس"
+      }
+    }
+  },
+  {
+    "id": "WrsvzXkmBAL6X3sH7eaS",
+    "name": "راية الحسين",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 0,
+        "quantity": 12,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "XTqJ6MLA6mZbd1ek8l92",
+    "name": "قاصة  مليون",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "unit": "قطعة",
+        "quantity": -227,
+        "reserved": 71
+      }
+    }
+  },
+  {
+    "id": "aARVzYOTcnBtfLYDcfKI",
+    "name": "(الحسين) حسب الطلب",
+    "stock": {
+      "default_store": {
+        "unit": "قطعة",
+        "reserved": 0,
+        "quantity": 0
+      }
+    }
+  },
+  {
+    "id": "cxhr0eu07jJznbAW9492",
+    "name": "قلادة العقرب",
+    "stock": {
+      "default_store": {
+        "reserved": -1,
+        "quantity": -21,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "e2KGLPWK9iwC6RPrebaH",
+    "name": "فيروكس10 اقارص",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 0,
+        "quantity": 1,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "jCsRhMT0CxgfIGTtgtRj",
+    "name": "( صاحب  الزمان) حسب الطلب",
+    "stock": {}
+  },
+  {
+    "id": "kGIw6b0gYKjpSEi6xJoq",
+    "name": " راية صاحب الزمان",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 0,
+        "unit": "قطعة",
+        "quantity": 7
+      }
+    }
+  },
+  {
+    "id": "kGc4jMDzrhs11cBMGHIZ",
+    "name": "سبحة المضيئة مدعبل",
+    "stock": {
+      "default_store": {
+        "unit": "قطعة",
+        "reserved": 4,
+        "quantity": -22
+      },
+      "k2GzrY0lHEWBogC6HNvA": {
+        "unit": "قطعة",
+        "quantity": 107,
+        "reserved": 8
+      }
+    }
+  },
+  {
+    "id": "kJG15lrmwAyZSo98fcCL",
+    "name": "قاصة 5",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "quantity": -1546,
+        "reserved": 505,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "mLgX12nyKkhKj8FoWMKA",
+    "name": "فيروكس 4 اقراص",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 4,
+        "quantity": 3,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "o1ZFnN5CvgnJREY1CXHn",
+    "name": "بولش سيارة",
+    "stock": {
+      "default_store": {
+        "quantity": 0,
+        "reserved": 0,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "qRuV4Yvd6hYyKqTzXh1j",
+    "name": "محبس العقيق الاحمر",
+    "stock": {
+      "k2GzrY0lHEWBogC6HNvA": {
+        "quantity": 0,
+        "reserved": 5,
+        "unit": "محبس"
+      }
+    }
+  },
+  {
+    "id": "qXCG0ApKRjXuVOWGQhXy",
+    "name": "(البنين) حسب الطلب",
+    "stock": {}
+  },
+  {
+    "id": "qY31aOJB6s39DahtoLgP",
+    "name": "زيت الهندي ",
+    "stock": {
+      "default_store": {
+        "reserved": 0,
+        "quantity": -7,
+        "unit": "علبة "
+      }
+    }
+  },
+  {
+    "id": "qqb0Y2jDDnvFLGYXIdgF",
+    "name": "صورة خاصة خارج القياسات",
+    "stock": {
+      "default_store": {
+        "quantity": 1,
+        "reserved": 0,
+        "unit": "قطعة"
+      },
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 0,
+        "unit": "قطعة",
+        "quantity": 0
+      }
+    }
+  },
+  {
+    "id": "rT18B6s2emQr5XHFHdYf",
+    "name": "قاصة 500الف ",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": -1,
+        "quantity": -12,
+        "unit": "حصالة"
+      }
+    }
+  },
+  {
+    "id": "swRkQYBglOPjwtImxzR2",
+    "name": "قاصة قفل صغير ",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "reserved": 1,
+        "quantity": 1,
+        "unit": "حصالة"
+      }
+    }
+  },
+  {
+    "id": "tK65w7CFGhInp0Tjs1r7",
+    "name": "محبس العقيق الاخضر",
+    "stock": {
+      "k2GzrY0lHEWBogC6HNvA": {
+        "reserved": 259,
+        "unit": "محبس",
+        "quantity": -125
+      }
+    }
+  },
+  {
+    "id": "uF0bFcLeieXeXtTllyGC",
+    "name": "قاصة  50",
+    "stock": {
+      "tw2iY8uCDlz0EQzsu33g": {
+        "quantity": -134,
+        "unit": "قطعة",
+        "reserved": 67
+      }
+    }
+  },
+  {
+    "id": "vBEpfmBJlovpsSQ6SQe6",
+    "name": "سبحة المضيئة كبسولة",
+    "stock": {
+      "k2GzrY0lHEWBogC6HNvA": {
+        "unit": "سبحة",
+        "reserved": 14,
+        "quantity": 63
+      }
+    }
+  },
+  {
+    "id": "xizUPlzZVLkxnSJ9vHWW",
+    "name": "قلادة البسملة",
+    "stock": {
+      "default_store": {
+        "reserved": 0,
+        "unit": "كلايد",
+        "quantity": -5
+      }
+    }
+  },
+  {
+    "id": "xp4XFkx9hfGdGYxUuqsf",
+    "name": "سبحة المضيئة سداسي ",
+    "stock": {
+      "k2GzrY0lHEWBogC6HNvA": {
+        "unit": "سبحة",
+        "quantity": 0,
+        "reserved": 5
+      }
+    }
+  },
+  {
+    "id": "nRg6hUJfiAoMA5is1fxd",
+    "name": "منتج تجريبي 1",
+    "stock": {
+      "default_store": {
+        "quantity": 100,
+        "reserved": 0,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "YPyt8W0A8yrFiRRIE2nG",
+    "name": "منتج تجريبي 1",
+    "stock": {
+      "default_store": {
+        "quantity": 100,
+        "reserved": 0,
+        "unit": "قطعة"
+      }
+    }
+  },
+  {
+    "id": "fjSh86h9tsCbodpnw2F6",
+    "name": "خيمه100",
+    "stock": {
+      "EcNsZiIiyKid3yyyBUfs": {
+        "reserved": 1,
+        "unit": "قطعة",
+        "quantity": 101
+      }
+    }
+  }
+]
