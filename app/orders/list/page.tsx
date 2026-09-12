@@ -957,7 +957,7 @@ export default function OrdersListPage() {
   }, [baseList, selectedStatus]);
 
   const getItemHierarchy = React.useCallback((item: any) => {
-    if (!item) return { productId: '', productName: 'غير معروف', categoryId: '', categoryName: 'غير محدد', pageId: '', pageName: 'غير محدد' };
+    if (!item) return { productId: '', productName: 'غير معروف', categoryId: '', categoryName: 'غير محدد', subcategoryId: '', subcategoryName: '', pageId: '', pageName: 'غير محدد' };
     
     let prod = null;
     if (item.productId) {
@@ -980,6 +980,8 @@ export default function OrdersListPage() {
       productName: prod ? prod.name : (item.productName || 'غير معروف'),
       categoryId,
       categoryName,
+      subcategoryId: prod ? (prod.subcategoryId || '') : '',
+      subcategoryName: prod ? (prod.subcategoryName || '') : '',
       pageId,
       pageName
     };
