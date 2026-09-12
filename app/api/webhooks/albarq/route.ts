@@ -93,6 +93,9 @@ export async function POST(req: Request) {
     }
 
     const currentData = orderDoc.data();
+    if (!currentData) {
+      return NextResponse.json({ success: false, message: 'Order data is missing' }, { status: 404 });
+    }
     
     const updateData: any = {
       status: targetStatus,
