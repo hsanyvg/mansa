@@ -29,6 +29,7 @@ export default function ProductsPage() {
   const [isFetchingReserved, setIsFetchingReserved] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteErrorOrders, setDeleteErrorOrders] = useState<{id: string, text: string}[] | null>(null);
   const [productToDelete, setProductToDelete] = useState<{id: string, name: string} | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'prices' | 'stores' | 'notes'>('basic');
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -71,9 +72,7 @@ export default function ProductsPage() {
   });
 
   const [units, setUnits] = useState([
-    { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
-    { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
-    { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
+    { id: '1', name: 'وحدة القياس', type: 'قطعة', count: 1, purchase: 0, selling: 0 }
   ]);
 
   const addUnit = () => {
@@ -91,7 +90,7 @@ export default function ProductsPage() {
     setUnits(units.map(u => u.id === id ? { ...u, [field]: value } : u));
   };
 
-  const [isAutoCalculate, setIsAutoCalculate] = useState(true);
+  const [isAutoCalculate, setIsAutoCalculate] = useState(false);
 
   const handlePriceChange = (unitId: string, newValueStr: string | number, priceType: 'purchase' | 'selling') => {
     let newPrice = typeof newValueStr === 'string' ? parseFloat(newValueStr) : Number(newValueStr);
@@ -375,20 +374,24 @@ export default function ProductsPage() {
       const q = query(ordersRef, where('status', 'not-in', ['returned_warehouse', 'cancelled', 'canceled']));
       const snapshot = await getDocs(q);
       
-      let isProductInActiveOrder = false;
+      let activeOrderIds: {id: string, text: string}[] = [];
       snapshot.forEach(docSnap => {
         const data = docSnap.data();
+        if (data.isDeleted) return; // Ignore deleted orders
         if (data.items && Array.isArray(data.items)) {
           if (data.items.some((item: any) => item.productId === productToDelete.id)) {
-            isProductInActiveOrder = true;
+            const orderIdStr = docSnap.id.slice(-6).toUpperCase();
+            activeOrderIds.push({
+              id: orderIdStr,
+              text: data.customerName ? `${orderIdStr} (${data.customerName})` : orderIdStr
+            });
           }
         }
       });
 
-      if (isProductInActiveOrder) {
-        showToast("لا يمكن الحذف! الصنف مرتبط بطلبات (قيد الانتظار، واصل، وغيرها). يُسمح الحذف فقط إذا كانت طلباته ملغاة أو راجع مخزن.", "error");
+      if (activeOrderIds.length > 0) {
+        setDeleteErrorOrders(activeOrderIds);
         setShowDeleteModal(false);
-        setProductToDelete(null);
         return;
       }
 
@@ -585,9 +588,7 @@ export default function ProductsPage() {
       setEditingProductId(null);
       setSelectedPaymentWallet('');
       setUnits([
-        { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
-        { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
-        { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
+        { id: '1', name: 'وحدة القياس', type: 'قطعة', count: 1, purchase: 0, selling: 0 }
       ]);
       setSelectedPage('');
       setSelectedMainCat('');
@@ -654,9 +655,7 @@ export default function ProductsPage() {
             setEditingProductId(null);
             setFormData({ name: '', reorderLevel: 10, barcode: '', model: '', trackingCode: '', notes: '' });
             setUnits([
-              { id: '1', name: 'وحدة صغرى', type: 'قطعة', count: 1, purchase: 0, selling: 0 },
-              { id: '2', name: 'وحدة متوسطة', type: 'علبة', count: 0, purchase: 0, selling: 0 },
-              { id: '3', name: 'وحدة كبرى', type: 'كرتونة', count: 0, purchase: 0, selling: 0 }
+              { id: '1', name: 'وحدة القياس', type: 'قطعة', count: 1, purchase: 0, selling: 0 }
             ]);
             setSelectedPage('');
             setSelectedMainCat('');
@@ -1098,7 +1097,8 @@ export default function ProductsPage() {
                     </label>
                   </div>
                   <div className={styles.unitsGrid}>
-                    <div className={styles.unitRow}>
+                    <div className={styles.unitRow} style={{ background: 'transparent', border: 'none', padding: '0 1rem', paddingBottom: '0', marginBottom: '-0.5rem' }}>
+                      <div></div>
                       <div className={styles.unitLabel}></div>
                       <div className={styles.unitColHeader}>العدد</div>
                       <div className={styles.unitColHeader}>سعر الشراء</div>
@@ -1206,6 +1206,50 @@ export default function ProductsPage() {
             <div className={styles.confirmModalFooter}>
               <button className={styles.confirmDeleteBtn} onClick={handleConfirmDelete}>تأكيد الحذف</button>
               <button className={styles.cancelBtn} onClick={() => setShowDeleteModal(false)}>إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Error Modal */}
+      {deleteErrorOrders && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.confirmModal} style={{ minWidth: '400px', maxWidth: '90vw' }}>
+            <div className={styles.confirmModalHeader} style={{ position: 'relative', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <h2 className={styles.confirmModalTitle} style={{color: '#ef4444', margin: 0}}>لا يمكن الحذف</h2>
+              <button 
+                onClick={() => {
+                  const ids = deleteErrorOrders.map(o => o.id).join(' ');
+                  navigator.clipboard.writeText(ids);
+                  showToast("تم نسخ أرقام الطلبات", "success");
+                }}
+                style={{
+                  position: 'absolute', left: '1rem', top: '1rem',
+                  background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', 
+                  padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem'
+                }}
+              >
+                📋 نسخ أرقام الطلبات
+              </button>
+            </div>
+            <div className={styles.confirmModalBody} style={{ paddingTop: '1rem' }}>
+              <p style={{marginBottom: '1rem', color: '#e5e7eb', fontSize: '0.95rem'}}>
+                هذا الصنف مرتبط بـ <strong style={{color: '#fff'}}>{deleteErrorOrders.length}</strong> طلبات غير مصفاة، يُسمح الحذف فقط إذا كانت هذه الطلبات ملغاة أو راجع مخزن:
+              </p>
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: '8px', maxHeight: '250px', overflowY: 'auto' }}>
+                <ul style={{textAlign: 'right', listStyle: 'none', padding: 0, margin: 0}}>
+                  {deleteErrorOrders.map((o, i) => (
+                    <li key={i} style={{ padding: '0.6rem 0', borderBottom: i !== deleteErrorOrders.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 'bold', color: '#f87171', background: 'rgba(248, 113, 113, 0.1)', padding: '0.2rem 0.5rem', borderRadius: '4px', marginLeft: '0.75rem' }}>{o.id}</span>
+                      {o.text.includes('(') && <span style={{ color: '#9ca3af', fontSize: '0.9rem' }}>{o.text.substring(o.text.indexOf('('))}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className={styles.confirmModalFooter} style={{justifyContent: 'center', marginTop: '1.5rem'}}>
+              <button className={styles.cancelBtn} onClick={() => { setDeleteErrorOrders(null); setProductToDelete(null); }}>حسناً، فهمت</button>
             </div>
           </div>
         </div>

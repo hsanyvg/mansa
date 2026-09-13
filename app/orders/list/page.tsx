@@ -1534,9 +1534,10 @@ export default function OrdersListPage() {
       const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderToDelete.id);
       
       // If order is not cancelled or returned, we should return items to stock
-      const isCancelled = ['cancelled', 'returned', 'returned_agent', 'returned_warehouse'].includes(orderToDelete.status);
+      const state = getStockState(orderToDelete.status);
+      const isAlreadyFreed = state === 'FREE';
       
-      if (!isCancelled && orderToDelete.items && orderToDelete.items.length > 0) {
+      if (!isAlreadyFreed && orderToDelete.items && orderToDelete.items.length > 0) {
         for (const item of orderToDelete.items) {
           if (item.isComposite && item.composition) {
             for (const comp of item.composition) {
@@ -1550,9 +1551,13 @@ export default function OrdersListPage() {
                 // Return stock to first available store
                 const firstStoreKey = Object.keys(stock)[0] || 'default_store';
                 if (!stock[firstStoreKey]) {
-                  stock[firstStoreKey] = { quantity: qtyToAdd, unit: rawData.units?.[0]?.type || 'قطعة' };
-                } else {
+                  stock[firstStoreKey] = { quantity: 0, reserved: 0, unit: rawData.units?.[0]?.type || 'قطعة' };
+                }
+                const isHardDeducted = state === 'HARD_DEDUCTED';
+                if (isHardDeducted) {
                   stock[firstStoreKey].quantity += qtyToAdd;
+                } else {
+                  stock[firstStoreKey].reserved = Math.max(0, (stock[firstStoreKey].reserved || 0) - qtyToAdd);
                 }
 
                 // Update totalBaseQuantity
@@ -1575,9 +1580,13 @@ export default function OrdersListPage() {
 
               const firstStoreKey = Object.keys(stock)[0] || 'default_store';
               if (!stock[firstStoreKey]) {
-                stock[firstStoreKey] = { quantity: qtyToAdd, unit: prodData.units?.[0]?.type || 'قطعة' };
-              } else {
+                stock[firstStoreKey] = { quantity: 0, reserved: 0, unit: prodData.units?.[0]?.type || 'قطعة' };
+              }
+              const isHardDeducted = state === 'HARD_DEDUCTED';
+              if (isHardDeducted) {
                 stock[firstStoreKey].quantity += qtyToAdd;
+              } else {
+                stock[firstStoreKey].reserved = Math.max(0, (stock[firstStoreKey].reserved || 0) - qtyToAdd);
               }
 
               // Update totalBaseQuantity
@@ -1629,9 +1638,10 @@ export default function OrdersListPage() {
       // Process each order for stock reversal
       for (const orderItem of validOrdersToDelete) {
         const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderItem.id);
-        const isCancelled = ['cancelled', 'returned', 'returned_agent', 'returned_warehouse'].includes(orderItem.status);
+        const state = getStockState(orderItem.status);
+        const isAlreadyFreed = state === 'FREE';
         
-        if (!isCancelled && orderItem.items && orderItem.items.length > 0) {
+        if (!isAlreadyFreed && orderItem.items && orderItem.items.length > 0) {
           for (const item of orderItem.items) {
             if (item.isComposite && item.composition) {
               for (const comp of item.composition) {
@@ -1706,9 +1716,9 @@ export default function OrdersListPage() {
   const [customDeliveryCompany, setCustomDeliveryCompany] = useState('');
 
   const getStockState = (status: string) => {
-    if (['shipped', 'delivered', 'partial', 'returned_agent', 'returned'].includes(status)) return 'HARD_DEDUCTED';
     if (['cancelled', 'returned_warehouse'].includes(status)) return 'FREE';
-    return 'SOFT_ALLOCATED'; // pending, processing, backordered, new
+    if (['pending', 'backordered', 'new'].includes(status)) return 'SOFT_ALLOCATED';
+    return 'HARD_DEDUCTED';
   };
 
   const applyStockTransition = (stock: any, oldState: string, newState: string, qty: number, defaultUnit: string) => {
