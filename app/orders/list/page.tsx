@@ -362,7 +362,7 @@ export default function OrdersListPage() {
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
     'pending': { label: '📦 قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
     'backordered': { label: '📦 قيد الانتظار (مخزن)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
-    'processing': { label: '⚙️ جاري التجهيز', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
+    'processing': { label: '⚙️ قيد المعالجة', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
     'shipped': { label: '🚚 تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
     'ofd': { label: '🛵 قيد التوصيل', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
     'delivered': { label: '✅ مكتمل (لم تتم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
@@ -5436,7 +5436,7 @@ export default function OrdersListPage() {
                         <option value="pending">قيد الانتظار (pending)</option>
                         <option value="in_progress">قيد التنفيذ (in_progress)</option>
                         <option value="backordered">بانتظار المخزون (backordered)</option>
-                        <option value="processing">جاري التجهيز (processing)</option>
+                        <option value="processing">قيد المعالجة (processing)</option>
                         <option value="shipped">مشحون (shipped)</option>
                         <option value="delivered">مكتمل (delivered)</option>
                         <option value="partial">واصل جزئي (partial)</option>

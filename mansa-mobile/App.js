@@ -64,7 +64,7 @@ export default function App() {
       case 'pending': return 'قيد الانتظار';
       case 'pending_warehouse': return 'قيد انتظار المخزن';
       case 'backordered': return 'قيد الانتظار (مخزن)';
-      case 'processing': return 'جاري التجهيز';
+      case 'processing': return 'قيد المعالجة';
       case 'processed': return 'تمت المعالجة';
       case 'confirmed': return 'مؤكد';
       case 'shipped': return 'تم الشحن';
@@ -2986,7 +2986,7 @@ export default function App() {
                   <Text style={{ color: advSearchStatus ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b'), fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', fontSize: 14 }}>
                     {advSearchStatus === 'pending' ? 'قيد الانتظار' :
                      advSearchStatus === 'backordered' ? 'قيد الانتظار (مخزن)' :
-                     advSearchStatus === 'processing' ? 'جاري التجهيز' :
+                     advSearchStatus === 'processing' ? 'قيد المعالجة' :
                      advSearchStatus === 'shipped' ? 'تم الشحن' :
                      advSearchStatus === 'ofd' ? 'قيد التوصيل' :
                      advSearchStatus === 'delivered' ? 'مكتمل (لم تتم المحاسبة)' :
@@ -3015,7 +3015,7 @@ export default function App() {
                         { val: '', label: 'الحالة (الكل)', bg: isLightMode ? '#f1f5f9' : '#334155', text: isLightMode ? '#475569' : '#cbd5e1' },
                         { val: 'pending', label: 'قيد الانتظار', bg: 'rgba(251, 191, 36, 0.15)', text: isLightMode ? '#d97706' : '#fbbf24', border: 'rgba(251, 191, 36, 0.4)' },
                         { val: 'backordered', label: 'قيد الانتظار (مخزن)', bg: 'rgba(139, 92, 246, 0.15)', text: isLightMode ? '#7c3aed' : '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' },
-                        { val: 'processing', label: 'جاري التجهيز', bg: 'rgba(249, 115, 22, 0.15)', text: isLightMode ? '#ea580c' : '#fb923c', border: 'rgba(249, 115, 22, 0.4)' },
+                        { val: 'processing', label: 'قيد المعالجة', bg: 'rgba(249, 115, 22, 0.15)', text: isLightMode ? '#ea580c' : '#fb923c', border: 'rgba(249, 115, 22, 0.4)' },
                         { val: 'shipped', label: 'تم الشحن', bg: 'rgba(56, 189, 248, 0.15)', text: isLightMode ? '#0284c7' : '#38bdf8', border: 'rgba(56, 189, 248, 0.4)' },
                         { val: 'ofd', label: 'قيد التوصيل', bg: 'rgba(99, 102, 241, 0.15)', text: isLightMode ? '#4f46e5' : '#818cf8', border: 'rgba(99, 102, 241, 0.4)' },
                         { val: 'delivered', label: 'مكتمل (لم تتم المحاسبة)', bg: 'rgba(16, 185, 129, 0.15)', text: isLightMode ? '#059669' : '#34d399', border: 'rgba(16, 185, 129, 0.4)' },
@@ -3114,7 +3114,7 @@ export default function App() {
               const statusLabels = {
                  'pending': { label: 'قيد الانتظار', bg: 'rgba(251, 191, 36, 0.15)', text: isLightMode ? '#d97706' : '#fbbf24', border: 'rgba(251, 191, 36, 0.4)' },
                  'backordered': { label: 'قيد الانتظار (مخزن)', bg: 'rgba(139, 92, 246, 0.15)', text: isLightMode ? '#7c3aed' : '#a78bfa', border: 'rgba(139, 92, 246, 0.4)' },
-                 'processing': { label: 'جاري التجهيز', bg: 'rgba(249, 115, 22, 0.15)', text: isLightMode ? '#ea580c' : '#fb923c', border: 'rgba(249, 115, 22, 0.4)' },
+                 'processing': { label: 'قيد المعالجة', bg: 'rgba(249, 115, 22, 0.15)', text: isLightMode ? '#ea580c' : '#fb923c', border: 'rgba(249, 115, 22, 0.4)' },
                  'shipped': { label: 'تم الشحن', bg: 'rgba(56, 189, 248, 0.15)', text: isLightMode ? '#0284c7' : '#38bdf8', border: 'rgba(56, 189, 248, 0.4)' },
                  'ofd': { label: 'قيد التوصيل', bg: 'rgba(99, 102, 241, 0.15)', text: isLightMode ? '#4f46e5' : '#818cf8', border: 'rgba(99, 102, 241, 0.4)' },
                  'delivered': { label: 'مكتمل (لم تتم المحاسبة)', bg: 'rgba(16, 185, 129, 0.15)', text: isLightMode ? '#059669' : '#34d399', border: 'rgba(16, 185, 129, 0.4)' },

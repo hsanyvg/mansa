@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [expandedAnalysisPages, setExpandedAnalysisPages] = useState<Record<string, boolean>>({});
   const [expandedAnalysisBranches, setExpandedAnalysisBranches] = useState<Record<string, boolean>>({});
   const [expandedAnalysisSubcats, setExpandedAnalysisSubcats] = useState<Record<string, boolean>>({});
+  const [includeUnsettledOrders, setIncludeUnsettledOrders] = useState(false);
 
   // Active Orders (Gauge Card) Period Filter states
   const [gaugeFilter, setGaugeFilter] = useState('الشهر');
@@ -561,15 +562,15 @@ export default function Dashboard() {
       let shouldCountSecondary = false;
 
       if (salesCardViewType === 'sales') {
-        shouldCount = isDelivered;
+        shouldCount = includeUnsettledOrders ? isDelivered : isSettledOrPartial;
       } else if (salesCardViewType === 'orders') {
-        shouldCount = isDelivered;
+        shouldCount = includeUnsettledOrders ? isDelivered : isSettledOrPartial;
       } else if (salesCardViewType === 'total_orders') {
         shouldCount = true;
       } else if (salesCardViewType === 'returned_orders') {
         shouldCount = isReturned;
       } else if (salesCardViewType === 'delivered_and_returned') {
-        shouldCount = isDelivered;
+        shouldCount = includeUnsettledOrders ? isDelivered : isSettledOrPartial;
         shouldCountSecondary = isReturned;
       }
 
@@ -607,7 +608,7 @@ export default function Dashboard() {
     });
 
     return { points, secondaryPoints, total, prevTotal, secondaryTotal, prevSecondaryTotal };
-  }, [orders, salesCardYear, salesCardMonth, salesCardViewType]);
+  }, [orders, salesCardYear, salesCardMonth, salesCardViewType, includeUnsettledOrders]);
 
   const svgChartPath = React.useMemo(() => {
     const width = 500;
@@ -704,7 +705,9 @@ export default function Dashboard() {
       .filter(o => {
         if (o.status === 'cancelled' || o.status === 'deleted' || o.isDeleted === true) return false;
         const isSettledOrPartial = o.is_settled === true || o.paymentStatus === 'partially_settled';
-        if (!isSettledOrPartial || !o.date) return false;
+        const isDelivered = o.status === 'delivered' || o.status === 'completed' || o.status === 'partial' || o.fulfillmentStatus === 'Delivered';
+        const shouldCount = includeUnsettledOrders ? (isSettledOrPartial || isDelivered) : isSettledOrPartial;
+        if (!shouldCount || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
         return oTime >= currentStart;
       })
@@ -714,7 +717,9 @@ export default function Dashboard() {
       .filter(o => {
         if (o.status === 'cancelled' || o.status === 'deleted' || o.isDeleted === true) return false;
         const isSettledOrPartial = o.is_settled === true || o.paymentStatus === 'partially_settled';
-        if (!isSettledOrPartial || !o.date) return false;
+        const isDelivered = o.status === 'delivered' || o.status === 'completed' || o.status === 'partial' || o.fulfillmentStatus === 'Delivered';
+        const shouldCount = includeUnsettledOrders ? (isSettledOrPartial || isDelivered) : isSettledOrPartial;
+        if (!shouldCount || !o.date) return false;
         const oTime = o.date.toDate ? o.date.toDate().getTime() : new Date(o.date).getTime();
         return oTime >= prevStart && oTime < prevEnd;
       })
@@ -724,7 +729,7 @@ export default function Dashboard() {
       return currentSales > 0 ? 100 : 0;
     }
     return Math.round(((currentSales - prevSales) / prevSales) * 10000) / 100;
-  }, [orders, filter, filterStartDate, filterEndDate]);
+  }, [orders, filter, filterStartDate, filterEndDate, includeUnsettledOrders]);
 
 
 
@@ -964,7 +969,13 @@ export default function Dashboard() {
     // 3. Accumulate revenues from settled orders
     filteredOrders.forEach((order: any) => {
       const isSettledOrPartial = order.is_settled === true || order.paymentStatus === 'partially_settled';
-      if (!isSettledOrPartial) return;
+      const isDelivered = order.status === 'delivered' || order.status === 'completed' || order.status === 'partial' || order.fulfillmentStatus === 'Delivered';
+      
+      if (includeUnsettledOrders) {
+        if (!isSettledOrPartial && !isDelivered) return;
+      } else {
+        if (!isSettledOrPartial) return;
+      }
 
       // 3.1 Get items to process, ensuring we don't lose orders with empty items
       let itemsToProcess = (order.items && Array.isArray(order.items) && order.items.length > 0) 
@@ -1085,7 +1096,7 @@ export default function Dashboard() {
     });
 
     return tree;
-  }, [allProducts, allCategories, pages, filteredOrders, filteredExpenses]);
+  }, [allProducts, allCategories, pages, filteredOrders, filteredExpenses, includeUnsettledOrders]);
 
   const overallStats = React.useMemo(() => {
     let totalRevenue = 0;
@@ -1094,18 +1105,26 @@ export default function Dashboard() {
 
     let deliveredCount = 0;
     let deliveredAmount = 0;
+    let unsettledDeliveredCount = 0;
+    let unsettledDeliveredAmount = 0;
     let returnedCount = 0;
     let returnedAmount = 0;
 
     filteredOrders.forEach((o: any) => {
-      const isDelivered = o.status === 'delivered' || o.status === 'completed' || o.is_settled === true || o.paymentStatus === 'partially_settled';
+      const isSettledOrPartial = o.is_settled === true || o.paymentStatus === 'partially_settled';
+      const isDelivered = o.status === 'delivered' || o.status === 'completed' || o.status === 'partial' || o.fulfillmentStatus === 'Delivered';
       const isReturned = o.status === 'returned' || o.status === 'returned_agent' || o.status === 'returned_warehouse' || o.returnStatus === 'in_warehouse';
       
       const amt = Number(o.totalAmount) || 0;
-      if (isDelivered) {
+      
+      if (isSettledOrPartial) {
         deliveredCount++;
         deliveredAmount += amt;
+      } else if (isDelivered) {
+        unsettledDeliveredCount++;
+        unsettledDeliveredAmount += amt;
       }
+      
       if (isReturned) {
         returnedCount++;
         returnedAmount += amt;
@@ -1118,23 +1137,28 @@ export default function Dashboard() {
       totalNetProfit += page.netProfit || 0;
     });
 
-    const activeTotal = deliveredCount + returnedCount;
-    const deliveredPct = activeTotal > 0 ? Math.round((deliveredCount / activeTotal) * 100) : (filteredOrders.length > 0 ? 100 : 0);
+    const totalCalculatedDeliveredCount = includeUnsettledOrders ? (deliveredCount + unsettledDeliveredCount) : deliveredCount;
+    const totalCalculatedDeliveredAmount = includeUnsettledOrders ? (deliveredAmount + unsettledDeliveredAmount) : deliveredAmount;
+
+    const activeTotal = totalCalculatedDeliveredCount + returnedCount;
+    const deliveredPct = activeTotal > 0 ? Math.round((totalCalculatedDeliveredCount / activeTotal) * 100) : (filteredOrders.length > 0 ? 100 : 0);
     const returnedPct = activeTotal > 0 ? Math.round((returnedCount / activeTotal) * 100) : 0;
 
     return {
       totalRevenue,
       totalExpenses,
       totalNetProfit,
-      deliveredCount,
-      deliveredAmount,
+      deliveredCount: totalCalculatedDeliveredCount,
+      deliveredAmount: totalCalculatedDeliveredAmount,
+      unsettledDeliveredCount,
+      unsettledDeliveredAmount,
       deliveredPct,
       returnedCount,
       returnedAmount,
       returnedPct,
       totalOrders: filteredOrders.length
     };
-  }, [analysisStats, filteredOrders]);
+  }, [analysisStats, filteredOrders, includeUnsettledOrders]);
 
   const [animatedRate, setAnimatedRate] = useState(0);
   const [animatedReturnRate, setAnimatedReturnRate] = useState(0);
@@ -1184,7 +1208,18 @@ export default function Dashboard() {
     <div className={styles.container}>
       <main className={styles.main}>
         <div className={styles.header}>
-          <h1 className={styles.headerTitle}>لوحة القيادة</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <h1 className={styles.headerTitle}>لوحة القيادة</h1>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <input 
+                type="checkbox" 
+                checked={includeUnsettledOrders}
+                onChange={(e) => setIncludeUnsettledOrders(e.target.checked)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10b981' }}
+              />
+              <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '500' }}>تضمين الطلبات الواصلة غير المستلمة (غير المحاسب عليها) للمبيعات والأرباح</span>
+            </label>
+          </div>
           <div className={styles.filters}>
             <div className={styles.teamDatePickerContainer} ref={filterCalRef}>
                 <button 
@@ -2115,18 +2150,20 @@ export default function Dashboard() {
 
           {/* Card 4: Product Profit & Loss Analysis */}
           <div className={`${styles.card} ${styles.colSpan7}`} style={{ marginTop: '1rem' }}>
-            <div className={styles.cardHeader}>
-              <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff' }}>📊 شجرة تحليل الأرباح والخسائر والأداء (البيج ⬅️ الفئة ⬅️ الصنف)</span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>صافي الربح = الإيرادات من الكشوفات - المصاريف المباشرة</span>
+            <div className={styles.cardHeader} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff', display: 'block' }}>📊 شجرة تحليل الأرباح والخسائر والأداء (البيج ⬅️ الفئة ⬅️ الصنف)</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>صافي الربح = الإيرادات من الكشوفات - المصاريف المباشرة</span>
+              </div>
             </div>
 
-            <div className={styles.treeSection} style={{ border: 'none', paddingTop: 0 }}>
+            <div className={styles.treeSection} style={{ border: 'none', paddingTop: 0, marginTop: '1rem' }}>
               {/* Overall Summary Panel */}
               <div className={styles.summaryStatsRow} style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
                 {/* 1. الواصل */}
-                <div className={styles.summaryStatCard} style={{ borderRight: '3px solid #10b981', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(0,0,0,0.2) 100%)' }}>
+                <div className={styles.summaryStatCard} style={{ borderRight: '3px solid #10b981', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(0,0,0,0.2) 100%)', position: 'relative' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span className={styles.summaryStatLabel}>🟢 الواصل (الطلبات المقبوضة)</span>
+                    <span className={styles.summaryStatLabel}>🟢 الواصل {includeUnsettledOrders ? '(المستلم وغير المستلم)' : '(المقبوض)'}</span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#10b981', background: 'rgba(16,185,129,0.15)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' }}>
                       ↗️ {overallStats.deliveredPct}%
                     </span>
@@ -2134,8 +2171,11 @@ export default function Dashboard() {
                   <span className={styles.summaryStatValue} style={{ color: '#10b981', marginTop: '0.3rem' }}>
                     {overallStats.totalRevenue.toLocaleString()} د.ع
                   </span>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
-                    📦 {overallStats.deliveredCount} طلب واصل ومستلم
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span>📦 {overallStats.deliveredCount} طلب واصل كلياً</span>
+                    {overallStats.unsettledDeliveredCount > 0 && (
+                      <span style={{ color: '#f59e0b' }}>منها {overallStats.unsettledDeliveredCount} غير محاسب بقيمة {overallStats.unsettledDeliveredAmount.toLocaleString()} د.ع</span>
+                    )}
                   </div>
                 </div>
 
