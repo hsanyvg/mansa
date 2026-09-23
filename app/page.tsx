@@ -1193,7 +1193,7 @@ export default function Dashboard() {
           <div style={{
             width: '32px',
             height: '32px',
-            border: '3px solid rgba(255, 255, 255, 0.1)',
+            border: '3px solid var(--border)',
             borderRadius: '50%',
             borderTopColor: '#38bdf8',
             animation: 'spin 0.8s linear infinite'
@@ -1210,14 +1210,14 @@ export default function Dashboard() {
         <div className={styles.header}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <h1 className={styles.headerTitle}>لوحة القيادة</h1>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: 'var(--surface-light)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <input 
                 type="checkbox" 
                 checked={includeUnsettledOrders}
                 onChange={(e) => setIncludeUnsettledOrders(e.target.checked)}
                 style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10b981' }}
               />
-              <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '500' }}>تضمين الطلبات الواصلة غير المستلمة (غير المحاسب عليها) للمبيعات والأرباح</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: '500' }}>تضمين الطلبات الواصلة غير المستلمة (غير المحاسب عليها) للمبيعات والأرباح</span>
             </label>
           </div>
           <div className={styles.filters}>
@@ -1261,7 +1261,7 @@ export default function Dashboard() {
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                       <select 
                         className={styles.teamDateInput} 
-                        style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                        style={{ padding: '0.5rem', flex: 1, backgroundColor: 'var(--surface-light)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '6px' }}
                         value={
                           tempMainStart && tempMainEnd && 
                           new Date(tempMainStart).getDate() === 1 && 
@@ -1288,15 +1288,15 @@ export default function Dashboard() {
                           handleCustomMainDateChange('end', formatObj(end));
                         }}
                       >
-                        <option value="" style={{ color: 'white', backgroundColor: '#1a1a2e' }}>اختر الشهر...</option>
+                        <option value="" style={{ color: 'var(--text-main)', backgroundColor: '#1a1a2e' }}>اختر الشهر...</option>
                         {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                          <option key={m} value={m} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>شهر {m}</option>
+                          <option key={m} value={m} style={{ color: 'var(--text-main)', backgroundColor: '#1a1a2e' }}>شهر {m}</option>
                         ))}
                       </select>
 
                       <select 
                         className={styles.teamDateInput} 
-                        style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                        style={{ padding: '0.5rem', flex: 1, backgroundColor: 'var(--surface-light)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '6px' }}
                         value={tempMainStart ? new Date(tempMainStart).getFullYear() : new Date().getFullYear()}
                         onChange={(e) => {
                           const year = parseInt(e.target.value);
@@ -1316,7 +1316,7 @@ export default function Dashboard() {
                         }}
                       >
                         {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
-                          <option key={y} value={y} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>{y}</option>
+                          <option key={y} value={y} style={{ color: 'var(--text-main)', backgroundColor: '#1a1a2e' }}>{y}</option>
                         ))}
                       </select>
                     </div>
@@ -1368,7 +1368,7 @@ export default function Dashboard() {
             <div className={styles.salesHeader}>
               <div className={styles.salesTitleContainer} style={{ flexDirection: 'row', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
                 <select 
-                  style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                  style={{ background: 'var(--surface-light)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
                   value={salesCardViewType} 
                   onChange={(e) => setSalesCardViewType(e.target.value as 'sales' | 'orders' | 'total_orders' | 'returned_orders')}
                 >
@@ -1380,7 +1380,7 @@ export default function Dashboard() {
                 </select>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <select 
-                    style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                    style={{ background: 'var(--surface-light)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
                     value={salesCardYear} 
                     onChange={(e) => setSalesCardYear(Number(e.target.value))}
                   >
@@ -1389,7 +1389,7 @@ export default function Dashboard() {
                     ))}
                   </select>
                   <select 
-                    style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                    style={{ background: 'var(--surface-light)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
                     value={salesCardMonth} 
                     onChange={(e) => setSalesCardMonth(Number(e.target.value))}
                   >
@@ -1439,9 +1439,9 @@ export default function Dashboard() {
                 </defs>
 
                 {/* Apple-style horizontal dashed gridlines corresponding to Top, Mid, Bottom */}
-                <line x1="0" y1="24" x2="500" y2="24" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
-                <line x1="0" y1="92" x2="500" y2="92" stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" />
-                <line x1="0" y1="160" x2="500" y2="160" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+                <line x1="0" y1="24" x2="500" y2="24" stroke="var(--chart-line)" strokeDasharray="3 3" />
+                <line x1="0" y1="92" x2="500" y2="92" stroke="var(--chart-line)" strokeDasharray="3 3" />
+                <line x1="0" y1="160" x2="500" y2="160" stroke="var(--chart-line)" strokeDasharray="3 3" />
 
                 {/* Highlight today's background */}
                 {(() => {
@@ -1452,7 +1452,7 @@ export default function Dashboard() {
                       const slotWidth = 500 / salesCardData.points.length;
                       const x = (todayDay - 1) * slotWidth;
                       return (
-                        <rect x={x} y="24" width={slotWidth} height="136" fill="rgba(255, 255, 255, 0.05)" rx="4" />
+                        <rect x={x} y="24" width={slotWidth} height="136" fill="var(--surface-light)" rx="4" />
                       );
                     }
                   }
@@ -1578,7 +1578,7 @@ export default function Dashboard() {
                       x={centerX}
                       y="173"
                       textAnchor="middle"
-                      fill="rgba(255, 255, 255, 0.4)"
+                      fill="var(--text-muted)"
                       fontSize="9"
                       fontWeight="700"
                     >
@@ -1631,7 +1631,7 @@ export default function Dashboard() {
           {/* Card 2 & 2.5 Combined: Delivery and Return Rates */}
           <div className={`${styles.card} ${styles.colSpan2} ${isGaugeCalOpen ? styles.elevatedCard : ''}`} style={{ display: 'flex', flexDirection: 'column', minHeight: '220px', padding: '1.5rem', justifyContent: 'space-between' }}>
             <div className={`${styles.cardHeader} ${styles.gaugeCardHeader}`} style={{ marginBottom: '1rem' }}>
-              <span style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>إحصائيات التوصيل والراجع</span>
+              <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)' }}>إحصائيات التوصيل والراجع</span>
               
               <div className={styles.teamDatePickerContainer} ref={gaugeCalRef}>
                 <button 
@@ -1713,7 +1713,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '1rem' }}>
               
               {/* Green Gauge */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '1.5rem 0.5rem', background: 'var(--background)', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', border: '1px solid var(--border)' }} >
                 <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
                   <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
                     <defs>
@@ -1776,7 +1776,7 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(16,185,129,0.4)', lineHeight: 1 }}>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', textShadow: '0 0 10px rgba(16,185,129,0.4)', lineHeight: 1 }}>
                     {gaugeStats.deliveredCount.toLocaleString()}
                   </div>
                   <div style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 700, marginTop: '4px' }}>طلب واصل</div>
@@ -1787,10 +1787,10 @@ export default function Dashboard() {
               </div>
 
               {/* Divider */}
-              <div style={{ width: '1px', height: '110px', backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+              
 
               {/* Red Gauge */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '1.5rem 0.5rem', background: 'var(--background)', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', border: '1px solid var(--border)' }} >
                 <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
                   <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
                     <defs>
@@ -1853,7 +1853,7 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(239,68,68,0.4)', lineHeight: 1 }}>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', textShadow: '0 0 10px rgba(239,68,68,0.4)', lineHeight: 1 }}>
                     {gaugeStats.returnedCount.toLocaleString()}
                   </div>
                   <div style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 700, marginTop: '4px' }}>طلب راجع</div>
@@ -1863,9 +1863,9 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '1rem', marginTop: '1.5rem' }}>
+            <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '1rem', marginTop: '1rem' }}>
               {/* Yellow Gauge (In Progress) */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '1.5rem 0.5rem', background: 'var(--background)', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', border: '1px solid var(--border)' }} >
                 <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
                   <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
                     <defs>
@@ -1896,16 +1896,16 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(245,158,11,0.4)', lineHeight: 1 }}>{gaugeStats.inProgressCount.toLocaleString()}</div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', textShadow: '0 0 10px rgba(245,158,11,0.4)', lineHeight: 1 }}>{gaugeStats.inProgressCount.toLocaleString()}</div>
                   <div style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 700, marginTop: '4px' }}>قيد التوصيل ومؤجل</div>
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', fontWeight: 600 }}>النسبة {animatedProgressRate}%</div>
               </div>
 
-              <div style={{ width: '1px', height: '110px', backgroundColor: 'rgba(255,255,255,0.06)' }}></div>
+              
 
               {/* Gray Gauge (Cancelled) */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '0 0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: '1.5rem 0.5rem', background: 'var(--background)', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', border: '1px solid var(--border)' }} >
                 <div style={{ position: 'relative', width: '100%', maxWidth: '170px', height: '105px', display: 'flex', justifySelf: 'center', alignItems: 'flex-end' }}>
                   <svg viewBox="0 0 200 130" style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
                     <defs>
@@ -1936,15 +1936,15 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px rgba(156,163,175,0.4)', lineHeight: 1 }}>{gaugeStats.cancelledCount.toLocaleString()}</div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', textShadow: '0 0 10px rgba(156,163,175,0.4)', lineHeight: 1 }}>{gaugeStats.cancelledCount.toLocaleString()}</div>
                   <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontWeight: 700, marginTop: '4px' }}>حذف وإلغاء</div>
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', fontWeight: 600 }}>النسبة {animatedCancelledRate}%</div>
               </div>
             </div>
 
-            <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '0.75rem' }}>
-              إجمالي الطلبات في هذه الفترة: <strong style={{ color: '#fff' }}>{gaugeStats.totalOrdersCount.toLocaleString()} طلب</strong>
+            <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
+              إجمالي الطلبات في هذه الفترة: <strong style={{ color: 'var(--text-main)' }}>{gaugeStats.totalOrdersCount.toLocaleString()} طلب</strong>
             </div>
           </div>
 
@@ -1957,7 +1957,7 @@ export default function Dashboard() {
               
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <select 
-                  style={{ background: 'var(--surface-light)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem' }}
+                  style={{ background: 'var(--surface-light)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '0.4rem 0.8rem', borderRadius: '8px', outline: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem' }}
                   value={teamViewMode} 
                   onChange={(e) => setTeamViewMode(e.target.value as 'team' | 'landing_pages')}
                 >
@@ -2152,7 +2152,7 @@ export default function Dashboard() {
           <div className={`${styles.card} ${styles.colSpan7}`} style={{ marginTop: '1rem' }}>
             <div className={styles.cardHeader} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
-                <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#fff', display: 'block' }}>📊 شجرة تحليل الأرباح والخسائر والأداء (البيج ⬅️ الفئة ⬅️ الصنف)</span>
+                <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: 'var(--text-main)', display: 'block' }}>📊 شجرة تحليل الأرباح والخسائر والأداء (البيج ⬅️ الفئة ⬅️ الصنف)</span>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>صافي الربح = الإيرادات من الكشوفات - المصاريف المباشرة</span>
               </div>
             </div>
@@ -2171,7 +2171,7 @@ export default function Dashboard() {
                   <span className={styles.summaryStatValue} style={{ color: '#10b981', marginTop: '0.3rem' }}>
                     {overallStats.totalRevenue.toLocaleString()} د.ع
                   </span>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <span>📦 {overallStats.deliveredCount} طلب واصل كلياً</span>
                     {overallStats.unsettledDeliveredCount > 0 && (
                       <span style={{ color: '#f59e0b' }}>منها {overallStats.unsettledDeliveredCount} غير محاسب بقيمة {overallStats.unsettledDeliveredAmount.toLocaleString()} د.ع</span>
@@ -2190,7 +2190,7 @@ export default function Dashboard() {
                   <span className={styles.summaryStatValue} style={{ color: '#ef4444', marginTop: '0.3rem' }}>
                     {overallStats.returnedAmount.toLocaleString()} د.ع
                   </span>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                     ↩️ {overallStats.returnedCount} طلب مرتجع
                   </div>
                 </div>
@@ -2204,13 +2204,13 @@ export default function Dashboard() {
                   <span className={styles.summaryStatValue} style={{ color: '#c084fc', marginTop: '0.3rem' }}>
                     {overallStats.totalExpenses.toLocaleString()} د.ع
                   </span>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                     🧾 إجمالي التكاليف التشغيلية
                   </div>
                 </div>
 
                 {/* 4. صافي الأرباح الكلية */}
-                <div className={styles.summaryStatCard} style={{ borderRight: `3px solid ${overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444'}`, background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.2) 100%)' }}>
+                <div className={styles.summaryStatCard} style={{ borderRight: `3px solid ${overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444'}`, background: 'var(--surface-light)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span className={styles.summaryStatLabel}>📈 صافي الأرباح الكلية</span>
                     <span style={{ fontSize: '0.75rem', color: overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444' }}>
@@ -2220,7 +2220,7 @@ export default function Dashboard() {
                   <span className={styles.summaryStatValue} style={{ color: overallStats.totalNetProfit >= 0 ? '#10b981' : '#ef4444', marginTop: '0.3rem' }}>
                     {overallStats.totalNetProfit >= 0 ? '+' : ''}{overallStats.totalNetProfit.toLocaleString()} د.ع
                   </span>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                     الإيرادات - المصاريف المباشرة
                   </div>
                 </div>

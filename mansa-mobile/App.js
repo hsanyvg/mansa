@@ -425,55 +425,13 @@ export default function App() {
       
       if (advSearchStatus && advSearchStatus.trim()) {
         if (ord.status !== advSearchStatus) match = false;
-      }
-      
-      return match;
-    });
-
-    setAdvancedSearchResults(result);
-    console.log(`Executed Advanced Search: filtered ${orders.length} orders down to ${result.length} orders. Criteria:`, {advSearchGov, advSearchMonth, advSearchYear, advSearchStatus});
-  };
-
-  const handleServerSearch = async () => {
-    if (!serverSearchQuery.trim()) {
-      setServerSearchResult(null);
-      return;
-    }
-    setIsSearchingServer(true);
-    setServerSearchResult(null);
-    try {
-       let q = fsQuery(collection(db, 'users', adminUid, 'orders'), where('receiptNumber', '==', serverSearchQuery.trim()));
-       let snap = await getDocs(q);
-       
-       if (snap.empty) {
-          // Try customerPhone
-          q = fsQuery(collection(db, 'users', adminUid, 'orders'), where('customerPhone', '==', serverSearchQuery.trim()));
-          snap = await getDocs(q);
-       }
-       if (snap.empty) {
-          // Try id
-          const docRef = doc(db, 'users', adminUid, 'orders', serverSearchQuery.trim());
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-             setServerSearchResult([{ id: docSnap.id, ...docSnap.data() }]);
-             setIsSearchingServer(false);
-             return;
-          }
-       }
-       
-       if (!snap.empty) {
-         setServerSearchResult(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-       } else {
-         setServerSearchResult([]); // not found
-       }
-    } catch (e) {
-       console.log("Server search error:", e);
     }
     setIsSearchingServer(false);
   };
   
   // Edit Order State
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [originalOrderDetails, setOriginalOrderDetails] = useState(null);
   const [originalOrderItems, setOriginalOrderItems] = useState([]);
   const [originalOrderStatus, setOriginalOrderStatus] = useState('pending');
 
@@ -1490,6 +1448,7 @@ export default function App() {
     }
     
     setEditingOrderId(order.id);
+    setOriginalOrderDetails(order);
     setOriginalOrderItems(order.items || []);
     setOriginalOrderStatus(order.status || 'pending');
     

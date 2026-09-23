@@ -194,7 +194,7 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', width: '100%' }}>
                 <select 
                   className={styles.dateInputNative} 
-                  style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                  style={{ padding: '0.5rem', flex: 1, backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '6px' }}
                   value={
                     selectedStartDate && selectedEndDate && 
                     selectedStartDate.getDate() === 1 && 
@@ -216,15 +216,15 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
                     setPreset('تاريخ مخصص');
                   }}
                 >
-                  <option value="" style={{ color: 'white', backgroundColor: '#1a1a2e' }}>اختر الشهر...</option>
+                  <option value="" style={{ color: 'var(--text-main)', backgroundColor: 'var(--surface)' }}>اختر الشهر...</option>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>شهر {m}</option>
+                    <option key={m} value={m} style={{ color: 'var(--text-main)', backgroundColor: 'var(--surface)' }}>شهر {m}</option>
                   ))}
                 </select>
 
                 <select 
                   className={styles.dateInputNative} 
-                  style={{ padding: '0.5rem', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px' }}
+                  style={{ padding: '0.5rem', flex: 1, backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '6px' }}
                   value={selectedStartDate ? selectedStartDate.getFullYear() : new Date().getFullYear()}
                   onChange={(e) => {
                     const year = parseInt(e.target.value);
@@ -239,7 +239,7 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
                   }}
                 >
                   {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
-                    <option key={y} value={y} style={{ color: 'white', backgroundColor: '#1a1a2e' }}>{y}</option>
+                    <option key={y} value={y} style={{ color: 'var(--text-main)', backgroundColor: 'var(--surface)' }}>{y}</option>
                   ))}
                 </select>
               </div>
@@ -283,7 +283,7 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
                   <button 
                     className={styles.updateBtn} 
                     onClick={handleApplyWithArchived} 
-                    style={{backgroundColor: '#4b5563', marginRight: '8px'}}
+                    style={{backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: '1px solid var(--border)', marginRight: '8px'}}
                   >
                     إظهار مع المؤرشف
                   </button>
@@ -297,7 +297,7 @@ export default function DateRangePicker({ onApply, onApplyWithArchived, onApplyD
                     onApply('الكل');
                     setIsOpen(false);
                   }}
-                  style={{ marginRight: '8px', backgroundColor: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
+                  style={{ marginRight: '8px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: '1px solid var(--border)' }}
                 >
                   تحديث
                 </button>

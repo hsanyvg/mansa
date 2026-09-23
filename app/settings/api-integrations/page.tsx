@@ -612,7 +612,7 @@ export default function ApiIntegrationsPage() {
               </p>
               
               {metaAccounts.length > 0 && (
-                <div style={{ marginTop: '1rem', background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: '10px' }}>
+                <div style={{ marginTop: '1rem', background: 'var(--surface-light)', padding: '0.75rem', borderRadius: '10px' }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 'bold' }}>الحسابات المربوطة:</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {metaAccounts.map(acc => (
@@ -727,7 +727,7 @@ export default function ApiIntegrationsPage() {
               </p>
 
               {landingPages.length > 0 && (
-                <div style={{ marginTop: '1rem', background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: '10px' }}>
+                <div style={{ marginTop: '1rem', background: 'var(--surface-light)', padding: '0.75rem', borderRadius: '10px' }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 'bold' }}>الصفحات المربوطة:</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {landingPages.map(lp => (
@@ -777,7 +777,7 @@ export default function ApiIntegrationsPage() {
                 </div>
 
                 {metaAccounts.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', background: 'var(--surface-light)', borderRadius: '12px' }}>
                     لا توجد أي حسابات مربوطة بعد. اضغط على "إضافة حساب جديد" للبدء.
                   </div>
                 ) : (
@@ -786,8 +786,8 @@ export default function ApiIntegrationsPage() {
                       <div 
                         key={account.id} 
                         style={{
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                          background: 'var(--surface-light)',
+                          border: '1px solid var(--border)',
                           borderRadius: '12px',
                           padding: '1rem',
                           display: 'flex',
@@ -797,7 +797,7 @@ export default function ApiIntegrationsPage() {
                         }}
                       >
                         <div>
-                          <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff', marginBottom: '0.2rem' }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', marginBottom: '0.2rem' }}>
                             {account.name}
                           </div>
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -1126,7 +1126,7 @@ export default function ApiIntegrationsPage() {
                 </div>
 
                 {landingPages.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', background: 'var(--surface-light)', borderRadius: '12px' }}>
                     لا توجد أي صفحات مربوطة بعد. اضغط على "إضافة صفحة جديدة" لتوليد مفتاحك الأول.
                   </div>
                 ) : (
@@ -1135,8 +1135,8 @@ export default function ApiIntegrationsPage() {
                       <div 
                         key={lp.id} 
                         style={{
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                          background: 'var(--surface-light)',
+                          border: '1px solid var(--border)',
                           borderRadius: '12px',
                           padding: '1rem',
                           display: 'flex',
@@ -1146,7 +1146,7 @@ export default function ApiIntegrationsPage() {
                         }}
                       >
                         <div>
-                          <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff', marginBottom: '0.2rem' }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', marginBottom: '0.2rem' }}>
                             {lp.name}
                           </div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -1258,7 +1258,7 @@ export default function ApiIntegrationsPage() {
                          setLinkedPixels(validPixels);
                       }
                     }}
-                    style={{ background: '#1f2937', color: '#fff' }}
+                    style={{ background: '#1f2937', color: 'var(--primary)' }}
                   >
                     <option value="">بدون ربط مباشر (يعتمد على اسم الصنف في الطلب)</option>
                     {products.filter(p => p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map(p => (
@@ -1270,7 +1270,7 @@ export default function ApiIntegrationsPage() {
                   </p>
                 </div>
 
-                <div className={styles.formGroup} style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className={styles.formGroup} style={{ background: 'var(--surface-light)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <div className={styles.toggleContainer} style={{ marginBottom: isPixelLinked ? '1rem' : '0' }}>
                     <span className={styles.toggleLabel}>هل تريد ربط ببكسل موجود لديك؟</span>
                     <label className={styles.toggleSwitch}>
@@ -1294,7 +1294,7 @@ export default function ApiIntegrationsPage() {
                           .map(p => {
                             const isChecked = linkedPixels.some(px => px.platform === 'meta' && px.docId === p.id);
                             return (
-                              <label key={`meta:${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#fff', fontSize: '0.9rem' }}>
+                              <label key={`meta:${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--primary)', fontSize: '0.9rem' }}>
                                 <input 
                                   type="checkbox" 
                                   checked={isChecked}
@@ -1317,7 +1317,7 @@ export default function ApiIntegrationsPage() {
                           .map(p => {
                             const isChecked = linkedPixels.some(px => px.platform === 'tiktok' && px.docId === p.id);
                             return (
-                              <label key={`tiktok:${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#fff', fontSize: '0.9rem' }}>
+                              <label key={`tiktok:${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--primary)', fontSize: '0.9rem' }}>
                                 <input 
                                   type="checkbox" 
                                   checked={isChecked}
@@ -1370,7 +1370,7 @@ export default function ApiIntegrationsPage() {
                   </p>
                 </div>
 
-                <div className={styles.toggleContainer} style={{ marginTop: '1.5rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '12px' }}>
+                <div className={styles.toggleContainer} style={{ marginTop: '1.5rem', marginBottom: '1.5rem', background: 'var(--surface-light)', padding: '1rem', borderRadius: '12px' }}>
                   <span className={styles.toggleLabel}>تفعيل استقبال الطلبات من هذه الصفحة</span>
                   <label className={styles.toggleSwitch}>
                     <input 

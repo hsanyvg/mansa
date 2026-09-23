@@ -23,7 +23,7 @@
 .headerTitle {
   font-size: 1.75rem;
   font-weight: 800;
-  background: linear-gradient(to right, #fff, #a5b4fc);
+  background: linear-gradient(to right, var(--text-main), var(--primary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -84,8 +84,8 @@
   background-color: var(--surface);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
-  border: 1px solid rgba(255,255,255,0.03);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -95,7 +95,7 @@
 
 .card:hover {
   transform: translateY(-2px);
-  border-color: rgba(255,255,255,0.08);
+  border-color: var(--primary);
 }
 
 .colSpan2 { grid-column: span 2; }
@@ -238,9 +238,9 @@
 }
 
 .teamSelectDropdown {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--surface-light);
   color: var(--text-main);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--surface-light-border);
   padding: 0.4rem 0.8rem;
   border-radius: 12px;
   font-family: inherit;
@@ -253,7 +253,7 @@
 }
 
 .teamSelectDropdown:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--surface-hover);
   border-color: var(--primary);
   box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
 }
@@ -289,8 +289,8 @@
   min-width: 150px;
   max-width: 160px;
   flex: 0 0 auto;
-  background: rgba(30, 30, 42, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--surface-light);
+  border: 1px solid var(--border);
   border-radius: 20px;
   padding: 1.25rem 0.75rem;
   display: flex;
@@ -311,7 +311,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
   padding-bottom: 0.75rem;
   width: 100%;
 }
@@ -327,7 +327,7 @@
 .employeeName {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--text-main);
 }
 
 .employeeTotalOrders {
@@ -369,8 +369,8 @@
 .verticalBarTrack {
   width: 12px;
   height: 130px;
-  background-color: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: var(--surface-light);
+  border: 1px solid var(--surface-light-border);
   border-radius: 8px;
   position: relative;
   display: flex;
@@ -429,7 +429,7 @@
   display: flex;
   justify-content: center;
   gap: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  border-top: 1px solid var(--border);
   padding-top: 0.75rem;
   margin-top: 0.75rem;
   font-size: 0.8rem;
@@ -456,9 +456,9 @@
 }
 
 .teamDateRangeBtn {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--surface-light);
   color: var(--text-main);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--surface-light-border);
   padding: 0.4rem 0.8rem;
   border-radius: 12px;
   font-family: inherit;
@@ -473,7 +473,7 @@
 }
 
 .teamDateRangeBtn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--surface-hover);
   border-color: var(--primary);
   box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
 }
@@ -482,8 +482,8 @@
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  background-color: #1e1e28;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 1rem;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 15px rgba(139, 92, 246, 0.05);
@@ -502,7 +502,7 @@
 
 .teamShortcutBtn {
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
   color: var(--text-muted);
   text-align: right;
   padding: 0.4rem 0.8rem;
@@ -516,13 +516,13 @@
 }
 
 .teamShortcutBtn:hover {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--surface-hover);
   color: var(--text-main);
 }
 
 .teamShortcutBtn.activeShortcut {
   background: linear-gradient(135deg, var(--primary), var(--secondary));
-  color: #fff;
+  color: var(--text-inverse);
   border-color: transparent;
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
 }
@@ -531,7 +531,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border);
   padding-top: 0.75rem;
 }
 
@@ -549,9 +549,9 @@
 }
 
 .teamDateInput {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--surface-light);
   color: var(--text-main);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   padding: 0.35rem 0.6rem;
   border-radius: 8px;
   font-family: inherit;
@@ -571,7 +571,7 @@
 .teamModalActions {
   display: flex;
   gap: 0.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border);
   padding-top: 0.75rem;
   margin-top: 0.25rem;
 }
@@ -579,7 +579,7 @@
 .teamApplyBtn {
   flex: 1;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   padding: 0.4rem 0.8rem;
   border-radius: 8px;
@@ -599,9 +599,9 @@
 
 .teamCancelBtn {
   flex: 1;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-light);
   color: var(--text-muted);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
   padding: 0.4rem 0.8rem;
   border-radius: 8px;
   font-family: inherit;
@@ -613,9 +613,9 @@
 }
 
 .teamCancelBtn:hover {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: var(--surface-hover);
   color: var(--text-main);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: var(--text-muted);
 }
 
 .salesCard {
@@ -645,12 +645,12 @@
 .salesTitle {
   font-size: 1rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-main);
 }
 
 .salesSub {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
   margin-top: 0.15rem;
 }
 
@@ -663,7 +663,7 @@
 .salesFilterBtn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
   padding: 0.3rem 0.65rem;
   border-radius: 999px;
   font-size: 0.75rem;
@@ -673,13 +673,13 @@
 }
 
 .salesFilterBtn:hover {
-  color: #ffffff;
+  color: var(--text-main);
 }
 
 .salesFilterBtnActive {
-  background-color: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+  background-color: var(--surface-light);
+  color: var(--text-main);
+  box-shadow: 0 0 0 1px var(--border);
 }
 
 .chartContainer {
@@ -703,7 +703,7 @@
   z-index: 3;
   font-size: 0.7rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text-muted);
   pointer-events: none;
   font-family: monospace;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
@@ -750,7 +750,7 @@
 .salesValueText {
   font-size: 1.75rem;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--text-main);
   letter-spacing: -0.5px;
 }
 
@@ -780,7 +780,7 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
   font-weight: 600;
   margin-top: 0.15rem;
 }

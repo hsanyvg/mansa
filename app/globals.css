@@ -15,6 +15,44 @@
   --sidebar-width: 80px; /* Collapsed sidebar for more dashboard space */
   --radius-lg: 24px;
   --radius-md: 16px;
+
+  /* Custom variables for UI components */
+  --sidebar-bg: #212529;
+  --submenu-bg: #2c3034;
+  --menu-text: #adb5bd;
+  --menu-hover-bg: rgba(255,255,255,0.05);
+  --menu-text-active: #ffffff;
+  --auth-bg: #121216;
+  --auth-card-bg: #1e1e24;
+  
+  /* Additional UI elements */
+  --surface-light: rgba(255, 255, 255, 0.05);
+  --surface-light-border: rgba(255, 255, 255, 0.1);
+  --chart-line: rgba(255, 255, 255, 0.03);
+  --text-inverse: #13131A; /* Text on bright colored backgrounds */
+}
+
+[data-theme="light"] {
+  --primary-glow: rgba(139, 92, 246, 0.2);
+  --background: #f4f0fa; /* Very light purple */ 
+  --surface: #fdfcff; /* Light creamy purple */ 
+  --surface-hover: #CBD5E1;
+  --border: rgba(0, 0, 0, 0.08);
+  --text-main: #0F172A;
+  --text-muted: #475569;
+  --sidebar-bg: #fdfcff;
+  --submenu-bg: #f4f0fa;
+  --menu-text: #475569;
+  --menu-hover-bg: rgba(0,0,0,0.05);
+  --menu-text-active: #0F172A;
+  --auth-bg: #eaddf5;
+  --auth-card-bg: #fdfcff;
+  
+  /* Additional UI elements for Light Mode */
+  --surface-light: #f4f0fa;
+  --surface-light-border: rgba(0, 0, 0, 0.15);
+  --chart-line: rgba(0, 0, 0, 0.08);
+  --text-inverse: #FFFFFF;
 }
 
 * {
@@ -77,6 +115,6 @@ select {
 }
 
 select option {
-  background-color: #1a1a24;
-  color: #ffffff;
+  background-color: var(--surface);
+  color: var(--text-main);
 }

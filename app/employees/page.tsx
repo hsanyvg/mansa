@@ -1082,7 +1082,7 @@ export default function EmployeesPage() {
                   <td>{formatCurrency(emp.basicSalary || 0)}</td>
                   <td>{formatCurrency(emp.commissionRate || 0)}/طلب</td>
                   <td>
-                    <span style={{ fontSize: '0.85rem', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.85rem', background: 'var(--border)', padding: '4px 8px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
                       {emp.paymentType === 'salary' ? 'راتب ثابت' : 
                        emp.paymentType === 'commission' ? 'نسبة فقط' : 
                        emp.paymentType === 'both' ? 'راتب ونسبة' : 'غير محدد'}
@@ -1592,7 +1592,7 @@ export default function EmployeesPage() {
                     </select>
                   </div>
                   <div className={`${styles.formGroup} ${styles.fullWidth}`} style={{ marginTop: '0.5rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                       <input 
                         type="checkbox" 
                         checked={formData.trackAbsence} 
@@ -1734,8 +1734,8 @@ export default function EmployeesPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   
                   {/* Financial Details Card */}
-                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.75rem' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
                       <span style={{ color: 'var(--text-muted)' }}>نوع الدفع:</span>
                       <span style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
                         {selectedAttendanceEmployee.paymentType === 'salary' ? 'راتب ثابت فقط' : 

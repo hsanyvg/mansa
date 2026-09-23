@@ -10,6 +10,7 @@ import { doc, collection, writeBatch, getDoc } from "firebase/firestore";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isLightMode, setIsLightMode] = useState(false);
   const pathname = usePathname();
 
   // Authentication states
@@ -36,6 +37,17 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       setUser(usr);
       setAuthLoading(false);
     });
+    
+    // Load theme from localStorage
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+      setIsLightMode(true);
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      setIsLightMode(false);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+    
     return () => unsubscribe();
   }, []);
 
@@ -192,7 +204,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   if (authLoading) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: '#121216', color: '#fff' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--auth-bg)', color: 'var(--text-main)' }}>
         <h3>جاري التحقق من الهوية...</h3>
       </div>
     );
@@ -202,7 +214,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     const isPublicPath = pathname === '/mobile-download' || pathname === '/download';
     if (isPublicPath || user) {
       return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#020617', width: '100%', direction: 'rtl' }}>
+        <div style={{ minHeight: '100vh', backgroundColor: 'var(--auth-bg)', width: '100%', direction: 'rtl' }}>
           {children}
         </div>
       );
@@ -210,7 +222,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
     // Show mobile login card
     return (
-      <div className={styles.authContainer} style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className={styles.authContainer} style={{ minHeight: '100vh', backgroundColor: 'var(--auth-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className={styles.authCard} style={{ width: '90%', maxWidth: '400px' }}>
           <h2 className={styles.authTitle}>تسجيل دخول الموظفين</h2>
           <p className={styles.authSubtitle}>نظام المخازن والمبيعات (الهاتف)</p>
@@ -327,9 +339,9 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
               width: '100%',
               padding: '0.75rem',
               borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.12)',
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              color: '#fff',
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text-main)',
               fontWeight: 600,
               fontSize: '0.9rem',
               cursor: 'pointer',
@@ -367,7 +379,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       >
         {/* Sidebar Header with Toggle */}
         <div className={styles.sidebarHeader}>
-          <div className={styles.logoText} style={{ fontWeight: 'bold', color: '#fff', paddingRight: '0.5rem' }}>
+          <div className={styles.logoText} style={{ fontWeight: 'bold', color: 'var(--text-main)', paddingRight: '0.5rem' }}>
             نظام المخازن
           </div>
           <button 
@@ -610,6 +622,20 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>محافظ الخزينة</span>
             <span className={styles.submenuIcon}>🏦</span>
           </Link>
+
+          <div 
+            className={styles.submenuItem} 
+            onClick={() => {
+              const newMode = !isLightMode;
+              setIsLightMode(newMode);
+              localStorage.setItem('theme', newMode ? 'light' : 'dark');
+              document.documentElement.setAttribute('data-theme', newMode ? 'light' : 'dark');
+            }}
+            style={{ cursor: 'pointer', borderTop: '1px solid var(--border)', marginTop: '0.5rem', paddingTop: '0.5rem' }}
+          >
+            <span>{isLightMode ? 'داكن' : 'فاتح'}</span>
+            <span className={styles.submenuIcon}></span>
+          </div>
 
           <div 
             className={styles.submenuItem} 

@@ -1,6 +1,6 @@
 .container {
   padding: 2rem;
-  background-color: var(--background);
+  background-color: var(--surface);
   min-height: 100vh;
   color: var(--text-main);
   direction: rtl; /* Ensure RTL layout */
@@ -15,44 +15,50 @@
 
 .tabsContainer {
   display: flex;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.5rem;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+}
+
+.tabsContainer::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
 }
 
 .tabButton {
   background: transparent;
   color: var(--text-muted);
   border: none;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  padding: 0.5rem 1rem;
+  padding: 0.6rem 1rem;
   cursor: pointer;
   position: relative;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  white-space: nowrap;
   gap: 0.5rem;
+  border-radius: 8px;
 }
 
 .tabButton:hover {
   color: var(--text-main);
+  background: rgba(139, 92, 246, 0.03);
 }
 
 .tabButtonActive {
   color: var(--primary);
-}
-
-.tabButtonActive::after {
-  content: '';
-  position: absolute;
-  bottom: -0.6rem;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background-color: var(--primary);
-  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.08);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
 }
 
 .badge {
@@ -135,7 +141,7 @@
   align-items: center;
   gap: 0.5rem;
   transition: all 0.2s;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
 }
 
 .routeButton:hover {
@@ -179,37 +185,43 @@
 
 .neonSearchContainer {
   position: relative;
-  background-color: #0b0c10;
+  background-color: rgba(139, 92, 246, 0.05);
   border-radius: 9999px;
-  padding: 0.4rem 0.4rem 0.4rem 1.25rem;
+  padding: 0.5rem 1.25rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   width: 450px;
-  direction: ltr; 
-  box-shadow: 
-    -30px 0px 60px -10px rgba(255, 0, 204, 0.25), 
-    30px 0px 60px -10px rgba(51, 51, 255, 0.25);
+  direction: ltr;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.3s;
+}
+.neonSearchContainer:hover, .neonSearchContainer:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.15);
+  background-color: rgba(139, 92, 246, 0.08);
+}
+.neonSearchContainer:hover, .neonSearchContainer:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.15);
+  background-color: rgba(139, 92, 246, 0.08);
+}
+.neonSearchContainer:hover, .neonSearchContainer:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.15);
+  background-color: rgba(139, 92, 246, 0.08);
 }
 
 .neonSearchContainer::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  padding: 2px;
-  background: linear-gradient(90deg, #ff00cc, #3333ff);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+  display: none;
 }
 
 .neonSearchIcon {
   width: 22px;
   height: 22px;
-  color: #8b929a;
+  color: var(--text-muted);
 }
 
 .neonSearchInput {
@@ -217,14 +229,14 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #ffffff;
+  color: var(--text-main);
   font-size: 1.05rem;
   font-family: inherit;
   width: 100%;
 }
 
 .neonSearchInput::placeholder {
-  color: #8b929a;
+  color: var(--text-muted);
 }
 
 .tableWrapper {
@@ -241,10 +253,11 @@
 }
 
 .table th {
-  background-color: rgba(255, 255, 255, 0.02);
-  padding: 1rem;
+  background-color: var(--surface);
+  padding: 1.25rem 1rem;
   text-align: right;
-  font-weight: 500;
+  font-weight: bold;
+  font-size: 1.05rem;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   white-space: normal;
@@ -270,11 +283,12 @@
 }
 
 .table td {
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   border-bottom: 1px solid var(--border);
   color: var(--text-main);
   white-space: normal;
   word-wrap: break-word;
+  font-size: 1.05rem;
 }
 
 .checkboxContainer {
@@ -343,7 +357,7 @@
 
 /* Large Modal for Order Details */
 .detailsModal {
-  background-color: #1e1b2e; /* Deep dark purple-ish matching system */
+  background-color: var(--surface); /* Deep dark purple-ish matching system */
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   width: 90%;
@@ -584,7 +598,7 @@
 }
 
 .addButton {
-  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  background: var(--primary);
   color: white;
   border: none;
   padding: 0.75rem 1.5rem;
@@ -602,8 +616,8 @@
 
 .addButton:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
-  background: linear-gradient(135deg, #34d399 0%, #10B981 100%);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+  background: var(--primary-hover);
 }
 
 .addButton:active {
@@ -615,9 +629,9 @@
 }
 
 .bulkTriggerButton {
-  background-color: #2a2d3d;
+  background-color: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  color: var(--text-main);
   padding: 0.75rem 1.25rem;
   border-radius: var(--radius-md);
   font-size: 0.95rem;
@@ -631,14 +645,14 @@
 }
 
 .bulkTriggerButton:hover {
-  background-color: #35394e;
+  background-color: var(--surface-hover);
   border-color: var(--primary);
   box-shadow: 0 4px 16px var(--primary-glow);
 }
 
 .bulkBadge {
   background-color: var(--primary);
-  color: #ffffff;
+  color: var(--text-main);
   font-size: 0.8rem;
   padding: 0.1rem 0.5rem;
   border-radius: 9999px;
@@ -655,7 +669,7 @@
   position: absolute;
   top: calc(100% + 0.5rem);
   left: 0;
-  background-color: #1e1e28;
+  background-color: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-md);
   padding: 0.5rem;
@@ -692,7 +706,7 @@
 
 .bulkDropdownItem:hover {
   background-color: var(--surface-hover);
-  color: #ffffff;
+  color: var(--text-main);
   transform: translateX(-4px);
 }
 

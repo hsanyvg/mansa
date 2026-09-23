@@ -121,10 +121,14 @@ export default function OrdersListPage() {
   const [showReturnReceiptModal, setShowReturnReceiptModal] = useState(false);
   
   // Category / Page / Product Filter States
-  const [filterByProduct, setFilterByProduct] = useState<string>('');
-  const [filterByPage, setFilterByPage] = useState<string>('');
-  const [filterByMainCat, setFilterByMainCat] = useState<string>('');
-  const [filterBySubCat, setFilterBySubCat] = useState<string>('');
+  const [filterByProduct, setFilterByProduct] = useState<string[]>([]);
+  const [filterByPage, setFilterByPage] = useState<string[]>([]);
+  const [pageSearchTerm, setPageSearchTerm] = useState("");
+  const [mainCatSearchTerm, setMainCatSearchTerm] = useState("");
+  const [productSearchTerm, setProductSearchTerm] = useState("");
+  const [filterByMainCat, setFilterByMainCat] = useState<string[]>([]);
+  const [filterBySubCat, setFilterBySubCat] = useState<string[]>([]);
+const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showReturnsModal, setShowReturnsModal] = useState(false);
   const [returnsScannerInput, setReturnsScannerInput] = useState('');
@@ -360,22 +364,22 @@ export default function OrdersListPage() {
 
   // Status Configuration
   const statusMap: Record<string, { label: string, color: string, bg: string }> = {
-    'pending': { label: '📦 قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
-    'backordered': { label: '📦 قيد الانتظار (مخزن)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
-    'processing': { label: '⚙️ قيد المعالجة', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
-    'shipped': { label: '🚚 تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
-    'ofd': { label: '🛵 قيد التوصيل', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
-    'delivered': { label: '✅ مكتمل (لم تتم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
-    'delivered_settled': { label: '✅ مكتمل (تم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
-    'partial': { label: '🌖 واصل جزئي (لم تتم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
-    'partial_settled': { label: '🌖 واصل جزئي (تم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
-    'delivered_replaced': { label: '🔄 واصل تم الاستبدال (لم تتم المحاسبة)', color: '#059669', bg: 'rgba(5, 150, 105, 0.15)' },
-    'cancelled': { label: '❌ ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
-    'returned_agent': { label: '↩️ راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
-    'returned_warehouse': { label: '↩️ راجع مخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
-    'postponed': { label: '⏰ مؤجل', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' },
-    'address_changed': { label: '📍 تغير عنوان', color: '#d946ef', bg: 'rgba(217, 70, 239, 0.15)' },
-    'resent': { label: '🔁 إعادة ارسال', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' }
+    'pending': { label: 'قيد الانتظار', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.15)' },
+    'backordered': { label: 'قيد الانتظار (مخزن)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+    'processing': { label: 'قيد المعالجة', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
+    'shipped': { label: 'تم الشحن', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
+    'ofd': { label: 'قيد التوصيل', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
+    'delivered': { label: 'مكتمل (لم تتم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'delivered_settled': { label: 'مكتمل (تم المحاسبة)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    'partial': { label: 'واصل جزئي (لم تتم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
+    'partial_settled': { label: 'واصل جزئي (تم المحاسبة)', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)' },
+    'delivered_replaced': { label: 'واصل تم الاستبدال (لم تتم المحاسبة)', color: '#059669', bg: 'rgba(5, 150, 105, 0.15)' },
+    'cancelled': { label: 'ملغي', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+    'returned_agent': { label: 'راجع', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
+    'returned_warehouse': { label: 'راجع مخزن', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.15)' },
+    'postponed': { label: 'مؤجل', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' },
+    'address_changed': { label: 'تغير عنوان', color: '#d946ef', bg: 'rgba(217, 70, 239, 0.15)' },
+    'resent': { label: 'إعادة ارسال', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' }
   };
 
   const statusGroups = [
@@ -1056,24 +1060,24 @@ export default function OrdersListPage() {
   }, [columnFilters, globalSearch, statusMap]);
 
   const matchHierarchyFilters = React.useCallback((order: any) => {
-    if (filterByProduct) {
+    if (filterByProduct && filterByProduct.length > 0) {
       const matchProd = (order.items || []).some((it: any) => {
         const h = getItemHierarchy(it);
-        return h.productId === filterByProduct || h.productName === filterByProduct;
+        return filterByProduct.includes(h.productId) || filterByProduct.includes(h.productName);
       });
       if (!matchProd) return false;
     }
-    if (filterByPage) {
+    if (filterByPage && filterByPage.length > 0) {
       const matchPage = (order.items || []).some((it: any) => {
         const h = getItemHierarchy(it);
-        return h.pageId === filterByPage || h.pageName === filterByPage;
+        return filterByPage.includes(h.pageId) || filterByPage.includes(h.pageName);
       });
       if (!matchPage) return false;
     }
-    if (filterByMainCat) {
+    if (filterByMainCat && filterByMainCat.length > 0) {
       const matchMain = (order.items || []).some((it: any) => {
         const h = getItemHierarchy(it);
-        return h.categoryId === filterByMainCat || h.categoryName === filterByMainCat;
+        return filterByMainCat.includes(h.categoryId) || filterByMainCat.includes(h.categoryName);
       });
       if (!matchMain) return false;
     }
@@ -2784,7 +2788,189 @@ export default function OrdersListPage() {
         
         let formattedNotes = itemsList;
         if (order.notes) {
-          formattedNotes += `\n\n*${order.notes}`;
+          formattedNotes += `\n\n
+    {/* Advanced Filters Row - MultiSelect */}
+    <div style={{ display: 'flex', gap: '1.5rem', padding: '0.8rem 1.5rem', flexWrap: 'wrap', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+      
+      {/* Pages MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>البيج:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'page' ? null : 'page')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByPage.length === 0 ? 'الكل' : 'محدد (' + filterByPage.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'page' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByPage(pagesDb.map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByPage([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن بيج..." value={pageSearchTerm} onChange={e => setPageSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {pagesDb.filter(p => p.name && p.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).map(p => (
+              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByPage.includes(p.id)} onChange={() => { setFilterByPage(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MainCat MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📁 التصنيف:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'mainCat' ? null : 'mainCat')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByMainCat.length === 0 ? 'الكل' : 'محدد (' + filterByMainCat.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'mainCat' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByMainCat(categoriesDb.map(c => c.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByMainCat([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن فئة..." value={mainCatSearchTerm} onChange={e => setMainCatSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {categoriesDb.filter(c => c.name && c.name.toLowerCase().includes(mainCatSearchTerm.toLowerCase())).map(c => (
+              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByMainCat.includes(c.id)} onChange={() => { setFilterByMainCat(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Product MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📦 الفئة:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'product' ? null : 'product')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByProduct.length === 0 ? 'الكل' : 'محدد (' + filterByProduct.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'product' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByProduct([...baseProducts, ...compositeProductsData].map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByProduct([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن تصنيف..." value={productSearchTerm} onChange={e => setProductSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {[...baseProducts, ...compositeProductsData].filter(p => p.name && p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map(p => (
+              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByProduct.includes(p.id)} onChange={() => { setFilterByProduct(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+    </div>\n
+    {/* Advanced Filters Row - MultiSelect */}
+    <div style={{ display: 'flex', gap: '1.5rem', padding: '0.8rem 1.5rem', flexWrap: 'wrap', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+      
+      {/* Pages MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>البيج:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'page' ? null : 'page')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByPage.length === 0 ? 'الكل' : 'محدد (' + filterByPage.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'page' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByPage(pagesDb.map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByPage([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن بيج..." value={pageSearchTerm} onChange={e => setPageSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {pagesDb.filter(p => p.name && p.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).map(p => (
+              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByPage.includes(p.id)} onChange={() => { setFilterByPage(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MainCat MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📁 التصنيف:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'mainCat' ? null : 'mainCat')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByMainCat.length === 0 ? 'الكل' : 'محدد (' + filterByMainCat.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'mainCat' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByMainCat(categoriesDb.map(c => c.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByMainCat([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن فئة..." value={mainCatSearchTerm} onChange={e => setMainCatSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {categoriesDb.filter(c => c.name && c.name.toLowerCase().includes(mainCatSearchTerm.toLowerCase())).map(c => (
+              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByMainCat.includes(c.id)} onChange={() => { setFilterByMainCat(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Product MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📦 الفئة:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'product' ? null : 'product')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByProduct.length === 0 ? 'الكل' : 'محدد (' + filterByProduct.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'product' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByProduct([...baseProducts, ...compositeProductsData].map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByProduct([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن تصنيف..." value={productSearchTerm} onChange={e => setProductSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {[...baseProducts, ...compositeProductsData].filter(p => p.name && p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map(p => (
+              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByProduct.includes(p.id)} onChange={() => { setFilterByProduct(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+    </div>\n\n*${order.notes}`;
         }
 
         let phone1 = order.customerPhone || order.phone || '';
@@ -3293,7 +3479,7 @@ export default function OrdersListPage() {
           top: 0, 
           bottom: 0, 
           width: '2px', 
-          backgroundColor: '#3b82f6', 
+          backgroundColor: 'var(--primary)', 
           zIndex: 9999, 
           pointerEvents: 'none' 
         }} 
@@ -3320,11 +3506,11 @@ export default function OrdersListPage() {
           
           
           {selectedOrderIds.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', backgroundColor: '#2a2d3d', border: '1px solid rgba(255,255,255,0.15)', padding: '0.5rem 1rem', borderRadius: '0.6rem' }}>
-              <span style={{color: '#ffffff', fontWeight: 'bold', fontSize: '1.1rem'}}>حالة الطلبات:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', backgroundColor: 'var(--surface)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '0.5rem 1rem', borderRadius: '0.6rem' }}>
+              <span style={{color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.1rem'}}>حالة الطلبات:</span>
               <select 
                 style={{
-                  backgroundColor: 'rgba(255,255,255,0.05)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.2)', 
+                  backgroundColor: 'var(--background)', color: 'var(--text-main)', border: '1px solid var(--border)', 
                   padding: '0.4rem 0.8rem', borderRadius: '6px', outline: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem'
                 }}
                 value={bulkStatusValue}
@@ -3333,14 +3519,14 @@ export default function OrdersListPage() {
                   handleStatusChangeRequest(newStatus, selectedOrderIds);
                 }}
               >
-                <option value="" disabled style={{color: '#ffffff', backgroundColor: '#1e1e2d', fontSize: '1.1rem', padding: '0.5rem'}}>اختر الحالة...</option>
+                <option value="" disabled style={{color: 'var(--text-muted)', backgroundColor: 'var(--surface)', fontSize: '1.1rem', padding: '0.5rem'}}>اختر الحالة...</option>
                 {statusGroups.map((group, idx) => (
-                  <optgroup key={idx} label={group.label} style={{backgroundColor: '#2a2d3d', color: '#94a3b8', fontStyle: 'normal'}}>
+                  <optgroup key={idx} label={group.label} style={{backgroundColor: 'var(--surface-hover)', color: 'var(--primary)', fontStyle: 'normal'}}>
                     {group.keys.map(key => {
                       const info = statusMap[key];
                       if (!info || key === 'returned_warehouse' || key === 'delivered_settled' || key === 'partial_settled') return null;
                       return (
-                        <option key={key} value={key} disabled={key === 'shipped' || key === 'ofd'} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
+                        <option key={key} value={key} disabled={key === 'shipped' || key === 'ofd'} style={{color: info.color, backgroundColor: 'var(--surface)', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
                           {info.label} {(key === 'shipped' || key === 'ofd') ? '(استخدم الترحيل)' : ''}
                         </option>
                       );
@@ -3476,7 +3662,7 @@ export default function OrdersListPage() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              boxShadow: '0 2px 4px rgba(139, 92, 246, 0.2)'
             }}
           >
             <span>📊 إحصائيات وتجهيز الطلبات</span>
@@ -3550,7 +3736,7 @@ export default function OrdersListPage() {
           className={`${styles.tabButton} ${activeTab === 'all' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('all')}
         >
-          📦 كافة الطلبات
+          كافة الطلبات
           {activeOrders.length > 0 && (
             <span className={styles.badgeGreen}>{activeOrders.length}</span>
           )}
@@ -3558,9 +3744,9 @@ export default function OrdersListPage() {
         <button 
           className={`${styles.tabButton} ${activeTab === 'landing_pages' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('landing_pages')}
-          style={{ borderColor: activeTab === 'landing_pages' ? '#8b5cf6' : 'transparent', backgroundColor: activeTab === 'landing_pages' ? 'rgba(139, 92, 246, 0.15)' : 'transparent' }}
+          
         >
-          🌐 طلبات صفحات الهبوط
+          طلبات صفحات الهبوط
           {landingPageOrdersList.length > 0 && (
             <span className={styles.badge} style={{ backgroundColor: '#8b5cf6' }}>{landingPageOrdersList.length}</span>
           )}
@@ -3568,9 +3754,9 @@ export default function OrdersListPage() {
         <button 
           className={`${styles.tabButton} ${activeTab === 'discrepancies' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('discrepancies')}
-          style={{ borderColor: activeTab === 'discrepancies' ? '#ef4444' : 'transparent' }}
+          
         >
-          🚨 الطلبات غير المتطابقة
+          الطلبات غير المتطابقة
           {discrepancyOrdersList.length > 0 && (
             <span className={styles.badge} style={{ backgroundColor: '#ef4444' }}>{discrepancyOrdersList.length}</span>
           )}
@@ -3579,7 +3765,7 @@ export default function OrdersListPage() {
           className={`${styles.tabButton} ${activeTab === 'returned' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('returned')}
         >
-          ↩️ تأكيد استلام الراجعات
+          تأكيد استلام الراجعات
           {returnedOrdersList.length > 0 && (
             <span className={styles.badge} style={{ backgroundColor: '#f97316' }}>{returnedOrdersList.length}</span>
           )}
@@ -3588,16 +3774,16 @@ export default function OrdersListPage() {
           className={`${styles.tabButton} ${activeTab === 'returned_warehouse' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('returned_warehouse')}
         >
-          📥 راجع مخزن
+          راجع مخزن
           {returnedWarehouseList.length > 0 && (
-            <span className={styles.badge} style={{ backgroundColor: '#10b981' }}>{returnedWarehouseList.length}</span>
+            <span className={styles.badge} style={{ backgroundColor: 'var(--primary)' }}>{returnedWarehouseList.length}</span>
           )}
         </button>
         <button 
           className={`${styles.tabButton} ${activeTab === 'duplicates' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('duplicates')}
         >
-          ⚠️ الطلبات المكررة
+          الطلبات المكررة
           {duplicateOrdersList.length > 0 && (
             <span className={styles.badge}>{duplicateOrdersList.length}</span>
           )}
@@ -3606,14 +3792,14 @@ export default function OrdersListPage() {
           className={`${styles.tabButton} ${activeTab === 'archived' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('archived')}
         >
-          📁 الطلبات المؤرشفة
+          الطلبات المؤرشفة
         </button>
         <button 
           className={`${styles.tabButton} ${activeTab === 'returns_archive' ? styles.tabButtonActive : ''}`}
           onClick={() => setActiveTab('returns_archive')}
-          style={{ backgroundColor: activeTab === 'returns_archive' ? '#8b5cf6' : 'transparent', color: activeTab === 'returns_archive' ? '#fff' : 'var(--text-muted)' }}
+          
         >
-          📜 سجل استلام الراجعات
+          سجل استلام الراجعات
         </button>
       </div>
 
@@ -3621,13 +3807,16 @@ export default function OrdersListPage() {
       {activeTab !== 'returns_archive' && (
         <div style={{
           display: 'flex',
-          gap: '0.6rem',
+          gap: '0.8rem',
+
           overflowX: 'auto',
+
+          width: '100%',
           padding: '0.75rem 1rem',
           margin: '0.5rem 0 1rem 0',
-          backgroundColor: '#1e1b2e',
+          backgroundColor: 'var(--surface)',
           borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.05)',
+          border: '1px solid var(--border)',
           scrollbarWidth: 'none',
           msOverflowStyle: 'none'
         }}>
@@ -3635,10 +3824,18 @@ export default function OrdersListPage() {
             onClick={() => setSelectedStatus('all')}
             style={{
               display: 'flex',
+
               alignItems: 'center',
+
+              justifyContent: 'center',
+
+              flex: '1 1 auto',
+
               gap: '0.5rem',
-              padding: '0.6rem 1rem',
-              borderRadius: '8px',
+
+              padding: '0.7rem 1rem',
+
+              borderRadius: '12px',
               border: selectedStatus === 'all' ? '2px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.08)',
               backgroundColor: selectedStatus === 'all' ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
               color: '#fff',
@@ -3664,12 +3861,6 @@ export default function OrdersListPage() {
           {Object.entries(statusMap).map(([statusKey, info]) => {
             const count = statusCounts[statusKey] || 0;
             const isActive = selectedStatus === statusKey;
-            const emojiMap: Record<string, string> = {
-              pending: '⏳', backordered: '📥', processing: '⚙️', shipped: '📦',
-              ofd: '🚚', delivered: '✅', delivered_settled: '🏦', partial: '🌗', partial_settled: '🏦', cancelled: '❌', returned: '↩️',
-              new: '✨', postponed: '📅'
-            };
-            
             if (count === 0 && !isActive) return null;
             
             return (
@@ -3678,13 +3869,22 @@ export default function OrdersListPage() {
                 onClick={() => setSelectedStatus(statusKey)}
                 style={{
                   display: 'flex',
+
                   alignItems: 'center',
+
+                  justifyContent: 'center',
+
+                  flex: '1 1 auto',
+
                   gap: '0.5rem',
-                  padding: '0.6rem 1rem',
-                  borderRadius: '8px',
-                  border: isActive ? `2px solid ${info.color}` : '1px solid rgba(255,255,255,0.04)',
-                  backgroundColor: isActive ? info.bg : 'rgba(255,255,255,0.02)',
-                  color: isActive ? '#fff' : 'var(--text-muted)',
+
+                  padding: '0.7rem 1rem',
+
+                  borderRadius: '12px',
+                  border: isActive ? `1px solid ${info.color}` : `1px solid ${info.bg}`,
+                  backgroundColor: info.bg,
+                  boxShadow: isActive ? `0 4px 20px ${info.bg}` : `0 2px 10px ${info.bg}`,
+                  color: isActive ? 'var(--text-main)' : 'var(--text-muted)',
                   cursor: 'pointer',
                   fontWeight: 'bold',
                   fontSize: '0.95rem',
@@ -3692,7 +3892,7 @@ export default function OrdersListPage() {
                   whiteSpace: 'nowrap'
                 }}
               >
-                <span>{emojiMap[statusKey] || '•'} {info.label}</span>
+                <span>{info.label}</span>
                 <span style={{
                   backgroundColor: info.bg,
                   color: info.color,
@@ -3743,7 +3943,7 @@ export default function OrdersListPage() {
       )}
 
       {/* Category / Page / Product Active Filter Banner */}
-      {(filterByProduct || filterByPage || filterByMainCat) && (
+      {(filterByProduct.length > 0 || filterByPage.length > 0 || filterByMainCat.length > 0) && (
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -3761,30 +3961,30 @@ export default function OrdersListPage() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             <span>🔍 تصفية نشطة حسب: </span>
-            {filterByProduct && (
+            {filterByProduct && filterByProduct.length > 0 && (
               <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#fff' }}>
-                📦 الصنف: {products.find(p => p.id === filterByProduct || p.name === filterByProduct)?.name || filterByProduct}
-                <button onClick={() => setFilterByProduct('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
+                التصنيف: {filterByProduct.map(id => products.find(p => p.id === id || p.name === id)?.name || id).join('، ')}
+                <button onClick={() => setFilterByProduct([])} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
               </span>
             )}
-            {filterByPage && (
+            {filterByPage && filterByPage.length > 0 && (
               <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#fff' }}>
-                🌐 البيج: {pagesDb.find(pg => pg.id === filterByPage || pg.name === filterByPage)?.name || filterByPage}
-                <button onClick={() => setFilterByPage('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
+                البيج: {filterByPage.map(id => pagesDb.find(pg => pg.id === id || pg.name === id)?.name || id).join('، ')}
+                <button onClick={() => setFilterByPage([])} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
               </span>
             )}
-            {filterByMainCat && (
+            {filterByMainCat && filterByMainCat.length > 0 && (
               <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#fff' }}>
-                📁 الفئة الرئيسية: {categoriesDb.find(c => c.id === filterByMainCat || c.name === filterByMainCat)?.name || filterByMainCat}
-                <button onClick={() => setFilterByMainCat('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
+                الفئة: {filterByMainCat.map(id => categoriesDb.find(c => c.id === id || c.name === id)?.name || id).join('، ')}
+                <button onClick={() => setFilterByMainCat([])} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem' }}>✖</button>
               </span>
             )}
           </div>
           <button 
             onClick={() => {
-              setFilterByProduct('');
-              setFilterByPage('');
-              setFilterByMainCat('');
+              setFilterByProduct([]);
+              setFilterByPage([]);
+              setFilterByMainCat([]);
             }}
             style={{
               backgroundColor: '#ef4444',
@@ -3894,9 +4094,9 @@ export default function OrdersListPage() {
               setDateFilter('الكل');
               setSelectedStatus('all');
               setIsolatedOrderIds([]);
-              setFilterByProduct('');
-              setFilterByPage('');
-              setFilterByMainCat('');
+              setFilterByProduct([]);
+              setFilterByPage([]);
+              setFilterByMainCat([]);
               setCurrentPage(1);
               const resetFilters = {
                 id: '', customerName: '', governorate: '', phone: '', phone2: '', totalAmount: '',
@@ -4031,13 +4231,13 @@ export default function OrdersListPage() {
               </div>
             )}
           </div>
-          <Link href="/orders/entry" className={styles.controlButton} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', fontWeight: 'bold', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Link href="/orders/entry" className={styles.controlButton} style={{ background: 'linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%)', color: '#fff', fontWeight: 'bold', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span>📥 استيراد Excel / إدخال طلبات</span>
           </Link>
           <div style={{ position: 'relative' }} ref={columnVisibilityRef}>
             <button 
               className={styles.controlButton} 
-              style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}
+              style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', color: 'var(--primary)' }}
               onClick={() => setShowColumnVisibilityDropdown(!showColumnVisibilityDropdown)}
             >
               عرض الأعمدة 👁️
@@ -4083,7 +4283,101 @@ export default function OrdersListPage() {
         </div>
       </div>
 
-      {/* Data Table */}
+      
+    
+    
+    
+    {/* Advanced Filters Row - MultiSelect */}
+    <div style={{ display: 'flex', gap: '1.5rem', padding: '0.8rem 1.5rem', flexWrap: 'wrap', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+      
+      {/* Pages MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>البيج:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'page' ? null : 'page')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByPage.length === 0 ? 'الكل' : 'محدد (' + filterByPage.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'page' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByPage(pagesDb.map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByPage([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن بيج..." value={pageSearchTerm} onChange={e => setPageSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {pagesDb.filter(p => p.name && p.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).map(p => (
+              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByPage.includes(p.id)} onChange={() => { setFilterByPage(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MainCat (categoriesDb) -> Now Labeled "الفئة" MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>الفئة:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'mainCat' ? null : 'mainCat')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByMainCat.length === 0 ? 'الكل' : 'محدد (' + filterByMainCat.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'mainCat' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByMainCat(categoriesDb.map(c => c.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByMainCat([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن فئة..." value={mainCatSearchTerm} onChange={e => setMainCatSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {categoriesDb.filter(c => c.name && c.name.toLowerCase().includes(mainCatSearchTerm.toLowerCase())).map(c => (
+              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByMainCat.includes(c.id)} onChange={() => { setFilterByMainCat(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Product (baseProducts) -> Now Labeled "التصنيف" MultiSelect */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
+        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>التصنيف:</span>
+        <button 
+          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'product' ? null : 'product')}
+          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{filterByProduct.length === 0 ? 'الكل' : 'محدد (' + filterByProduct.length + ')'}</span>
+          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
+        </button>
+        {openFilterDropdown === 'product' && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <button onClick={() => { setFilterByProduct([...baseProducts, ...compositeProductsData].map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
+              <button onClick={() => { setFilterByProduct([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
+            </div>
+            
+            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+              <input type="text" autoFocus placeholder="بحث عن تصنيف..." value={productSearchTerm} onChange={e => setProductSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
+            </div>
+            {[...baseProducts, ...compositeProductsData].filter(p => p.name && p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map(p => (
+              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
+                <input type="checkbox" checked={filterByProduct.includes(p.id)} onChange={() => { setFilterByProduct(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+    </div>\n\n{/* Data Table */}
       {activeTab !== 'returns_archive' && (
         <div className={styles.tableWrapper}>
         <table className={styles.table} style={{ minWidth: '100%', width: calculateTableWidth() }}>
@@ -4305,9 +4599,9 @@ export default function OrdersListPage() {
                   {visibleColumns.id && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
-                        <div style={{ display: 'inline-block', background: '#fff', padding: '4px', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ display: 'inline-block', background: 'var(--surface)', padding: '4px', borderRadius: '4px', overflow: 'hidden' }}>
                           <QRCode value={order.id.slice(-6).toUpperCase()} size={40} />
-                          <div style={{ textAlign: 'center', fontSize: '10px', color: '#000', fontWeight: 'bold', marginTop: '2px' }}>
+                          <div style={{ textAlign: 'center', fontSize: '10px', color: 'var(--text-main)', fontWeight: 'bold', marginTop: '2px' }}>
                             {order.id.slice(-6).toUpperCase()}
                           </div>
                         </div>
@@ -4322,7 +4616,7 @@ export default function OrdersListPage() {
                   {visibleColumns.employeeName && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
-                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="مستخدم النظام">{order.employeeName || '---'}</span>
+                        <span style={{ fontWeight: "600", color: "var(--primary)" }} title="مستخدم النظام">{order.employeeName || '---'}</span>
                       </div>
                     </td>
                   )}
@@ -4330,17 +4624,17 @@ export default function OrdersListPage() {
                   {visibleColumns.phone && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>}
                   {visibleColumns.phone2 && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone2 || order.phone2 || ''}</td>}
                   {visibleColumns.totalAmount && (
-                    <td style={{ color: '#10B981', fontWeight: 'bold' }}>
+                    <td style={{ color: "var(--primary)", fontWeight: "bold" }}>
                       {new Intl.NumberFormat('en-US').format((order.totalAmount || order.price || 0) + (order.deliveryCost || 0))} د.ع
                     </td>
                   )}
                   {visibleColumns.deliveryCost && (
-                    <td style={{ color: '#f59e0b', fontWeight: 'bold' }}>
+                    <td style={{ color: "var(--primary)", fontWeight: "bold", opacity: 0.8 }}>
                       {order.deliveryCost ? `${new Intl.NumberFormat('en-US').format(order.deliveryCost)} د.ع` : '-'}
                     </td>
                   )}
                   {visibleColumns.netAmount && (
-                    <td style={{ color: '#3b82f6', fontWeight: 'bold' }}>
+                    <td style={{ color: "var(--primary)", fontWeight: "bold" }}>
                       {new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع
                     </td>
                   )}
@@ -4356,7 +4650,7 @@ export default function OrdersListPage() {
                           borderRadius: '1.5rem', 
                           fontSize: '1rem', 
                           fontWeight: 'bold',
-                          border: '1px solid rgba(255,255,255,0.05)',
+                          border: '1px solid var(--border)',
                           outline: 'none',
                           cursor: 'pointer',
                           appearance: 'none',
@@ -4368,12 +4662,12 @@ export default function OrdersListPage() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         {statusGroups.map((group, idx) => (
-                          <optgroup key={idx} label={group.label} style={{backgroundColor: '#2a2d3d', color: '#94a3b8', fontStyle: 'normal'}}>
+                          <optgroup key={idx} label={group.label} style={{backgroundColor: 'var(--surface-hover)', color: 'var(--primary)', fontStyle: 'normal'}}>
                             {group.keys.map(key => {
                               const info = statusMap[key];
                               if (!info || (key === 'returned_warehouse' && order.status !== 'returned_warehouse') || key === 'delivered_settled' || key === 'partial_settled') return null;
                               return (
-                                <option key={key} value={key} disabled={key === 'shipped' || key === 'ofd'} style={{color: info.color, backgroundColor: '#1e1e2d', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
+                                <option key={key} value={key} disabled={key === 'shipped' || key === 'ofd'} style={{color: info.color, backgroundColor: 'var(--surface)', textAlign: 'right', fontSize: '1.1rem', padding: '0.5rem', fontWeight: 'bold'}}>
                                   {info.label} {(key === 'shipped' || key === 'ofd') ? '(استخدم الترحيل)' : ''}
                                 </option>
                               );
@@ -4392,27 +4686,27 @@ export default function OrdersListPage() {
                       )}
                       {order.returnBatchId && (
                          <div style={{ fontSize: '0.85rem', color: '#a78bfa', width: '100%', textAlign: 'center', marginTop: '2px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                           <span>📁 كشف: {order.returnBatchId}</span>
+                           <span>كشف: {order.returnBatchId}</span>
                          </div>
                       )}
                       {order.paymentStatus === 'settled' && order.settlementStatementId && (
                          <div style={{ fontSize: '0.85rem', color: '#10b981', width: '100%', textAlign: 'center', marginTop: '2px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                           <span>📄 كشف المحاسبة: {order.settlementStatementId}</span>
+                           <span>كشف المحاسبة: {order.settlementStatementId}</span>
                          </div>
                       )}
                       {order.updatedBy === 'albarq_webhook' && (
                          <div style={{ fontSize: '0.75rem', color: '#6366f1', width: '100%', textAlign: 'center', marginTop: '4px', fontWeight: 'bold' }}>
-                           ⚡ تم التحديث من البرق
+                           تم التحديث من البرق
                          </div>
                       )}
                       {order.updatedBy === 'jenni_webhook' && (
                          <div style={{ fontSize: '0.75rem', color: '#ec4899', width: '100%', textAlign: 'center', marginTop: '4px', fontWeight: 'bold' }}>
-                           🚚 تم التحديث من جيني
+                           تم التحديث من جيني
                          </div>
                       )}
                       {order.deliveryNote && (
                          <div style={{ fontSize: '0.75rem', color: '#fcd34d', width: '100%', textAlign: 'center', marginTop: '4px', fontWeight: 'bold' }}>
-                           📝 {order.deliveryNote}
+                           {order.deliveryNote}
                          </div>
                       )}
                       {order.deliveryStatus && (
@@ -4448,7 +4742,7 @@ export default function OrdersListPage() {
                   {visibleColumns.bookingEmployeeName && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
-                        <span style={{ fontWeight: '600', color: '#60a5fa' }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || order.employeeName || '---'}</span>
+                        <span style={{ fontWeight: "600", color: "var(--primary)" }} title="الموظف اللي حجز الطلب">{order.bookingEmployeeName || order.employeeName || '---'}</span>
                       </div>
                     </td>
                   )}
@@ -4781,7 +5075,7 @@ export default function OrdersListPage() {
                 <button
                   onClick={exportStatsToExcel}
                   style={{
-                    backgroundColor: '#10b981',
+                    backgroundColor: 'var(--primary)',
                     color: '#fff',
                     border: 'none',
                     padding: '0.4rem 0.8rem',
@@ -4802,14 +5096,14 @@ export default function OrdersListPage() {
               {statsActiveTab === 'kpis' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                   {/* Progress Bar */}
-                  <div style={{ backgroundColor: 'var(--surface)', padding: '1.2rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ backgroundColor: 'var(--surface)', padding: '1.2rem', borderRadius: '10px', border: '1px solid var(--border)' }}>
                     <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1.1rem', color: '#fff', display: 'flex', justifyContent: 'space-between' }}>
                       <span>📊 التوزيع النسبي لحالات الطلبات</span>
                       <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>إجمالي: {statsData.totalOrdersCount} طلب</span>
                     </h3>
                     <div style={{ width: '100%', height: '24px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', display: 'flex', margin: '0.8rem 0' }}>
                       {Number(statsData.deliveredPct) > 0 && (
-                        <div style={{ width: `${statsData.deliveredPct}%`, backgroundColor: '#10b981', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`الواصل: ${statsData.deliveredPct}%`}>
+                        <div style={{ width: `${statsData.deliveredPct}%`, backgroundColor: 'var(--primary)', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`الواصل: ${statsData.deliveredPct}%`}>
                           {Number(statsData.deliveredPct) >= 8 ? `${statsData.deliveredPct}%` : ''}
                         </div>
                       )}
@@ -4830,7 +5124,7 @@ export default function OrdersListPage() {
                       )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '0.5rem', marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#10b981', display: 'inline-block' }}></span> واصل ومكتمل ({statsData.deliveredPct}%)</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: 'var(--primary)', display: 'inline-block' }}></span> واصل ومكتمل ({statsData.deliveredPct}%)</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#3b82f6', display: 'inline-block' }}></span> قيد التوصيل / التجهيز ({statsData.inProgressPct}%)</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#f97316', display: 'inline-block' }}></span> راجعات ({statsData.returnedPct}%)</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#ef4444', display: 'inline-block' }}></span> ملغي ({statsData.cancelledPct}%)</span>
@@ -4842,7 +5136,7 @@ export default function OrdersListPage() {
                     <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1.2rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.05rem' }}>🟢 الطلبات الواصلة والمكتملة</span>
-                        <span style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.deliveredPct}%</span>
+                        <span style={{ backgroundColor: 'var(--primary)', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.deliveredPct}%</span>
                       </div>
                       <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#fff', margin: '0.4rem 0' }}>{statsData.deliveredCount} <span style={{ fontSize: '1rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>طلب</span></div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(16, 185, 129, 0.2)', paddingTop: '0.6rem' }}>
@@ -4896,7 +5190,7 @@ export default function OrdersListPage() {
                     <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد أصناف في الطلبات المعروضة حالياً.</p>
                   ) : (
                     statsData.productsList.map((prod, idx) => {
-                      const isFiltered = filterByProduct === prod.id || filterByProduct === prod.name;
+                      const isFiltered = filterByProduct.includes(prod.id) || filterByProduct.includes(prod.name);
                       return (
                         <div key={idx} style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -4919,14 +5213,14 @@ export default function OrdersListPage() {
                             <button
                               onClick={() => {
                                 if (isFiltered) {
-                                  setFilterByProduct('');
+                                  setFilterByProduct([]);
                                   setSelectedOrderIds([]);
                                 } else {
-                                  setFilterByProduct(prod.id || prod.name);
+                                  setFilterByProduct(prev => [...prev, prod.id || prod.name]);
                                   setSelectedOrderIds(prod.orderIds);
                                 }
-                                setFilterByPage('');
-                                setFilterByMainCat('');
+                                setFilterByPage([]);
+                                setFilterByMainCat([]);
                                 setShowStatsModal(false);
                               }}
                               style={{
@@ -4950,7 +5244,7 @@ export default function OrdersListPage() {
                     <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد بيانات بيجات في الطلبات المعروضة حالياً.</p>
                   ) : (
                     statsData.pagesList.map((pg, idx) => {
-                      const isFiltered = filterByPage === pg.id || filterByPage === pg.name;
+                      const isFiltered = filterByPage.includes(pg.id) || filterByPage.includes(pg.name);
                       const pct = statsData.totalOrdersCount > 0 ? ((pg.orderCount / statsData.totalOrdersCount) * 100).toFixed(1) : '0';
                       return (
                         <div key={idx} style={{
@@ -4974,14 +5268,14 @@ export default function OrdersListPage() {
                             <button
                               onClick={() => {
                                 if (isFiltered) {
-                                  setFilterByPage('');
+                                  setFilterByPage([]);
                                   setSelectedOrderIds([]);
                                 } else {
-                                  setFilterByPage(pg.id || pg.name);
+                                  setFilterByPage(prev => [...prev, pg.id || pg.name]);
                                   setSelectedOrderIds(pg.orderIds);
                                 }
-                                setFilterByProduct('');
-                                setFilterByMainCat('');
+                                setFilterByProduct([]);
+                                setFilterByMainCat([]);
                                 setShowStatsModal(false);
                               }}
                               style={{
@@ -5005,7 +5299,7 @@ export default function OrdersListPage() {
                     <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد فئات رئيسية في الطلبات المعروضة حالياً.</p>
                   ) : (
                     statsData.mainCatList.map((mCat, idx) => {
-                      const isFiltered = filterByMainCat === mCat.id || filterByMainCat === mCat.name;
+                      const isFiltered = filterByMainCat.includes(mCat.id) || filterByMainCat.includes(mCat.name);
                       const pct = statsData.totalOrdersCount > 0 ? ((mCat.orderCount / statsData.totalOrdersCount) * 100).toFixed(1) : '0';
                       return (
                         <div key={idx} style={{
@@ -5029,14 +5323,14 @@ export default function OrdersListPage() {
                             <button
                               onClick={() => {
                                 if (isFiltered) {
-                                  setFilterByMainCat('');
+                                  setFilterByMainCat([]);
                                   setSelectedOrderIds([]);
                                 } else {
-                                  setFilterByMainCat(mCat.id || mCat.name);
+                                  setFilterByMainCat(prev => [...prev, mCat.id || mCat.name]);
                                   setSelectedOrderIds(mCat.orderIds);
                                 }
-                                setFilterByProduct('');
-                                setFilterByPage('');
+                                setFilterByProduct([]);
+                                setFilterByPage([]);
                                 setShowStatsModal(false);
                               }}
                               style={{
@@ -5246,7 +5540,7 @@ export default function OrdersListPage() {
                           <td style={{ fontWeight: 'bold' }}>{item.productName || 'صنف غير معروف'}</td>
                           <td>{item.quantity}</td>
                           <td>{new Intl.NumberFormat('en-US').format(item.unitPrice || 0)} د.ع</td>
-                          <td style={{ color: '#10B981', fontWeight: 'bold' }}>
+                          <td style={{ color: "var(--primary)", fontWeight: "bold" }}>
                             {new Intl.NumberFormat('en-US').format((item.quantity || 0) * (item.unitPrice || 0))} د.ع
                           </td>
                         </tr>
@@ -5340,7 +5634,7 @@ export default function OrdersListPage() {
         
         return (
         <div className={styles.modalOverlay} onClick={() => setEditingOrder(null)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', width: '95%', backgroundColor: '#1e1b2e' }}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', width: '95%', backgroundColor: 'var(--surface)' }}>
             <div className={styles.modalHeader}>
               <h2>✏️ تعديل الطلب <span style={{ color: 'var(--primary)', fontSize: '1rem', marginRight: '0.5rem' }}>#{editingOrder.id.slice(-6).toUpperCase()}</span></h2>
               <button className={styles.closeButton} onClick={() => setEditingOrder(null)}>×</button>
@@ -6299,43 +6593,68 @@ export default function OrdersListPage() {
 
       {showBulkSelectModal && (
         <div className={styles.modalOverlay} onClick={() => setShowBulkSelectModal(false)}>
-          <div className={styles.modalContent} onClick={e => e.stopPropagation()} style={{maxWidth: '500px'}}>
-            <div className={styles.modalHeader}>
-              <h3>📋 تحديد متعدد (لصق المعرفات)</h3>
-              <button className={styles.closeButton} onClick={() => setShowBulkSelectModal(false)}>×</button>
+          <div className={styles.modalContent} onClick={e => e.stopPropagation()} style={{
+            maxWidth: '650px', 
+            borderRadius: '24px', 
+            padding: '2.5rem',
+            backgroundColor: 'var(--surface)',
+            border: '1px solid rgba(0,0,0,0.05)',
+            boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0,0,0,0.02)'
+          }}>
+            <div className={styles.modalHeader} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0, color: 'var(--text-main)', fontSize: '1.4rem', fontWeight: '700', letterSpacing: '-0.5px' }}>تحديد متعدد (لصق المعرفات)</h3>
+              <button className={styles.closeButton} onClick={() => setShowBulkSelectModal(false)} style={{ background: 'var(--bg-card)', color: 'var(--text-muted)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }} onMouseOver={e => {e.currentTarget.style.background='#ef4444'; e.currentTarget.style.color='#fff';}} onMouseOut={e => {e.currentTarget.style.background='var(--bg-card)'; e.currentTarget.style.color='var(--text-muted)';}}>×</button>
             </div>
             <div className={styles.modalBody}>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>
-                قم بلصق أرقام الطلبات أو المعرفات هنا (يمكنك نسخ عمود كامل من الإكسل ولصقه مباشرة).
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '1rem', lineHeight: '1.6' }}>
+                قم بلصق أرقام الطلبات أو المعرفات هنا (يمكنك نسخ عمود كامل من الإكسل ولصقه مباشرة). سيتم تحديد الطلبات المطابقة تلقائياً.
               </p>
               <textarea
                 value={bulkSelectText}
                 onChange={(e) => {
-                  // تقسيم الطلبات تلقائياً كما طلب المستخدم (كل معرف في سطر)
                   const formatted = e.target.value.replace(/[\s,]+/g, '\n').replace(/^\n/, '');
                   setBulkSelectText(formatted);
                 }}
                 placeholder="مثال:&#10;206061600027&#10;100209&#10;100208"
                 style={{
                   width: '100%',
-                  height: '200px',
-                  backgroundColor: 'var(--surface)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '0.5rem',
-                  padding: '1rem',
-                  fontSize: '1rem',
+                  height: '250px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.5)',
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
+                  color: 'var(--text-main)',
+                  border: '1px solid rgba(0, 0, 0, 0.08)',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  fontSize: '1.1rem',
                   resize: 'vertical',
                   direction: 'ltr',
-                  textAlign: 'left'
+                  textAlign: 'left',
+                  outline: 'none',
+                  fontFamily: 'monospace',
+                  boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.02), 0 2px 10px rgba(0,0,0,0.02)',
+                  transition: 'all 0.3s'
+                }}
+                onFocus={(e) => { 
+                  e.target.style.borderColor = 'var(--primary)'; 
+                  e.target.style.backgroundColor = 'var(--surface)';
+                  e.target.style.boxShadow = '0 0 0 4px rgba(139, 92, 246, 0.15), inset 0 2px 6px rgba(0,0,0,0.01)'; 
+                }}
+                onBlur={(e) => { 
+                  e.target.style.borderColor = 'rgba(0, 0, 0, 0.08)'; 
+                  e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+                  e.target.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.02), 0 2px 10px rgba(0,0,0,0.02)'; 
                 }}
               />
             </div>
-            <div className={styles.modalFooter} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <button className={styles.cancelButton} onClick={() => setShowBulkSelectModal(false)}>إلغاء</button>
-              <button className={styles.submitButton} style={{ backgroundColor: '#ef4444', color: '#fff' }} onClick={handleBulkSelectInverse}>تحديد غير المطابق</button>
-              <button className={styles.submitButton} style={{ backgroundColor: '#10b981', color: '#fff' }} onClick={handleBulkSelectAndShow}>إظهار الطلبات المحددة</button>
-              <button className={styles.saveButton} onClick={handleBulkSelectSubmit}>تحديد الطلبات</button>
+            <div className={styles.modalFooter} style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', justifyContent: 'flex-start', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
+              <button onClick={handleBulkSelectSubmit} style={{ padding: '0.8rem 1.2rem', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', flex: 1, boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)', transition: 'all 0.2s' }}>تحديد الطلبات</button>
+              
+              <button onClick={handleBulkSelectAndShow} style={{ padding: '0.8rem 1.2rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', flex: 1, transition: 'all 0.2s' }}>إظهار المحددة</button>
+
+              <button onClick={handleBulkSelectInverse} style={{ padding: '0.8rem 1.2rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', flex: 1, transition: 'all 0.2s' }}>تحديد غير المطابق</button>
+
+              <button onClick={() => setShowBulkSelectModal(false)} style={{ padding: '0.8rem 1.5rem', backgroundColor: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}>إلغاء</button>
             </div>
           </div>
         </div>
@@ -6464,7 +6783,7 @@ export default function OrdersListPage() {
                 <button
                   onClick={exportStatsToExcel}
                   style={{
-                    backgroundColor: '#10b981',
+                    backgroundColor: 'var(--primary)',
                     color: '#fff',
                     border: 'none',
                     padding: '0.4rem 0.8rem',
@@ -6485,14 +6804,14 @@ export default function OrdersListPage() {
               {statsActiveTab === 'kpis' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                   {/* Progress Bar */}
-                  <div style={{ backgroundColor: 'var(--surface)', padding: '1.2rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ backgroundColor: 'var(--surface)', padding: '1.2rem', borderRadius: '10px', border: '1px solid var(--border)' }}>
                     <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '1.1rem', color: '#fff', display: 'flex', justifyContent: 'space-between' }}>
                       <span>📊 التوزيع النسبي لحالات الطلبات</span>
                       <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>إجمالي: {statsData.totalOrdersCount} طلب</span>
                     </h3>
                     <div style={{ width: '100%', height: '24px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', display: 'flex', margin: '0.8rem 0' }}>
                       {Number(statsData.deliveredPct) > 0 && (
-                        <div style={{ width: `${statsData.deliveredPct}%`, backgroundColor: '#10b981', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`الواصل: ${statsData.deliveredPct}%`}>
+                        <div style={{ width: `${statsData.deliveredPct}%`, backgroundColor: 'var(--primary)', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', transition: 'width 0.3s ease' }} title={`الواصل: ${statsData.deliveredPct}%`}>
                           {Number(statsData.deliveredPct) >= 8 ? `${statsData.deliveredPct}%` : ''}
                         </div>
                       )}
@@ -6513,7 +6832,7 @@ export default function OrdersListPage() {
                       )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '0.5rem', marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#10b981', display: 'inline-block' }}></span> واصل ومكتمل ({statsData.deliveredPct}%)</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: 'var(--primary)', display: 'inline-block' }}></span> واصل ومكتمل ({statsData.deliveredPct}%)</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#3b82f6', display: 'inline-block' }}></span> قيد التوصيل / التجهيز ({statsData.inProgressPct}%)</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#f97316', display: 'inline-block' }}></span> راجعات ({statsData.returnedPct}%)</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#ef4444', display: 'inline-block' }}></span> ملغي ({statsData.cancelledPct}%)</span>
@@ -6526,7 +6845,7 @@ export default function OrdersListPage() {
                     <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1.2rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.05rem' }}>🟢 الطلبات الواصلة والمكتملة</span>
-                        <span style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.deliveredPct}%</span>
+                        <span style={{ backgroundColor: 'var(--primary)', color: '#fff', fontWeight: 'bold', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.85rem' }}>{statsData.deliveredPct}%</span>
                       </div>
                       <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#fff', margin: '0.4rem 0' }}>{statsData.deliveredCount} <span style={{ fontSize: '1rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>طلب</span></div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(16, 185, 129, 0.2)', paddingTop: '0.6rem' }}>
@@ -6583,7 +6902,7 @@ export default function OrdersListPage() {
                     <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد أصناف في الطلبات المعروضة حالياً.</p>
                   ) : (
                     statsData.productsList.map((prod, idx) => {
-                      const isFiltered = filterByProduct === prod.id || filterByProduct === prod.name;
+                      const isFiltered = filterByProduct.includes(prod.id) || filterByProduct.includes(prod.name);
                       return (
                         <div key={idx} style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -6606,15 +6925,15 @@ export default function OrdersListPage() {
                             <button
                               onClick={() => {
                                 if (isFiltered) {
-                                  setFilterByProduct('');
+                                  setFilterByProduct([]);
                                   setSelectedOrderIds([]);
                                 } else {
-                                  setFilterByProduct(prod.id || prod.name);
+                                  setFilterByProduct(prev => [...prev, prod.id || prod.name]);
                                   setSelectedOrderIds(prod.orderIds);
                                 }
-                                setFilterByPage('');
-                                setFilterByMainCat('');
-                                setFilterBySubCat('');
+                                setFilterByPage([]);
+                                setFilterByMainCat([]);
+                                setFilterBySubCat([]);
                                 setShowStatsModal(false);
                               }}
                               style={{
@@ -6638,7 +6957,7 @@ export default function OrdersListPage() {
                     <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد بيانات بيجات في الطلبات المعروضة حالياً.</p>
                   ) : (
                     statsData.pagesList.map((pg, idx) => {
-                      const isFiltered = filterByPage === pg.id || filterByPage === pg.name;
+                      const isFiltered = filterByPage.includes(pg.id) || filterByPage.includes(pg.name);
                       const pct = statsData.totalOrdersCount > 0 ? ((pg.orderCount / statsData.totalOrdersCount) * 100).toFixed(1) : '0';
                       return (
                         <div key={idx} style={{
@@ -6662,15 +6981,15 @@ export default function OrdersListPage() {
                             <button
                               onClick={() => {
                                 if (isFiltered) {
-                                  setFilterByPage('');
+                                  setFilterByPage([]);
                                   setSelectedOrderIds([]);
                                 } else {
-                                  setFilterByPage(pg.id || pg.name);
+                                  setFilterByPage(prev => [...prev, pg.id || pg.name]);
                                   setSelectedOrderIds(pg.orderIds);
                                 }
-                                setFilterByProduct('');
-                                setFilterByMainCat('');
-                                setFilterBySubCat('');
+                                setFilterByProduct([]);
+                                setFilterByMainCat([]);
+                                setFilterBySubCat([]);
                                 setShowStatsModal(false);
                               }}
                               style={{
@@ -6694,7 +7013,7 @@ export default function OrdersListPage() {
                     <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد فئات رئيسية في الطلبات المعروضة حالياً.</p>
                   ) : (
                     statsData.mainCatList.map((mCat, idx) => {
-                      const isFiltered = filterByMainCat === mCat.id || filterByMainCat === mCat.name;
+                      const isFiltered = filterByMainCat.includes(mCat.id) || filterByMainCat.includes(mCat.name);
                       const pct = statsData.totalOrdersCount > 0 ? ((mCat.orderCount / statsData.totalOrdersCount) * 100).toFixed(1) : '0';
                       return (
                         <div key={idx} style={{
@@ -6718,15 +7037,15 @@ export default function OrdersListPage() {
                             <button
                               onClick={() => {
                                 if (isFiltered) {
-                                  setFilterByMainCat('');
+                                  setFilterByMainCat([]);
                                   setSelectedOrderIds([]);
                                 } else {
-                                  setFilterByMainCat(mCat.id || mCat.name);
+                                  setFilterByMainCat(prev => [...prev, mCat.id || mCat.name]);
                                   setSelectedOrderIds(mCat.orderIds);
                                 }
-                                setFilterByProduct('');
-                                setFilterByPage('');
-                                setFilterBySubCat('');
+                                setFilterByProduct([]);
+                                setFilterByPage([]);
+                                setFilterBySubCat([]);
                                 setShowStatsModal(false);
                               }}
                               style={{
@@ -6750,7 +7069,7 @@ export default function OrdersListPage() {
                     <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا توجد فئات فرعية في الطلبات المعروضة حالياً.</p>
                   ) : (
                     statsData.subCatList.map((sCat, idx) => {
-                      const isFiltered = filterBySubCat === sCat.id || filterBySubCat === sCat.name;
+                      const isFiltered = filterBySubCat.includes(sCat.id) || filterBySubCat.includes(sCat.name);
                       return (
                         <div key={idx} style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -6772,15 +7091,15 @@ export default function OrdersListPage() {
                             <button
                               onClick={() => {
                                 if (isFiltered) {
-                                  setFilterBySubCat('');
+                                  setFilterBySubCat([]);
                                   setSelectedOrderIds([]);
                                 } else {
-                                  setFilterBySubCat(sCat.id || sCat.name);
+                                  setFilterBySubCat(prev => [...prev, sCat.id || sCat.name]);
                                   setSelectedOrderIds(sCat.orderIds);
                                 }
-                                setFilterByProduct('');
-                                setFilterByPage('');
-                                setFilterByMainCat('');
+                                setFilterByProduct([]);
+                                setFilterByPage([]);
+                                setFilterByMainCat([]);
                                 setShowStatsModal(false);
                               }}
                               style={{
