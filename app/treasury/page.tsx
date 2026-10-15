@@ -559,6 +559,14 @@ export default function TreasurySettlementPage() {
             settlementImages: isFirstOrder ? uploadedUrls : []
           });
 
+          const orderLogRef = doc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id, 'logs'));
+          batch.set(orderLogRef, {
+            action: 'تسوية مالية (الخزينة)',
+            details: `تم استلام المبلغ (${receivedAmount.toLocaleString()} د.ع) وإيداعه في محفظة "${selectedWallet.name}"${externalStatementId ? ' ضمن كشف محاسبة رقم: ' + externalStatementId : ''}`,
+            employeeName: auth.currentUser?.displayName || auth.currentUser?.email || 'مسؤول الخزينة',
+            timestamp: serverTimestamp()
+          });
+
           isFirstOrder = false;
         }
       });

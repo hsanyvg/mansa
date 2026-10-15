@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db, auth } from "../../../../lib/firebase";
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, collection, setDoc } from 'firebase/firestore';
 import { adminDb, adminAuth } from "../../../../lib/firebaseAdmin";
 
 export async function POST(req: Request) {
@@ -114,6 +114,54 @@ export async function POST(req: Request) {
         }
 
         await updateDoc(orderRef, updateData);
+
+        const arabicStatusMap: Record<string, string> = {
+          delivered: 'مكتمل (واصل)',
+          delivered_settled: 'مكتمل (تم المحاسبة)',
+          delivered_replaced: 'واصل تم الاستبدال',
+          returned: 'راجع',
+          returned_agent: 'راجع مع المندوب',
+          returned_warehouse: 'راجع مخزن',
+          postponed: 'مؤجل',
+          partial: 'واصل جزئي',
+          partial_settled: 'واصل جزئي (تم المحاسبة)',
+          shipped: 'تم الشحن',
+          ofd: 'قيد التوصيل (مع المندوب)',
+          address_changed: 'تغير عنوان',
+          resent: 'إعادة إرسال',
+          processing: 'قيد التجهيز',
+          pending: 'قيد الانتظار',
+          cancelled: 'ملغي'
+        };
+        const arabicOldStatus = existingData ? (arabicStatusMap[existingData.status] || existingData.status) : '';
+        const arabicNewStatus = arabicStatusMap[newStatus] || newStatus;
+
+        let logDetails = existingData && existingData.status !== newStatus
+          ? `تم تحديث الحالة تلقائياً من "${arabicOldStatus}" إلى "${arabicNewStatus}"`
+          : `تحديث من شركة التوصيل (${arabicNewStatus})`;
+
+        if (update.note) {
+          logDetails += ` • ملاحظة الشحن: "${update.note}"`;
+        }
+        if (update.action_code) {
+          logDetails += ` • إجراء: (${update.action_code})`;
+        }
+        if (update.amount_iqd) {
+          logDetails += ` • المبلغ: ${Number(update.amount_iqd).toLocaleString()} د.ع`;
+        }
+
+        try {
+          const logRef = doc(collection(orderRef, 'logs'));
+          await setDoc(logRef, {
+            action: 'تحديث تلقائي (شركة جيني)',
+            details: logDetails,
+            employeeName: '🤖 شركة جيني (تلقائي)',
+            timestamp: serverTimestamp()
+          });
+        } catch (logErr) {
+          console.error('Failed to write log:', logErr);
+        }
+
         processedCount++;
       } catch (docErr) {
         console.error(`Failed to update order ${orderId}:`, docErr);

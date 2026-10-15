@@ -52,6 +52,114 @@ export default function OrdersListPage() {
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
   const [isFetchingLogs, setIsFetchingLogs] = useState(false);
 
+  // Helper to parse dates from various formats (Timestamp, Date, String, Number)
+  const parseLogDate = (val: any): Date => {
+    if (!val) return new Date(0);
+    if (typeof val.toDate === 'function') return val.toDate();
+    if (val instanceof Date) return val;
+    if (typeof val === 'number') return new Date(val);
+    if (typeof val === 'string') {
+      const parts = val.split(/[\s-]+/);
+      if (parts[0] && parts[0].includes('/')) {
+        const [d, m, y] = parts[0].split('/').map(Number);
+        if (d && m && y) {
+          const dObj = new Date(y, m - 1, d);
+          return isNaN(dObj.getTime()) ? new Date(val) : dObj;
+        }
+      }
+      const parsed = new Date(val);
+      return isNaN(parsed.getTime()) ? new Date(0) : parsed;
+    }
+    if (val.seconds) return new Date(val.seconds * 1000);
+    return new Date(0);
+  };
+
+  // Synthesize complete log history so past and new orders show full details
+  const buildCompleteOrderLogs = (fetchedLogs: any[], order: any) => {
+    if (!order) return fetchedLogs || [];
+    const logs = [...(fetchedLogs || [])];
+
+    // 1. Order Creation Event
+    const hasCreationLog = logs.some(l => 
+      (l.action && (l.action.includes('إنشاء') || l.action.includes('تثبيت'))) ||
+      (l.details && (l.details.includes('إنشاء') || l.details.includes('تثبيت')))
+    );
+    if (!hasCreationLog && (order.date || order.createdAt)) {
+      const creator = order.systemUser || order.bookingEmployeeName || order.employeeName || 'النظام';
+      const createTime = order.createdAt || order.date || new Date();
+      logs.push({
+        id: 'synthetic-creation',
+        action: 'إنشاء الطلب',
+        details: `تم إنشاء وتثبيت الطلب في المنصة برقم #${order.orderNumber || order.id?.slice(0, 6)}`,
+        employeeName: creator,
+        timestamp: createTime,
+        type: 'create'
+      });
+    }
+
+    // 2. Price Adjustment Event (Discrepancy / Treasury / Manual)
+    const hasPriceLog = logs.some(l => 
+      (l.action && (l.action.includes('تعديل سعر') || l.action.includes('تعديل السعر'))) ||
+      (l.details && (l.details.includes('المبلغ الصافي') || l.details.includes('السعر القديم') || l.details.includes('تعديل السعر')))
+    );
+    if (!hasPriceLog && (order.priceAdjusted || (order.originalTotalAmount && Number(order.originalTotalAmount) !== Number(order.totalAmount)))) {
+      const oldPrice = Number(order.originalTotalAmount || 0);
+      const newPrice = Number(order.totalAmount || 0);
+      logs.push({
+        id: 'synthetic-price-adjustment',
+        action: 'تعديل السعر في الخزينة',
+        details: `تم تعديل المبلغ الصافي من ${oldPrice > 0 ? oldPrice.toLocaleString() + ' د.ع' : 'السعر السابق'} إلى ${newPrice.toLocaleString()} د.ع وقبول التعديل في الخزينة`,
+        employeeName: order.settledBy || 'الخزينة',
+        timestamp: order.settledAt || order.updatedAt || order.date || new Date(),
+        type: 'finance'
+      });
+    }
+
+    // 3. Treasury Settlement Event
+    const hasSettlementLog = logs.some(l => 
+      (l.action && (l.action.includes('تسوية') || l.action.includes('توريد') || l.action.includes('الخزينة'))) ||
+      (l.details && (l.details.includes('تسوية') || l.details.includes('الخزينة')))
+    );
+    if (!hasSettlementLog && (order.is_settled === true || order.settlementStatementId)) {
+      logs.push({
+        id: 'synthetic-settlement',
+        action: 'تسوية واستلام الخزينة',
+        details: `تم توريد المبلغ الصافي (${Number(order.totalAmount || 0).toLocaleString()} د.ع) إلى الخزينة بنجاح${order.settlementStatementId ? ` (كشف رقم #${order.settlementStatementId})` : ''}`,
+        employeeName: order.settledBy || 'الخزينة',
+        timestamp: order.settledAt || order.updatedAt || order.date || new Date(),
+        type: 'finance'
+      });
+    }
+
+    // 4. Shipping Company Status / Note Event (if present and not logged)
+    const hasDeliveryLog = logs.some(l => 
+      (l.action && (l.action.includes('شركة') || l.action.includes('تلقائي') || l.action.includes('مزامنة'))) ||
+      (l.employeeName && (l.employeeName.includes('البرق') || l.employeeName.includes('جيني') || l.employeeName.includes('شركة')))
+    );
+    if (!hasDeliveryLog && (order.deliveryStatus || order.deliveryNote)) {
+      const company = order.shippingCompany || order.shipmentCompany || 'شركة التوصيل';
+      let deliveryDetails = `حالة الشحنة لدى شركة التوصيل: ${order.deliveryStatus || 'قيد المتابعة'}`;
+      if (order.deliveryNote) {
+        deliveryDetails += ` - ملاحظة المندوب: "${order.deliveryNote}"`;
+      }
+      logs.push({
+        id: 'synthetic-delivery-note',
+        action: `تحديث شركة التوصيل (${company})`,
+        details: deliveryDetails,
+        employeeName: company,
+        timestamp: order.updatedAt || order.date || new Date(),
+        type: 'delivery'
+      });
+    }
+
+    // Sort descending (newest first)
+    return logs.sort((a, b) => {
+      const timeA = parseLogDate(a.timestamp).getTime();
+      const timeB = parseLogDate(b.timestamp).getTime();
+      return timeB - timeA;
+    });
+  };
+
   useEffect(() => {
     if (selectedOrder) {
       setIsFetchingLogs(true);
@@ -61,10 +169,12 @@ export default function OrdersListPage() {
       
       const unsub = onSnapshot(q, (snapshot) => {
         const fetchedLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setOrderLogs(fetchedLogs);
+        const completeLogs = buildCompleteOrderLogs(fetchedLogs, selectedOrder);
+        setOrderLogs(completeLogs);
         setIsFetchingLogs(false);
       }, (error) => {
         console.error("Error fetching logs:", error);
+        setOrderLogs(buildCompleteOrderLogs([], selectedOrder));
         setIsFetchingLogs(false);
       });
       return () => unsub();
@@ -402,6 +512,39 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
       return 'returned_agent'; // Unify 'returned' and 'returned_agent' for display & filtering
     }
     return status;
+  };
+
+  const getOrderFinancials = (order: any) => {
+    if (!order) return { isAdjusted: false, currentNet: 0, oldNet: null, delivery: 0, currentTotal: 0, oldTotal: null };
+    const isAdjusted = Boolean(
+      order.priceAdjusted || 
+      (order.originalTotalAmount && order.originalTotalAmount !== (order.totalAmount || order.price || 0)) ||
+      (order.is_settled && order.paidAmount && order.paidAmount > 0 && order.paidAmount !== (order.totalAmount || order.price || 0))
+    );
+
+    const currentNet = (order.priceAdjusted || !order.is_settled || !order.paidAmount)
+      ? (order.totalAmount || order.price || 0)
+      : (order.originalTotalAmount ? (order.totalAmount || order.price || 0) : order.paidAmount);
+
+    const oldNet = order.originalTotalAmount || order.previousTotalAmount || (
+      (order.is_settled && order.paidAmount && order.paidAmount !== (order.totalAmount || order.price || 0))
+        ? (order.totalAmount || order.price || 0)
+        : null
+    );
+
+    const delivery = order.deliveryCost || 0;
+    const currentTotal = currentNet + delivery;
+    const oldTotal = oldNet !== null ? oldNet + delivery : null;
+    const hasDiff = isAdjusted && oldNet !== null && oldNet !== currentNet;
+
+    return {
+      isAdjusted: hasDiff,
+      currentNet,
+      oldNet,
+      delivery,
+      currentTotal,
+      oldTotal
+    };
   };
 
   // Fetch Orders from Firestore
@@ -997,8 +1140,6 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
     const custName = (order.customerName || '').toLowerCase();
     const gov = (order.governorate || '').toLowerCase();
     const phone = (order.customerPhone || order.phone || '').toLowerCase();
-    const total = (order.formattedTotal || '').toString().toLowerCase();
-    const rawTotal = (order.totalAmount || order.price || '').toString().toLowerCase();
     const statusKey = getStatusKey(order);
     const statusLabel = statusMap[statusKey]?.label.toLowerCase() || statusKey;
     const aDate = (order.addDate || '').toLowerCase();
@@ -1009,8 +1150,13 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
     const bookingEmpName = (order.bookingEmployeeName || order.employeeName || '').toLowerCase();
     const shipComp = (order.shippingCompany || '').toLowerCase();
 
+    const financials = getOrderFinancials(order);
     const delivery = (order.deliveryCost || '').toString().toLowerCase();
-    const net = (order.netAmount || '').toString().toLowerCase();
+    const net = financials.currentNet.toString().toLowerCase();
+    const oldNetStr = (financials.oldNet || '').toString().toLowerCase();
+    const total = financials.currentTotal.toString().toLowerCase();
+    const oldTotalStr = (financials.oldTotal || '').toString().toLowerCase();
+    const rawTotal = (order.totalAmount || order.price || '').toString().toLowerCase();
 
     const matchesColumn = (
       (displayId.includes(columnFilters.id.toLowerCase()) || idStr.includes(columnFilters.id.toLowerCase())) &&
@@ -1018,9 +1164,9 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
       gov.includes(columnFilters.governorate.toLowerCase()) &&
       phone.includes(columnFilters.phone.toLowerCase()) &&
       (order.customerPhone2 || order.phone2 || '').toLowerCase().includes(columnFilters.phone2?.toLowerCase() || '') &&
-      (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase())) &&
+      (total.includes(columnFilters.totalAmount.toLowerCase()) || rawTotal.includes(columnFilters.totalAmount.toLowerCase()) || oldTotalStr.includes(columnFilters.totalAmount.toLowerCase())) &&
       (columnFilters.deliveryCost === '' || delivery.includes(columnFilters.deliveryCost.toLowerCase())) &&
-      (columnFilters.netAmount === '' || net.includes(columnFilters.netAmount.toLowerCase())) &&
+      (columnFilters.netAmount === '' || net.includes(columnFilters.netAmount.toLowerCase()) || oldNetStr.includes(columnFilters.netAmount.toLowerCase())) &&
       notes.includes(columnFilters.notes.toLowerCase()) &&
       (columnFilters.status === '' || columnFilters.status.split(',').includes(statusKey)) &&
       aDate.includes(columnFilters.addDate.toLowerCase()) &&
@@ -1036,7 +1182,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
     const productNames = (order.items || []).map((item: any) => normalizeStr(item.productName));
     
     const allFields = [
-      idStr, displayId, custName, gov, region, phone, total, rawTotal, 
+      idStr, displayId, custName, gov, region, phone, total, rawTotal, oldTotalStr, net, oldNetStr,
       statusKey, statusLabel, aDate, aTime, empName, notes, shipComp, ...productNames
     ].map(normalizeStr);
 
@@ -1457,6 +1603,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
       selectedOrderIds.forEach(id => {
         const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', id);
         batch.update(orderRef, { isArchived: true });
+        addLogToBatch(batch, id, 'أرشفة الطلب', 'تم نقل الطلب إلى الأرشيف');
       });
       await batch.commit();
       setSelectedOrderIds([]);
@@ -1481,6 +1628,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
       selectedOrderIds.forEach(id => {
         const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', id);
         batch.update(orderRef, { isArchived: false });
+        addLogToBatch(batch, id, 'استعادة الطلب', 'تمت استعادة الطلب من الأرشيف');
       });
       await batch.commit();
       setSelectedOrderIds([]);
@@ -2225,6 +2373,18 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
         batch.update(orderRef, updateData);
         updatedCount++;
 
+        // Audit log for status change
+        const oldStatusLabel = statusMap[oldStatus]?.label || oldStatus;
+        const newStatusLabel = statusMap[newStatus]?.label || newStatus;
+        let statusLogDetails = `تم تغيير الحالة من "${oldStatusLabel}" إلى "${newStatusLabel}"`;
+        if (deliveryCompany) {
+          statusLogDetails += ` (شركة التوصيل: ${deliveryCompany})`;
+        }
+        if (updateData.deliveryCost !== undefined && updateData.deliveryCost !== order.deliveryCost) {
+          statusLogDetails += ` • أجرة التوصيل: ${Number(updateData.deliveryCost).toLocaleString()} د.ع`;
+        }
+        addLogToBatch(batch, order.id, 'تغيير حالة', statusLogDetails);
+
         const oldState = getStockState(oldStatus);
         if (oldState === newState) continue;
 
@@ -2247,8 +2407,6 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
             }
           }
         }
-        
-        addLogToBatch(batch, order.id, 'تغيير حالة', `تم تغيير الحالة من ${oldStatus} إلى ${newStatus}`);
       }
 
       // 4. Update dirty products in batch
@@ -2437,7 +2595,85 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
         batch
       );
       
-      addLogToBatch(batch, editingOrder.id, 'تعديل طلب', 'تم حفظ التعديلات على تفاصيل الطلب أو منتجاته');
+      // Track all changes granularly
+      const changes: string[] = [];
+      if ((oldOrder.customerName || '') !== (editingOrder.customerName || '')) {
+        changes.push(`اسم العميل: من "${oldOrder.customerName || 'فارغ'}" إلى "${editingOrder.customerName || 'فارغ'}"`);
+      }
+      const oldPhone = oldOrder.customerPhone || oldOrder.phone || '';
+      const newPhone = editingOrder.customerPhone || editingOrder.phone || '';
+      if (oldPhone !== newPhone) {
+        changes.push(`رقم الهاتف: من "${oldPhone || 'فارغ'}" إلى "${newPhone || 'فارغ'}"`);
+      }
+      const oldPhone2 = oldOrder.customerPhone2 || oldOrder.phone2 || '';
+      const newPhone2 = editingOrder.customerPhone2 || editingOrder.phone2 || '';
+      if (oldPhone2 !== newPhone2) {
+        changes.push(`رقم الهاتف الإضافي: من "${oldPhone2 || 'فارغ'}" إلى "${newPhone2 || 'فارغ'}"`);
+      }
+      const oldGov = oldOrder.governorate || '';
+      const newGov = editingOrder.governorate || '';
+      const oldReg = oldOrder.region || '';
+      const newReg = editingOrder.region || '';
+      if (oldGov !== newGov || oldReg !== newReg) {
+        changes.push(`العنوان: من "${oldGov}${oldReg ? ' - ' + oldReg : ''}" إلى "${newGov}${newReg ? ' - ' + newReg : ''}"`);
+      }
+      const oldTotal = Number(oldOrder.totalAmount) || 0;
+      const newTotal = Number(editingOrder.totalAmount) || 0;
+      if (oldTotal !== newTotal) {
+        changes.push(`المبلغ الصافي: من ${oldTotal.toLocaleString()} د.ع إلى ${newTotal.toLocaleString()} د.ع`);
+        if (!oldOrder.originalTotalAmount) {
+          updates.originalTotalAmount = oldTotal;
+        }
+        updates.priceAdjusted = true;
+      }
+      const oldDeliveryCost = Number(oldOrder.deliveryCost) || 0;
+      const newDeliveryCost = Number(editingOrder.deliveryCost) || 0;
+      if (oldDeliveryCost !== newDeliveryCost) {
+        changes.push(`أجرة التوصيل: من ${oldDeliveryCost.toLocaleString()} د.ع إلى ${newDeliveryCost.toLocaleString()} د.ع`);
+      }
+      if (oldOrder.status !== editingOrder.status) {
+        const oldLabel = statusMap[oldOrder.status]?.label || oldOrder.status || 'قيد الانتظار';
+        const newLabel = statusMap[editingOrder.status]?.label || editingOrder.status || 'قيد الانتظار';
+        changes.push(`الحالة: من "${oldLabel}" إلى "${newLabel}"`);
+      }
+      if ((oldOrder.shippingCompany || '') !== (editingOrder.shippingCompany || '')) {
+        changes.push(`شركة التوصيل: من "${oldOrder.shippingCompany || 'غير محدد'}" إلى "${editingOrder.shippingCompany || 'غير محدد'}"`);
+      }
+      if ((oldOrder.notes || '') !== (editingOrder.notes || '')) {
+        changes.push(`الملاحظات: "${editingOrder.notes || 'تم مسح الملاحظات'}"`);
+      }
+      if ((oldOrder.employeeName || '') !== (editingOrder.employeeName || '')) {
+        changes.push(`الموظف المسؤول: من "${oldOrder.employeeName || 'غير محدد'}" إلى "${editingOrder.employeeName || 'غير محدد'}"`);
+      }
+      if ((oldOrder.bookingEmployeeName || '') !== (editingOrder.bookingEmployeeName || '')) {
+        changes.push(`موظف الحجز: من "${oldOrder.bookingEmployeeName || 'غير محدد'}" إلى "${editingOrder.bookingEmployeeName || 'غير محدد'}"`);
+      }
+      // Check items differences
+      const oldItems = oldOrder.items || [];
+      const newItems = editingOrder.items || [];
+      if (JSON.stringify(oldItems) !== JSON.stringify(newItems)) {
+        const itemDiffs: string[] = [];
+        newItems.forEach((newItem: any) => {
+          const matchingOld = oldItems.find((o: any) => (o.productId || o.id) === (newItem.productId || newItem.id));
+          if (!matchingOld) {
+            itemDiffs.push(`إضافة "${newItem.name || newItem.productName}" (كمية: ${newItem.quantity})`);
+          } else if (matchingOld.quantity !== newItem.quantity || matchingOld.price !== newItem.price) {
+            itemDiffs.push(`تعديل "${newItem.name || newItem.productName}" (كمية: ${matchingOld.quantity} -> ${newItem.quantity})`);
+          }
+        });
+        oldItems.forEach((oldItem: any) => {
+          const stillExists = newItems.find((n: any) => (n.productId || n.id) === (oldItem.productId || oldItem.id));
+          if (!stillExists) {
+            itemDiffs.push(`حذف "${oldItem.name || oldItem.productName}"`);
+          }
+        });
+        if (itemDiffs.length > 0) {
+          changes.push(`الأصناف: ${itemDiffs.join('، ')}`);
+        }
+      }
+
+      const logDetails = changes.length > 0 ? changes.join(' • ') : 'تم تحديث بيانات الطلب';
+      addLogToBatch(batch, editingOrder.id, 'تعديل يدوي', logDetails);
 
       await batch.commit();
       setNotificationModal({ show: true, message: 'تم تحديث بيانات الطلب والمخزون بنجاح' });
@@ -4164,9 +4400,19 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
                           updatedAt: new Date()
                         });
                         
-                        let syncLogMsg = 'تمت مزامنة الطلب مع شركة التوصيل';
-                        if (statusChanged) syncLogMsg += ` (تم تحديث الحالة إلى ${targetStatus})`;
-                        addLogToBatch(batch, localOrder.id, 'مزامنة', syncLogMsg);
+                        const company = localOrder.shippingCompany || 'شركة التوصيل';
+                        const targetStatusLabel = statusMap[targetStatus]?.label || targetStatus;
+                        let syncLogMsg = `تحديث تلقائي من شركة التوصيل (${company})`;
+                        if (statusChanged) {
+                          syncLogMsg = `تم تحديث الحالة إلى "${targetStatusLabel}"`;
+                        }
+                        if (update.deliveryStatus) {
+                          syncLogMsg += ` • حالة الشحنة: ${update.deliveryStatus}`;
+                        }
+                        if (update.deliveryNote) {
+                          syncLogMsg += ` • ملاحظة المندوب: "${update.deliveryNote}"`;
+                        }
+                        addLogToBatch(batch, localOrder.id, `تحديث تلقائي (${company})`, syncLogMsg);
                         
                         updatedCount++;
                       }
@@ -4623,21 +4869,59 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
                   {visibleColumns.governorate && <td>{order.governorate}</td>}
                   {visibleColumns.phone && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>}
                   {visibleColumns.phone2 && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone2 || order.phone2 || ''}</td>}
-                  {visibleColumns.totalAmount && (
-                    <td style={{ color: "var(--primary)", fontWeight: "bold" }}>
-                      {new Intl.NumberFormat('en-US').format((order.totalAmount || order.price || 0) + (order.deliveryCost || 0))} د.ع
-                    </td>
-                  )}
+                  {visibleColumns.totalAmount && (() => {
+                    const financials = getOrderFinancials(order);
+                    return (
+                      <td style={{ color: financials.isAdjusted ? '#10b981' : 'var(--primary)', fontWeight: "bold" }}>
+                        <div>{new Intl.NumberFormat('en-US').format(financials.currentTotal)} د.ع</div>
+                        {financials.isAdjusted && financials.oldTotal !== null && (
+                          <div style={{ marginTop: '2px' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#ef4444', textDecoration: 'line-through', opacity: 0.85 }}>
+                              {new Intl.NumberFormat('en-US').format(financials.oldTotal)} د.ع
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })()}
                   {visibleColumns.deliveryCost && (
                     <td style={{ color: "var(--primary)", fontWeight: "bold", opacity: 0.8 }}>
                       {order.deliveryCost ? `${new Intl.NumberFormat('en-US').format(order.deliveryCost)} د.ع` : '-'}
                     </td>
                   )}
-                  {visibleColumns.netAmount && (
-                    <td style={{ color: "var(--primary)", fontWeight: "bold" }}>
-                      {new Intl.NumberFormat('en-US').format(order.totalAmount || order.price || 0)} د.ع
-                    </td>
-                  )}
+                  {visibleColumns.netAmount && (() => {
+                    const financials = getOrderFinancials(order);
+                    return (
+                      <td style={{ color: financials.isAdjusted ? '#10b981' : 'var(--primary)', fontWeight: "bold" }}>
+                        <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                          {new Intl.NumberFormat('en-US').format(financials.currentNet)} د.ع
+                        </div>
+                        {financials.isAdjusted && financials.oldNet !== null && (
+                          <div style={{ marginTop: '3px', display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.78rem', color: '#ef4444', textDecoration: 'line-through', opacity: 0.9 }}>
+                              {new Intl.NumberFormat('en-US').format(financials.oldNet)} د.ع
+                            </span>
+                            <span 
+                              title={`تم تعديل السعر: كان ${new Intl.NumberFormat('en-US').format(financials.oldNet)} د.ع وأصبح ${new Intl.NumberFormat('en-US').format(financials.currentNet)} د.ع`}
+                              style={{ 
+                                fontSize: '0.68rem', 
+                                color: '#f59e0b', 
+                                backgroundColor: 'rgba(245, 158, 11, 0.15)', 
+                                padding: '1px 6px', 
+                                borderRadius: '4px', 
+                                border: '1px solid rgba(245, 158, 11, 0.3)', 
+                                whiteSpace: 'nowrap',
+                                fontWeight: 'bold',
+                                cursor: 'default'
+                              }}
+                            >
+                              تعديل سعر
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })()}
                   {visibleColumns.notes && <td>{order.notes || '-'}</td>}
                   {visibleColumns.status && (
                     <td>
@@ -5563,25 +5847,105 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center' }}>جاري تحميل السجل...</p>
                 ) : orderLogs.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                    {orderLogs.map((log: any) => {
-                      const dateObj = log.timestamp && typeof log.timestamp.toDate === 'function' ? log.timestamp.toDate() : new Date();
+                    {orderLogs.map((log: any, index: number) => {
+                      const dateObj = parseLogDate(log.timestamp);
                       const dateStr = dateObj.toLocaleDateString('en-GB');
                       const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+
+                      // Determine category styling
+                      const isDelivery = log.action?.includes('شركة') || log.action?.includes('تلقائي') || log.action?.includes('البرق') || log.action?.includes('جيني') || log.action?.includes('مزامنة') || log.employeeName?.includes('شركة') || log.employeeName?.includes('البرق') || log.employeeName?.includes('جيني');
+                      const isFinance = log.action?.includes('سعر') || log.action?.includes('خزينة') || log.action?.includes('الخزينة') || log.action?.includes('تسوية') || log.action?.includes('مبلغ');
+                      const isManualEdit = log.action?.includes('تعديل يدوي') || log.action?.includes('تعديل طلب');
+                      const isCreate = log.action?.includes('إنشاء');
+                      const isStatus = log.action?.includes('حالة');
+                      const isCancelOrReturn = log.action?.includes('إلغاء') || log.action?.includes('راجع');
+
+                      let dotColor = '#3b82f6';
+                      let authorBg = 'rgba(16, 185, 129, 0.1)';
+                      let authorColor = '#10b981';
+                      let authorIcon = '👤';
+                      let actionBadgeBg = 'rgba(59, 130, 246, 0.12)';
+                      let actionBadgeColor = '#60a5fa';
+
+                      if (isDelivery) {
+                        dotColor = '#a855f7';
+                        authorBg = 'rgba(168, 85, 247, 0.15)';
+                        authorColor = '#c084fc';
+                        authorIcon = '🤖';
+                        actionBadgeBg = 'rgba(168, 85, 247, 0.15)';
+                        actionBadgeColor = '#c084fc';
+                      } else if (isFinance) {
+                        dotColor = '#10b981';
+                        authorBg = 'rgba(16, 185, 129, 0.15)';
+                        authorColor = '#34d399';
+                        authorIcon = '🏦';
+                        actionBadgeBg = 'rgba(16, 185, 129, 0.15)';
+                        actionBadgeColor = '#34d399';
+                      } else if (isManualEdit) {
+                        dotColor = '#f59e0b';
+                        authorBg = 'rgba(245, 158, 11, 0.15)';
+                        authorColor = '#fbbf24';
+                        authorIcon = '✍️';
+                        actionBadgeBg = 'rgba(245, 158, 11, 0.15)';
+                        actionBadgeColor = '#fbbf24';
+                      } else if (isCreate) {
+                        dotColor = '#0ea5e9';
+                        authorBg = 'rgba(14, 165, 233, 0.15)';
+                        authorColor = '#38bdf8';
+                        authorIcon = '📦';
+                        actionBadgeBg = 'rgba(14, 165, 233, 0.15)';
+                        actionBadgeColor = '#38bdf8';
+                      } else if (isCancelOrReturn) {
+                        dotColor = '#ef4444';
+                        authorBg = 'rgba(239, 68, 68, 0.15)';
+                        authorColor = '#f87171';
+                        authorIcon = '⚠️';
+                        actionBadgeBg = 'rgba(239, 68, 68, 0.15)';
+                        actionBadgeColor = '#f87171';
+                      } else if (isStatus) {
+                        dotColor = '#d946ef';
+                        authorBg = 'rgba(217, 70, 239, 0.15)';
+                        authorColor = '#e879f9';
+                        authorIcon = '🔄';
+                        actionBadgeBg = 'rgba(217, 70, 239, 0.15)';
+                        actionBadgeColor = '#e879f9';
+                      }
+
+                      const detailItems = typeof log.details === 'string' && log.details.includes(' • ')
+                        ? log.details.split(' • ').map((s: string) => s.trim()).filter(Boolean)
+                        : null;
+
                       return (
-                        <div key={log.id} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '80px', marginTop: '0.2rem' }}>
+                        <div key={log.id || `${log.action}-${index}`} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '85px', marginTop: '0.2rem' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{timeStr}</span>
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{dateStr}</span>
                           </div>
                           <div style={{ width: '2px', backgroundColor: 'var(--border)', alignSelf: 'stretch', margin: '0 0.5rem', position: 'relative' }}>
-                             <div style={{ position: 'absolute', top: '0.5rem', left: '-4px', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'var(--primary)' }}></div>
+                             <div style={{ position: 'absolute', top: '0.5rem', left: '-4px', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: dotColor, boxShadow: `0 0 8px ${dotColor}` }}></div>
                           </div>
-                          <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '0.5rem', flexGrow: 1, border: '1px solid var(--border)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                              <strong style={{ fontSize: '0.9rem', color: 'var(--text)' }}>{log.action}</strong>
-                              <span style={{ fontSize: '0.8rem', color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '0.1rem 0.5rem', borderRadius: '1rem' }}>👤 {log.employeeName}</span>
+                          <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.85rem', borderRadius: '0.6rem', flexGrow: 1, border: '1px solid var(--border)', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: actionBadgeColor, backgroundColor: actionBadgeBg, padding: '0.2rem 0.6rem', borderRadius: '0.4rem', border: `1px solid ${actionBadgeColor}33` }}>
+                                {log.action}
+                              </span>
+                              <span style={{ fontSize: '0.78rem', color: authorColor, backgroundColor: authorBg, padding: '0.15rem 0.6rem', borderRadius: '1rem', fontWeight: '500' }}>
+                                {authorIcon} {log.employeeName}
+                              </span>
                             </div>
-                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>{log.details}</p>
+
+                            {detailItems ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.4rem' }}>
+                                {detailItems.map((item: string, i: number) => (
+                                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.84rem', color: 'var(--text)' }}>
+                                    <span style={{ color: dotColor, fontWeight: 'bold', lineHeight: '1.2' }}>▪</span>
+                                    <span style={{ lineHeight: '1.4' }}>{item}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.45' }}>{log.details}</p>
+                            )}
                           </div>
                         </div>
                       );
@@ -5605,20 +5969,39 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
               </div>
               <div className={styles.totalHighlight}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px' }}>
-                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>المبلغ الكلي:</span>
-                    <span style={{ fontSize: '0.9rem' }}>{new Intl.NumberFormat('en-US').format((selectedOrder.totalAmount || selectedOrder.price || 0) + (selectedOrder.deliveryCost || 0))} د.ع</span>
-                  </div>
-                  {selectedOrder.deliveryCost > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px' }}>
-                      <span style={{ fontSize: '0.9rem', color: '#f59e0b' }}>أجرة التوصيل:</span>
-                      <span style={{ fontSize: '0.9rem', color: '#f59e0b' }}>{new Intl.NumberFormat('en-US').format(selectedOrder.deliveryCost)} د.ع</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '200px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem' }}>
-                    <span style={{ fontWeight: 'bold' }}>المبلغ الصافي:</span>
-                    <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{new Intl.NumberFormat('en-US').format(selectedOrder.totalAmount || selectedOrder.price || 0)} د.ع</span>
-                  </div>
+                  {(() => {
+                    const financials = getOrderFinancials(selectedOrder);
+                    return (
+                      <>
+                        {financials.isAdjusted && financials.oldNet !== null && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                            <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 'bold' }}>السعر قبل التعديل:</span>
+                            <span style={{ fontSize: '0.85rem', color: '#ef4444', textDecoration: 'line-through', fontWeight: 'bold' }}>
+                              {new Intl.NumberFormat('en-US').format(financials.oldNet)} د.ع
+                            </span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px' }}>
+                          <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>المبلغ الكلي:</span>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
+                            {new Intl.NumberFormat('en-US').format(financials.currentTotal)} د.ع
+                          </span>
+                        </div>
+                        {selectedOrder.deliveryCost > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px' }}>
+                            <span style={{ fontSize: '0.9rem', color: '#f59e0b' }}>أجرة التوصيل:</span>
+                            <span style={{ fontSize: '0.9rem', color: '#f59e0b' }}>{new Intl.NumberFormat('en-US').format(selectedOrder.deliveryCost)} د.ع</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem' }}>
+                          <span style={{ fontWeight: 'bold' }}>المبلغ الصافي:</span>
+                          <span style={{ fontWeight: 'bold', color: financials.isAdjusted ? '#10b981' : 'var(--primary)' }}>
+                            {new Intl.NumberFormat('en-US').format(financials.currentNet)} د.ع
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

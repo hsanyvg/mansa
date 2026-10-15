@@ -123,6 +123,47 @@ export async function POST(req: Request) {
     const oldStatus = currentData.status || 'pending';
     const newStatus = targetStatus;
 
+    // Log automatic update to order history log
+    const arabicStatusMap: Record<string, string> = {
+      delivered: 'مكتمل (واصل)',
+      delivered_settled: 'مكتمل (تم المحاسبة)',
+      delivered_replaced: 'واصل تم الاستبدال',
+      returned: 'راجع',
+      returned_agent: 'راجع مع المندوب',
+      returned_warehouse: 'راجع مخزن',
+      postponed: 'مؤجل',
+      partial: 'واصل جزئي',
+      partial_settled: 'واصل جزئي (تم المحاسبة)',
+      shipped: 'تم الشحن',
+      ofd: 'قيد التوصيل (مع المندوب)',
+      address_changed: 'تغير عنوان',
+      resent: 'إعادة إرسال',
+      processing: 'قيد التجهيز',
+      pending: 'قيد الانتظار',
+      cancelled: 'ملغي'
+    };
+    const arabicOldStatus = arabicStatusMap[oldStatus] || oldStatus;
+    const arabicNewStatus = arabicStatusMap[newStatus] || newStatus;
+
+    let logDetails = oldStatus !== newStatus
+      ? `تم تحديث الحالة تلقائياً من "${arabicOldStatus}" إلى "${arabicNewStatus}"`
+      : `تحديث من شركة التوصيل (${arabicNewStatus})`;
+
+    if (note) {
+      logDetails += ` • ملاحظة الشحن: "${note}"`;
+    }
+    if (status && status.toLowerCase() !== targetStatus.toLowerCase()) {
+      logDetails += ` • كود الحالة: (${status})`;
+    }
+
+    const logRef = orderDoc.ref.collection('logs').doc();
+    batch.set(logRef, {
+      action: 'تحديث تلقائي (شركة البرق)',
+      details: logDetails,
+      employeeName: '🤖 شركة البرق (تلقائي)',
+      timestamp: timestamp
+    });
+
     if (oldStatus !== newStatus && currentData.items && currentData.items.length > 0) {
       const getStockState = (st: string) => {
         if (['shipped', 'delivered', 'partial', 'returned_agent', 'returned'].includes(st)) return 'HARD_DEDUCTED';

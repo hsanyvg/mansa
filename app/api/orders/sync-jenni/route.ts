@@ -117,15 +117,15 @@ export async function POST(req: Request) {
           let newStatus = '';
           const step = (shipment.current_step || shipment.action_code || '').toUpperCase();
           
-          if (step === 'DELIVERED' || step === 'SUCCESSFUL_DELIVERY' || step === 'SUCCESSFUL_DELIVERY_WITH_AMOUNT_CHANGE') {
+          if (step.includes('DELIVERED') || step.includes('SUCCESS') || step.includes('واصل') || step.includes('تسليم')) {
             newStatus = 'delivered';
-          } else if (step === 'PARTIAL_DELIVERY') {
+          } else if (step.includes('PARTIAL')) {
             newStatus = 'partial';
-          } else if (step === 'RETURNED' || step.startsWith('RTO_') || step === 'RETURN_TO_STORE' || step === 'RETURNED_WITH_AGENT') {
+          } else if (step.includes('RETURN') || step.startsWith('RTO_') || step.includes('راجع') || step.includes('رفض')) {
             newStatus = 'returned';
-          } else if (step === 'OFD' || step === 'OUT_FOR_DELIVERY') {
+          } else if (step.includes('OFD') || step.includes('OUT_FOR')) {
             newStatus = 'ofd';
-          } else if (step === 'POSTPONED') {
+          } else if (step.includes('POSTPONED') || step.includes('تأجيل') || step.includes('مؤجل')) {
             newStatus = 'postponed';
           }
 
@@ -174,6 +174,32 @@ export async function POST(req: Request) {
                   const orderRef = doc(db, 'users', orderInfo.uid, 'orders', orderInfo.id);
                   const batch = writeBatch(db);
                   batch.update(orderRef, updateData);
+
+                  // Add audit log for automatic sync update
+                  try {
+                    const logsRef = collection(db, 'users', orderInfo.uid, 'orders', orderInfo.id, 'logs');
+                    const logDoc = doc(logsRef);
+                    const statusNameMap: Record<string, string> = {
+                      delivered: 'تم التسليم (واصل)',
+                      partial: 'واصل جزئي',
+                      returned: 'راجع (مرفوض)',
+                      ofd: 'قيد التوصيل مع المندوب',
+                      postponed: 'مؤجل',
+                      shipped: 'تم الشحن'
+                    };
+                    const arabicStatus = statusNameMap[targetStatus] || targetStatus;
+                    let logDetails = `تحديث الحالة إلى: ${arabicStatus}`;
+                    if (shipment.current_step) logDetails += ` (${shipment.current_step})`;
+                    if (shipment.note) logDetails += ` - ملاحظة المندوب: ${shipment.note}`;
+                    batch.set(logDoc, {
+                      action: 'تحديث تلقائي (شركة جيني)',
+                      details: logDetails,
+                      employeeName: 'شركة جيني (مزامنة API)',
+                      timestamp: new Date()
+                    });
+                  } catch (logErr) {
+                    console.warn("Failed to attach log to sync batch:", logErr);
+                  }
 
                   const oldStatus = currentData.status || 'pending';
                   const newStatus = targetStatus;

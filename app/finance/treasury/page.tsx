@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import { db, auth } from "../../../lib/firebase";
 import { 
-  collection, onSnapshot, addDoc, deleteDoc, doc,
+  collection, onSnapshot, addDoc, deleteDoc, doc, setDoc,
   serverTimestamp, query, orderBy, getDocs, getDoc, writeBatch, where, updateDoc,
   increment, arrayUnion
 } from 'firebase/firestore';
@@ -116,14 +116,16 @@ export default function TreasuryPage() {
       const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
       
       const inputtedAmount = order.discrepancy_inputted_amount || 0;
+      const currentNet = order.totalAmount || order.price || 0;
+      const originalAmount = order.originalTotalAmount || currentNet;
+      const isPriceModified = inputtedAmount !== currentNet;
       
       const batch = writeBatch(db);
       
-      const newPaidAmount = (order.paidAmount || 0) + inputtedAmount;
-      const isFullySettled = newPaidAmount >= (order.totalAmount || 0);
-
-      batch.update(orderRef, {
-        paidAmount: newPaidAmount,
+      const updateData: any = {
+        paidAmount: inputtedAmount,
+        totalAmount: inputtedAmount,
+        price: inputtedAmount,
         has_discrepancy: false,
         discrepancy_note: null,
         discrepancy_statement_id: null,
@@ -134,6 +136,27 @@ export default function TreasuryPage() {
         settledWalletId: selectedTransaction.walletId,
         settledAt: serverTimestamp(),
         settlementStatementId: selectedTransaction.externalStatementId || selectedTransaction.id
+      };
+
+      if (isPriceModified) {
+        updateData.originalTotalAmount = originalAmount;
+        updateData.previousTotalAmount = currentNet;
+        updateData.priceAdjusted = true;
+        updateData.priceAdjustmentReason = `تسوية كشف (${originalAmount.toLocaleString()} ⬅️ ${inputtedAmount.toLocaleString()})`;
+        updateData.priceAdjustedAt = serverTimestamp();
+      }
+
+      batch.update(orderRef, updateData);
+
+      // Log action to order's history log
+      const orderLogRef = doc(collection(orderRef, 'logs'));
+      batch.set(orderLogRef, {
+        action: isPriceModified ? 'تسوية كشف وتعديل السعر' : 'تسوية مالية (الخزينة)',
+        details: isPriceModified
+          ? `تم قبول مبلغ الكشف (${inputtedAmount.toLocaleString()} د.ع) وتعديل السعر الصافي من ${originalAmount.toLocaleString()} د.ع إلى ${inputtedAmount.toLocaleString()} د.ع وإيداعه في الخزينة`
+          : `تم تأكيد استلام المبلغ (${inputtedAmount.toLocaleString()} د.ع) وإيداعه في الخزينة`,
+        employeeName: auth.currentUser?.displayName || auth.currentUser?.email || 'مسؤول الخزينة',
+        timestamp: serverTimestamp()
       });
 
       // Add money to treasury by modifying existing transaction
@@ -149,7 +172,7 @@ export default function TreasuryPage() {
       
       // Update UI
       setDiscrepantOrders(prev => prev.filter(o => o.id !== order.id));
-      setToast({ message: 'تم تسوية الطلب بالمبلغ الناقص بنجاح.', type: 'success' });
+      setToast({ message: 'تم تسوية الطلب وتحديث السعر بالمبلغ المقبول بنجاح.', type: 'success' });
       if (discrepantOrders.length === 1) {
         setShowDiscrepanciesModal(false);
       }
@@ -172,14 +195,16 @@ export default function TreasuryPage() {
     setResolvingOrderId(order.id);
     try {
       const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', order.id);
+      const currentNet = order.totalAmount || order.price || 0;
+      const originalAmount = order.originalTotalAmount || currentNet;
+      const isPriceModified = customAmount !== currentNet;
       
       const batch = writeBatch(db);
-      
-      const newPaidAmount = (order.paidAmount || 0) + customAmount;
-      const isFullySettled = newPaidAmount >= (order.totalAmount || 0);
 
-      batch.update(orderRef, {
-        paidAmount: newPaidAmount,
+      const updateData: any = {
+        paidAmount: customAmount,
+        totalAmount: customAmount,
+        price: customAmount,
         has_discrepancy: false,
         discrepancy_note: null,
         discrepancy_statement_id: null,
@@ -190,6 +215,27 @@ export default function TreasuryPage() {
         settledWalletId: selectedTransaction.walletId,
         settledAt: serverTimestamp(),
         settlementStatementId: selectedTransaction.externalStatementId || selectedTransaction.id
+      };
+
+      if (isPriceModified) {
+        updateData.originalTotalAmount = originalAmount;
+        updateData.previousTotalAmount = currentNet;
+        updateData.priceAdjusted = true;
+        updateData.priceAdjustmentReason = `تسوية بمبلغ مخصص (${originalAmount.toLocaleString()} ⬅️ ${customAmount.toLocaleString()})`;
+        updateData.priceAdjustedAt = serverTimestamp();
+      }
+
+      batch.update(orderRef, updateData);
+
+      // Log action to order's history log
+      const orderLogRef = doc(collection(orderRef, 'logs'));
+      batch.set(orderLogRef, {
+        action: isPriceModified ? 'تسوية كشف وتعديل السعر' : 'تسوية مالية (الخزينة)',
+        details: isPriceModified
+          ? `تمت التسوية بمبلغ مخصص (${customAmount.toLocaleString()} د.ع) وتعديل السعر الصافي من ${originalAmount.toLocaleString()} د.ع إلى ${customAmount.toLocaleString()} د.ع وإيداعه في الخزينة`
+          : `تم تأكيد استلام المبلغ (${customAmount.toLocaleString()} د.ع) وإيداعه في الخزينة`,
+        employeeName: auth.currentUser?.displayName || auth.currentUser?.email || 'مسؤول الخزينة',
+        timestamp: serverTimestamp()
       });
 
       // Add money to treasury by modifying existing transaction
@@ -205,7 +251,7 @@ export default function TreasuryPage() {
       
       // Update UI
       setDiscrepantOrders(prev => prev.filter(o => o.id !== order.id));
-      setToast({ message: 'تم تسوية الطلب بالمبلغ المخصص بنجاح.', type: 'success' });
+      setToast({ message: 'تم تسوية الطلب وتحديث السعر بالمبلغ المخصص بنجاح.', type: 'success' });
       setEditingCustomAmountId(null);
       setCustomAmountValue('');
       
@@ -230,6 +276,15 @@ export default function TreasuryPage() {
         discrepancy_statement_id: null,
         discrepancy_inputted_amount: null,
         discrepancy_expected_amount: null
+      });
+
+      // Log action to order history
+      const orderLogRef = doc(collection(orderRef, 'logs'));
+      await setDoc(orderLogRef, {
+        action: 'إعادة لقيد الانتظار',
+        details: 'تم إلغاء حالة عدم تطابق المبلغ وإعادة الطلب لقيد الانتظار للمراجعة',
+        employeeName: auth.currentUser?.displayName || auth.currentUser?.email || 'مسؤول الخزينة',
+        timestamp: serverTimestamp()
       });
       setDiscrepantOrders(prev => prev.filter(o => o.id !== order.id));
       setToast({ message: 'تم إعادة الطلب لقيد الانتظار بنجاح.', type: 'success' });
@@ -968,8 +1023,14 @@ export default function TreasuryPage() {
                                 <td style={{ fontWeight: 'bold' }}>{order.id}</td>
                               <td>{order.customerName}</td>
                               <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || '---'}</td>
-                              <td>{order.governorate} - {order.region}</td>
-                              <td style={{ color: '#10b981', fontWeight: 'bold' }}>{order.totalAmount.toLocaleString()} د.ع</td>
+                              <td style={{ color: '#10b981', fontWeight: 'bold' }}>
+                                <div>{(order.totalAmount || order.price || 0).toLocaleString()} د.ع</div>
+                                {(order.originalTotalAmount || order.previousTotalAmount) && (order.originalTotalAmount || order.previousTotalAmount) !== (order.totalAmount || order.price || 0) && (
+                                  <div style={{ fontSize: '0.75rem', color: '#ef4444', textDecoration: 'line-through' }}>
+                                    {(order.originalTotalAmount || order.previousTotalAmount).toLocaleString()} د.ع
+                                  </div>
+                                )}
+                              </td>
                               <td style={{ textAlign: 'center' }}>
                                 <button
                                   type="button"
