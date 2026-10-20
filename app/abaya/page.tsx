@@ -228,6 +228,10 @@ function AbayaLandingInner() {
   const [targetUid, setTargetUid] = useState<string>('guAXkcygceeBkpwtFdf1n8O3dRX2');
   const [supportPhone, setSupportPhone] = useState<string>('9647700000000');
   const [snapPixelId, setSnapPixelId] = useState<string>('74262440-1baf-4c72-8fe1-2151b67081e4');
+  const [snapAdId, setSnapAdId] = useState<string>('');
+  const [snapAdName, setSnapAdName] = useState<string>('');
+  const [snapCampaignName, setSnapCampaignName] = useState<string>('');
+  const [snapCampaignId, setSnapCampaignId] = useState<string>('');
 
   // Helper to format phone for Snapchat (E.164 format with +964)
   const formatPhoneForSnapchat = (phone: string): string => {
@@ -289,6 +293,38 @@ function AbayaLandingInner() {
       setTargetUid(uidParam);
       if (phoneParam) setSupportPhone(phoneParam);
       setSnapPixelId(pixelParam);
+
+      // Extract Snapchat Ad tracking parameters (supporting both direct and UTM styles)
+      const extractedCampaignName = params.get('campaign_name') || params.get('campaignName') || params.get('utm_campaign') || params.get('snap_campaign_name') || '';
+      const extractedAdName = params.get('ad_name') || params.get('adName') || params.get('utm_content') || params.get('snap_ad_name') || '';
+      const extractedAdId = params.get('ad_id') || params.get('adId') || params.get('adid') || params.get('utm_term') || params.get('snap_ad_id') || '';
+      const extractedCampaignId = params.get('campaign_id') || params.get('campaignId') || params.get('snap_campaign_id') || '';
+
+      let finalAdId = extractedAdId;
+      let finalAdName = extractedAdName;
+      let finalCampName = extractedCampaignName;
+      let finalCampId = extractedCampaignId;
+
+      try {
+        const cached = sessionStorage.getItem('snap_ad_tracking');
+        const prev = cached ? JSON.parse(cached) : {};
+        if (!finalAdId && prev.adId) finalAdId = prev.adId;
+        if (!finalAdName && prev.adName) finalAdName = prev.adName;
+        if (!finalCampName && prev.campaignName) finalCampName = prev.campaignName;
+        if (!finalCampId && prev.campaignId) finalCampId = prev.campaignId;
+
+        sessionStorage.setItem('snap_ad_tracking', JSON.stringify({
+          adId: finalAdId,
+          adName: finalAdName,
+          campaignName: finalCampName,
+          campaignId: finalCampId
+        }));
+      } catch (_) {}
+
+      if (finalAdId) setSnapAdId(finalAdId);
+      if (finalAdName) setSnapAdName(finalAdName);
+      if (finalCampName) setSnapCampaignName(finalCampName);
+      if (finalCampId) setSnapCampaignId(finalCampId);
 
       // Authenticate visitor anonymously for firestore order placement if not logged in
       if (!auth.currentUser) {
@@ -433,11 +469,30 @@ function AbayaLandingInner() {
     setIsSubmitting(true);
 
     try {
-      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      const snapCampaignName = urlParams?.get('campaign_name') || urlParams?.get('utm_campaign') || '';
-      const snapAdName = urlParams?.get('ad_name') || urlParams?.get('utm_content') || '';
-      const snapAdId = urlParams?.get('ad_id') || urlParams?.get('utm_term') || '';
-      const snapCampaignId = urlParams?.get('campaign_id') || '';
+      // Get ad tracking with full fallbacks (state -> sessionStorage -> window.location)
+      let resolvedAdId = snapAdId;
+      let resolvedAdName = snapAdName;
+      let resolvedCampName = snapCampaignName;
+      let resolvedCampId = snapCampaignId;
+
+      try {
+        const cached = typeof window !== 'undefined' ? sessionStorage.getItem('snap_ad_tracking') : null;
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (!resolvedAdId) resolvedAdId = parsed.adId || '';
+          if (!resolvedAdName) resolvedAdName = parsed.adName || '';
+          if (!resolvedCampName) resolvedCampName = parsed.campaignName || '';
+          if (!resolvedCampId) resolvedCampId = parsed.campaignId || '';
+        }
+      } catch (_) {}
+
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (!resolvedCampName) resolvedCampName = urlParams.get('campaign_name') || urlParams.get('campaignName') || urlParams.get('utm_campaign') || urlParams.get('snap_campaign_name') || '';
+        if (!resolvedAdName) resolvedAdName = urlParams.get('ad_name') || urlParams.get('adName') || urlParams.get('utm_content') || urlParams.get('snap_ad_name') || '';
+        if (!resolvedAdId) resolvedAdId = urlParams.get('ad_id') || urlParams.get('adId') || urlParams.get('adid') || urlParams.get('utm_term') || urlParams.get('snap_ad_id') || '';
+        if (!resolvedCampId) resolvedCampId = urlParams.get('campaign_id') || urlParams.get('campaignId') || urlParams.get('snap_campaign_id') || '';
+      }
 
       // Keep notes 100% clean for shipping labels / waybills:
       const cleanCustomerNotes = orderNotes.trim() ? `القياس: ${selectedSize} | ${orderNotes.trim()}` : `القياس: ${selectedSize}`;
@@ -462,10 +517,10 @@ function AbayaLandingInner() {
         totalAmount: grandTotal,
         freeGift: selectedBundle.freeGift,
         source: 'صفحة الهبوط (سناب شات)',
-        adId: snapAdId,
-        adName: snapAdName,
-        campaignName: snapCampaignName,
-        campaignId: snapCampaignId,
+        adId: resolvedAdId,
+        adName: resolvedAdName,
+        campaignName: resolvedCampName,
+        campaignId: resolvedCampId,
         status: 'pending',
         paymentMethod: 'الدفع عند الاستلام',
         createdAt: serverTimestamp()
@@ -515,10 +570,10 @@ function AbayaLandingInner() {
               bookingEmployeeName: 'صفحة هبوط العبايات',
               order_type: 'snapchat_abaya',
               orderType: 'snapchat_abaya',
-              adId: snapAdId,
-              adName: snapAdName,
-              campaignName: snapCampaignName,
-              campaignId: snapCampaignId,
+              adId: resolvedAdId,
+              adName: resolvedAdName,
+              campaignName: resolvedCampName,
+              campaignId: resolvedCampId,
               items: [
                 {
                   id: 'abaya_malakiya',
