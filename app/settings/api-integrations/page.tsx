@@ -21,8 +21,8 @@ interface LandingPageWebhook {
   createdAt: string;
   linkedProductId?: string;
   linkedPixelDocId?: string;
-  linkedPixelPlatform?: 'meta' | 'tiktok';
-  linkedPixels?: { platform: 'meta' | 'tiktok', docId: string }[];
+  linkedPixelPlatform?: 'meta' | 'tiktok' | 'snapchat';
+  linkedPixels?: { platform: 'meta' | 'tiktok' | 'snapchat', docId: string }[];
 }
 
 export default function ApiIntegrationsPage() {
@@ -79,11 +79,12 @@ export default function ApiIntegrationsPage() {
   
   // Pixel Linking States
   const [isPixelLinked, setIsPixelLinked] = useState(false);
-  const [linkedPixels, setLinkedPixels] = useState<{ platform: 'meta' | 'tiktok', docId: string }[]>([]);
+  const [linkedPixels, setLinkedPixels] = useState<{ platform: 'meta' | 'tiktok' | 'snapchat', docId: string }[]>([]);
 
   // Pixel lists
   const [metaPixels, setMetaPixels] = useState<any[]>([]);
   const [tiktokPixels, setTiktokPixels] = useState<any[]>([]);
+  const [snapchatPixels, setSnapchatPixels] = useState<any[]>([]);
 
   // Products
   const [products, setProducts] = useState<any[]>([]);
@@ -178,6 +179,11 @@ export default function ApiIntegrationsPage() {
       setTiktokPixels(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
+    const snapchatPixelsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'snapchat', 'connections');
+    const unsubscribeSnapchatPixels = onSnapshot(snapchatPixelsRef, (snapshot) => {
+      setSnapchatPixels(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       unsubscribeMeta();
       unsubscribeDelivery();
@@ -187,6 +193,7 @@ export default function ApiIntegrationsPage() {
       unsubscribeProducts();
       unsubscribeMetaPixels();
       unsubscribeTiktokPixels();
+      unsubscribeSnapchatPixels();
     };
   }, []);
 
@@ -493,7 +500,7 @@ export default function ApiIntegrationsPage() {
     // Validation Guard: Ensure selected pixel supports the selected product
     if (isPixelLinked && linkedPixels.length > 0 && webhookLinkedProductId) {
       for (const px of linkedPixels) {
-        const pixelList = px.platform === 'meta' ? metaPixels : tiktokPixels;
+        const pixelList = px.platform === 'meta' ? metaPixels : px.platform === 'tiktok' ? tiktokPixels : snapchatPixels;
         const selectedPixel = pixelList.find(p => p.id === px.docId);
         if (selectedPixel && selectedPixel.linkedProducts) {
           if (!selectedPixel.linkedProducts.includes(webhookLinkedProductId)) {
@@ -1251,7 +1258,7 @@ export default function ApiIntegrationsPage() {
                       setWebhookLinkedProductId(e.target.value);
                       if (isPixelLinked && linkedPixels.length > 0) {
                          const validPixels = linkedPixels.filter(px => {
-                           const pixelList = px.platform === 'meta' ? metaPixels : tiktokPixels;
+                           const pixelList = px.platform === 'meta' ? metaPixels : px.platform === 'tiktok' ? tiktokPixels : snapchatPixels;
                            const selectedPixel = pixelList.find(p => p.id === px.docId);
                            return selectedPixel && selectedPixel.linkedProducts && selectedPixel.linkedProducts.includes(e.target.value);
                          });
@@ -1333,12 +1340,36 @@ export default function ApiIntegrationsPage() {
                               </label>
                             );
                         })}
+
+                        {snapchatPixels.length > 0 && <div style={{ fontSize: '0.8rem', color: '#facc15', fontWeight: 'bold', marginTop: '0.5rem' }}>بكسلات سناب شات (Snapchat)</div>}
+                        {snapchatPixels
+                          .filter(p => !webhookLinkedProductId || (p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)))
+                          .map(p => {
+                            const isChecked = linkedPixels.some(px => px.platform === 'snapchat' && px.docId === p.id);
+                            return (
+                              <label key={`snapchat:${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--primary)', fontSize: '0.9rem' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setLinkedPixels([...linkedPixels, { platform: 'snapchat', docId: p.id }]);
+                                    } else {
+                                      setLinkedPixels(linkedPixels.filter(px => !(px.platform === 'snapchat' && px.docId === p.id)));
+                                    }
+                                  }}
+                                />
+                                {p.name} ({p.pixelId})
+                              </label>
+                            );
+                        })}
                         
                       </div>
 
                       {webhookLinkedProductId && 
                        metaPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && 
-                       tiktokPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && (
+                       tiktokPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && 
+                       snapchatPixels.filter(p => p.linkedProducts && p.linkedProducts.includes(webhookLinkedProductId)).length === 0 && (
                         <p style={{fontSize: '0.75rem', color: '#ef4444', margin: 0}}>
                           ⚠️ لا يوجد أي بكسل يدعم الصنف المختار. يرجى إضافة الصنف إلى بكسل معين من نافذة المنصات.
                         </p>

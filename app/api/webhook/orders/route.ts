@@ -247,18 +247,25 @@ export async function POST(request: Request) {
 
     const newOrder = {
       id: nextId.toString(),
+      order_id: nextId.toString(),
       employeeId: 'landing_page_webhook',
-      employeeName: 'رابط خارجي',
+      employeeName: matchedLandingPage.name || 'صفحة الهبوط',
       bookingEmployeeId: 'landing_page_webhook',
-      bookingEmployeeName: matchedLandingPage.name || 'Landing Page',
+      bookingEmployeeName: matchedLandingPage.name || 'صفحة الهبوط',
       customerName: customerName,
+      customer_name: customerName,
       customerPhone: phoneNumber,
+      customer_phone: phoneNumber,
       customerPhone2: '',
       governorate: governorate,
       region: '',
       notes: (notes && typeof notes === 'string' && notes.includes('طلب قادم من صفحة الهبوط') ? notes.replace(/طلب قادم من صفحة الهبوط أوتوماتيكياً/g, '').trim() : notes || ''),
       paymentMethod: 'كاش عند التوصيل',
+      payment_method: 'كاش عند التوصيل',
       totalAmount: Number(totalPrice),
+      total_amount: Number(totalPrice),
+      order_type: 'snapchat_abaya',
+      orderType: 'snapchat_abaya',
       items: [{
         productId: actualProductId,
         productName: actualProductName,
@@ -271,7 +278,11 @@ export async function POST(request: Request) {
       date: FieldValue.serverTimestamp(),
       status: 'pending', // VERY IMPORTANT: Use 'pending' so it shows in the dashboard
       is_settled: false,
-      source: source || matchedLandingPage.name || 'Landing Page Webhook',
+      source: source || matchedLandingPage.name || 'صفحة الهبوط',
+      adId: body.adId || body.ad_id || '',
+      adName: body.adName || body.ad_name || '',
+      campaignName: body.campaignName || body.campaign_name || '',
+      campaignId: body.campaignId || body.campaign_id || '',
       timestamp: new Date().getTime(),
     };
 
@@ -348,6 +359,13 @@ export async function POST(request: Request) {
             body: JSON.stringify(pixelPayload)
           }).then(async res => {
              if(!res.ok) console.error('TikTok Pixel Trigger Error:', await res.text());
+          }),
+          fetch(`${baseUrl}/api/webhooks/snapchat-purchase`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pixelPayload)
+          }).then(async res => {
+             if(!res.ok) console.error('Snapchat Pixel Trigger Error:', await res.text());
           })
         );
       }

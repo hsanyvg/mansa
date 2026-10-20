@@ -1,0 +1,1349 @@
+/* Snapchat Abaya Landing Page Styles - Luxury Islamic Fashion */
+
+.pageContainer {
+  min-height: 100vh;
+  background-color: #0c0d12;
+  color: #f1f5f9;
+  font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  direction: rtl;
+  overflow-x: hidden;
+  position: relative;
+  padding-bottom: 90px; /* Space for sticky bottom bar */
+}
+
+/* Center max width container for mobile-first Snapchat feel */
+.contentWrapper {
+  max-width: 540px;
+  margin: 0 auto;
+  background: #11121a;
+  min-height: 100vh;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.8), 0 0 20px rgba(212, 175, 55, 0.08);
+  position: relative;
+}
+
+/* Urgent Top Notification Banner */
+.urgentBanner {
+  background: linear-gradient(90deg, #991b1b, #dc2626, #b91c1c);
+  color: #ffffff;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: 0.2px;
+  box-shadow: 0 2px 10px rgba(220, 38, 38, 0.35);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  animation: pulseLight 2s infinite ease-in-out;
+}
+
+@keyframes pulseLight {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.92; }
+}
+
+/* Header & Brand Bar */
+.brandHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(17, 18, 26, 0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+}
+
+.brandLogoArea {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brandCrown {
+  font-size: 1.6rem;
+  background: linear-gradient(135deg, #ffd700, #d4af37, #aa820a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 6px rgba(212, 175, 55, 0.4));
+}
+
+.brandTitles {
+  display: flex;
+  flex-direction: column;
+}
+
+.brandName {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, #ffffff, #fef08a, #d4af37);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brandSub {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.verifiedBadge {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.snapChatPill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #fffc00;
+  color: #000000;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 0 12px rgba(255, 252, 0, 0.35);
+}
+
+/* Hero Visual Showcase - Square 1080x1080 Slider */
+.heroVisualSection {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+  user-select: none;
+}
+
+.mainImageContainer {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1; /* 1080x1080 Square Ratio */
+  overflow: hidden;
+  background: #141520;
+}
+
+.mainHeroImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.4s ease, transform 0.5s ease;
+}
+
+.sliderNavBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(17, 18, 26, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  color: #fbbf24;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  cursor: pointer;
+  z-index: 15;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.sliderNavBtn:hover {
+  background: rgba(251, 191, 36, 0.25);
+  border-color: #fbbf24;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.sliderPrevBtn {
+  right: 12px;
+}
+
+.sliderNextBtn {
+  left: 12px;
+}
+
+/* Dots and Slider Progress */
+.sliderDotsBar {
+  position: absolute;
+  bottom: 14px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  z-index: 15;
+}
+
+.sliderDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.sliderDot.activeDot {
+  width: 26px;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+}
+
+.sliderCounter {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  color: #f1f5f9;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 15;
+}
+
+.floatingOfferTag {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 30px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 10;
+}
+
+.floatingFabricTag {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(17, 18, 26, 0.85);
+  backdrop-filter: blur(8px);
+  color: #fef08a;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  padding: 5px 10px;
+  border-radius: 30px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  z-index: 10;
+}
+
+.imageGradientOverlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 25%;
+  background: linear-gradient(to top, rgba(17, 18, 26, 0.8) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Gallery Thumbnails */
+.thumbnailBar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #141520;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.thumbnailItem {
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+  background: #1c1d2b;
+  flex-shrink: 0;
+}
+
+.thumbnailItem.activeThumbnail {
+  border-color: #d4af37;
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.4);
+}
+
+.thumbnailImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Live Viewing Chip */
+.liveViewingBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(212, 175, 55, 0.08);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+  font-size: 0.78rem;
+  color: #fde047;
+}
+
+.liveIndicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.pulseDot {
+  width: 8px;
+  height: 8px;
+  background-color: #ef4444;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #ef4444;
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Product Info & Pricing Box */
+.productDetailsCard {
+  padding: 18px 16px;
+}
+
+.productRatingRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.starGroup {
+  color: #facc15;
+  font-size: 0.95rem;
+  letter-spacing: 1px;
+}
+
+.reviewCountText {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.productMainTitle {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.35;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.highlightText {
+  color: #fde047;
+}
+
+.productShortDescription {
+  font-size: 0.88rem;
+  color: #cbd5e1;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+/* Price Box */
+.priceHighlightBox {
+  background: linear-gradient(135deg, rgba(30, 31, 46, 0.8), rgba(20, 21, 32, 0.95));
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.mainPriceContainer {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.currentPrice {
+  font-size: 1.85rem;
+  font-weight: 900;
+  color: #fbbf24;
+  text-shadow: 0 0 15px rgba(251, 191, 36, 0.3);
+}
+
+.currencyUnit {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fde047;
+}
+
+.oldPrice {
+  font-size: 1.05rem;
+  color: #64748b;
+  text-decoration: line-through;
+}
+
+.discountPill {
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+.saveAmountNote {
+  font-size: 0.78rem;
+  color: #34d399;
+  font-weight: 700;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Countdown & Stock Urgency */
+.urgencyBox {
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px dashed rgba(239, 68, 68, 0.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.urgencyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.countdownLabel {
+  font-size: 0.8rem;
+  color: #fca5a5;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.timerDigits {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #fef08a;
+  background: #1e1e24;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(253, 224, 71, 0.3);
+  letter-spacing: 1px;
+}
+
+.progressBarContainer {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  border-radius: 10px;
+  transition: width 0.5s ease;
+}
+
+.stockStatusText {
+  font-size: 0.75rem;
+  color: #f87171;
+  font-weight: 600;
+  text-align: left;
+  direction: rtl;
+}
+
+/* Bundles / Package Selector */
+.sectionBlock {
+  margin-bottom: 22px;
+}
+
+.sectionHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sectionTitle {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sizeGuideLink {
+  color: #fbbf24;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.bundleCardsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bundleCard {
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  background: #161722;
+  border-radius: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bundleCard:hover {
+  background: #1b1c2b;
+}
+
+.bundleCard.activeBundle {
+  border-color: #fbbf24;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(20, 21, 32, 0.95));
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.18);
+}
+
+.bundleCheckCol {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.customRadio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.bundleCard.activeBundle .customRadio {
+  border-color: #fbbf24;
+  background: #fbbf24;
+}
+
+.customRadioInner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #11121a;
+}
+
+.bundleInfoCol h4 {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.bundleSubtitle {
+  font-size: 0.74rem;
+  color: #94a3b8;
+}
+
+.bundlePriceCol {
+  text-align: left;
+}
+
+.bundlePrice {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #fde047;
+}
+
+.bundleOldPrice {
+  font-size: 0.78rem;
+  color: #64748b;
+  text-decoration: line-through;
+}
+
+.bundleRibbon {
+  position: absolute;
+  top: -9px;
+  left: 14px;
+  background: linear-gradient(90deg, #10b981, #059669);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+/* Size Pills Selector */
+.sizePillsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.sizePill {
+  background: #171825;
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px 4px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.sizePill:hover {
+  background: #1f2030;
+}
+
+.sizePill.activeSize {
+  border-color: #fbbf24;
+  background: linear-gradient(135deg, #fbbf24, #d97706);
+  color: #000000;
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.4);
+}
+
+.sizeNumber {
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.sizeHeightHint {
+  font-size: 0.62rem;
+  opacity: 0.8;
+  font-weight: 600;
+}
+
+/* Color Options */
+.colorOptionsList {
+  display: flex;
+  gap: 10px;
+}
+
+.colorOptionCard {
+  flex: 1;
+  background: #161722;
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.colorOptionCard.activeColor {
+  border-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.colorCircle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.colorTitle {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Feature Highlights Grid */
+.featuresGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.featureCard {
+  background: #161724;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.featureIcon {
+  font-size: 1.5rem;
+  background: rgba(212, 175, 55, 0.1);
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.featureTitle {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.featureDesc {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* Guarantees Ribbon Banner */
+.guaranteesBanner {
+  background: linear-gradient(135deg, #102a1d, #064e3b);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin: 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(6, 78, 59, 0.35);
+}
+
+.guaranteeShieldIcon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.guaranteeTitle {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #a7f3d0;
+  margin-bottom: 2px;
+}
+
+.guaranteeDesc {
+  font-size: 0.76rem;
+  color: #ecfdf5;
+  line-height: 1.45;
+}
+
+/* Checkout Form Section */
+.orderFormContainer {
+  background: linear-gradient(180deg, #171826 0%, #13141f 100%);
+  border: 2px solid rgba(212, 175, 55, 0.35);
+  border-radius: 20px;
+  padding: 20px 16px;
+  margin: 24px 0;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(212, 175, 55, 0.12);
+  position: relative;
+}
+
+.formHeader {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.formHeaderBadge {
+  background: linear-gradient(90deg, #d97706, #fbbf24);
+  color: #000;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 4px 12px;
+  border-radius: 20px;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.formMainTitle {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.formSubtitle {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.formInputsList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inputLabel {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.requiredStar {
+  color: #ef4444;
+}
+
+.styledInput,
+.styledSelect,
+.styledTextarea {
+  width: 100%;
+  background: #0f1018;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.92rem;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.styledInput:focus,
+.styledSelect:focus,
+.styledTextarea:focus {
+  border-color: #fbbf24;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.3);
+  background: #141520;
+}
+
+.styledSelect option {
+  background: #11121a;
+  color: #fff;
+}
+
+.styledTextarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* Order Summary Box inside Form */
+.orderBillSummary {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 6px;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  padding: 4px 0;
+}
+
+.summaryRow.totalRow {
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+  margin-top: 6px;
+  padding-top: 8px;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #fbbf24;
+}
+
+.freeShipBadge {
+  background: #059669;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+/* Submit CTA Button */
+.submitOrderBtn {
+  width: 100%;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+  color: #0b0c10;
+  border: none;
+  border-radius: 14px;
+  padding: 16px 20px;
+  font-size: 1.15rem;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 6px 24px rgba(245, 158, 11, 0.45);
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.submitOrderBtn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transform: skewX(-20deg);
+  animation: shimmer 2.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  60% { left: 150%; }
+  100% { left: 150%; }
+}
+
+.submitOrderBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(245, 158, 11, 0.6);
+}
+
+.submitOrderBtn:active {
+  transform: scale(0.98);
+}
+
+.submitOrderBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* WhatsApp Secondary Order Button */
+.whatsappOrderBtn {
+  width: 100%;
+  background: #25d366;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  margin-top: 10px;
+  box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
+  transition: all 0.2s ease;
+}
+
+.whatsappOrderBtn:hover {
+  background: #20ba59;
+}
+
+/* Real Customer Reviews Section */
+.reviewsSection {
+  margin: 30px 0;
+}
+
+.reviewsHeader {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.reviewScoreBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.reviewsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reviewCard {
+  background: #161724;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.reviewTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.reviewerMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reviewerAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d4af37, #854d0e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #fff;
+}
+
+.reviewerName {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.reviewerCity {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.verifiedPurchaseChip {
+  font-size: 0.65rem;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.reviewText {
+  font-size: 0.82rem;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+
+/* FAQ Accordion */
+.faqSection {
+  margin: 30px 0;
+}
+
+.faqItem {
+  background: #161724;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.faqQuestion {
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.faqAnswer {
+  padding: 0 16px 12px 16px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  line-height: 1.55;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding-top: 8px;
+}
+
+/* Footer */
+.landingFooter {
+  text-align: center;
+  padding: 24px 16px;
+  color: #64748b;
+  font-size: 0.72rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Sticky Bottom Floating CTA for Mobile / Snapchat */
+.stickyBottomBar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(17, 18, 26, 0.95);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid rgba(212, 175, 55, 0.3);
+  padding: 10px 16px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
+}
+
+.stickyBarInner {
+  max-width: 540px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stickyPriceArea {
+  display: flex;
+  flex-direction: column;
+}
+
+.stickyCurrentPrice {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #fbbf24;
+  line-height: 1;
+}
+
+.stickyOldPrice {
+  font-size: 0.72rem;
+  color: #64748b;
+  text-decoration: line-through;
+}
+
+.stickyCTAButton {
+  flex: 1;
+  background: linear-gradient(135deg, #fbbf24, #d97706);
+  color: #0b0c10;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-size: 0.98rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  animation: pulseButton 2.5s infinite;
+}
+
+@keyframes pulseButton {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+/* Live Buyer Popups / Social Proof Toast */
+.socialProofToast {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  z-index: 90;
+  background: rgba(22, 23, 36, 0.96);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  animation: slideInRight 0.4s ease-out;
+  max-width: 290px;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.toastThumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.toastText {
+  display: flex;
+  flex-direction: column;
+}
+
+.toastName {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.toastAction {
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+
+.toastTime {
+  font-size: 0.62rem;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+/* Size Guide Modal */
+.modalBackdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modalContent {
+  background: #171826;
+  border: 1.5px solid rgba(212, 175, 55, 0.4);
+  border-radius: 20px;
+  max-width: 480px;
+  width: 100%;
+  padding: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+  position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modalCloseBtn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.sizeTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.sizeTable th {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sizeTable td {
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+}
+
+/* Success Celebration Screen */
+.successModal {
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.successCheckIcon {
+  width: 70px;
+  height: 70px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  margin: 0 auto 16px auto;
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.5);
+}
+
+.successTitle {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.successSubtitle {
+  font-size: 0.88rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.orderIdPill {
+  display: inline-block;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-weight: 800;
+  font-size: 0.88rem;
+  margin-bottom: 20px;
+}

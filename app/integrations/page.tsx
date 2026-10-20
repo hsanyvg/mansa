@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './page.module.css';
 import { db, auth } from "../../lib/firebase";
 import { collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface Connection {
   id: string;
@@ -20,12 +21,30 @@ interface Product {
 }
 
 export default function IntegrationsPage() {
-  const [activeTab, setActiveTab] = useState<'meta' | 'tiktok'>('meta');
+  const [activeTab, setActiveTab] = useState<'meta' | 'tiktok' | 'snapchat'>('meta');
   
   const [metaConnections, setMetaConnections] = useState<Connection[]>([]);
   const [tiktokConnections, setTiktokConnections] = useState<Connection[]>([]);
+  const [snapchatConnections, setSnapchatConnections] = useState<Connection[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // User identification state
+  const [currentUid, setCurrentUid] = useState<string>(() => {
+    if (auth.currentUser && !auth.currentUser.isAnonymous) return auth.currentUser.uid;
+    return 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+  });
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (usr) => {
+      if (usr && !usr.isAnonymous) {
+        setCurrentUid(usr.uid);
+      } else {
+        setCurrentUid('guAXkcygceeBkpwtFdf1n8O3dRX2');
+      }
+    });
+    return () => unsubAuth();
+  }, []);
 
   // Form State
   const [connectionName, setConnectionName] = useState('');
@@ -38,8 +57,9 @@ export default function IntegrationsPage() {
 
   // Fetch connections
   useEffect(() => {
-    const metaRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'meta', 'connections');
-    const tiktokRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', 'tiktok', 'connections');
+    const metaRef = collection(db, 'users', currentUid, 'integrations', 'meta', 'connections');
+    const tiktokRef = collection(db, 'users', currentUid, 'integrations', 'tiktok', 'connections');
+    const snapchatRef = collection(db, 'users', currentUid, 'integrations', 'snapchat', 'connections');
     
     const unsubMeta = onSnapshot(metaRef, (snapshot) => {
       setMetaConnections(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Connection)));
@@ -47,20 +67,28 @@ export default function IntegrationsPage() {
 
     const unsubTiktok = onSnapshot(tiktokRef, (snapshot) => {
       setTiktokConnections(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Connection)));
+    });
+
+    const unsubSnapchat = onSnapshot(snapchatRef, (snapshot) => {
+      setSnapchatConnections(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Connection)));
       setIsLoading(false);
     });
 
-    return () => { unsubMeta(); unsubTiktok(); };
-  }, []);
+    return () => { 
+      unsubMeta(); 
+      unsubTiktok(); 
+      unsubSnapchat();
+    };
+  }, [currentUid]);
 
   // Fetch products
   useEffect(() => {
-    const productsRef = collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products');
+    const productsRef = collection(db, 'users', currentUid, 'products');
     const unsubscribe = onSnapshot(productsRef, (snapshot) => {
       setProductsList(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name } as Product)));
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUid]);
 
   const resetForm = () => {
     setConnectionName('');
@@ -93,7 +121,7 @@ export default function IntegrationsPage() {
     e.stopPropagation();
     if (!window.confirm('هل أنت متأكد من حذف هذا الربط؟')) return;
     try {
-      await deleteDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', activeTab, 'connections', id));
+      await deleteDoc(doc(db, 'users', currentUid, 'integrations', activeTab, 'connections', id));
       if (editingId === id) resetForm();
     } catch (error) {
       console.error("Error deleting connection:", error);
@@ -109,17 +137,17 @@ export default function IntegrationsPage() {
     }
     const connectionData = {
       name: connectionName,
-      pixelId,
-      accessToken,
-      testEventCode,
+      pixelId: pixelId.trim(),
+      accessToken: accessToken.trim(),
+      testEventCode: testEventCode.trim(),
       linkedProducts: selectedProducts,
       updatedAt: new Date().toISOString()
     };
     try {
       if (editingId) {
-        await updateDoc(doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', activeTab, 'connections', editingId), connectionData);
+        await updateDoc(doc(db, 'users', currentUid, 'integrations', activeTab, 'connections', editingId), connectionData);
       } else {
-        await addDoc(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'integrations', activeTab, 'connections'), {
+        await addDoc(collection(db, 'users', currentUid, 'integrations', activeTab, 'connections'), {
           ...connectionData,
           createdAt: new Date().toISOString()
         });
@@ -131,7 +159,35 @@ export default function IntegrationsPage() {
     }
   };
 
-  const currentConnections = activeTab === 'meta' ? metaConnections : tiktokConnections;
+  const currentConnections = activeTab === 'meta' 
+    ? metaConnections 
+    : activeTab === 'tiktok' 
+      ? tiktokConnections 
+      : snapchatConnections;
+
+  const getPlatformArabicName = () => {
+    switch (activeTab) {
+      case 'meta': return 'ميتا';
+      case 'tiktok': return 'تيك توك';
+      case 'snapchat': return 'سناب شات';
+    }
+  };
+
+  const getPlatformBadge = () => {
+    switch (activeTab) {
+      case 'meta': return 'Meta';
+      case 'tiktok': return 'TikTok';
+      case 'snapchat': return 'Snapchat';
+    }
+  };
+
+  const getBadgeClass = () => {
+    switch (activeTab) {
+      case 'meta': return styles.badgeMeta;
+      case 'tiktok': return styles.badgeTiktok;
+      case 'snapchat': return styles.badgeSnapchat;
+    }
+  };
 
   return (
     <div className={styles.container}>
@@ -155,6 +211,12 @@ export default function IntegrationsPage() {
         >
           <span className={styles.tabIcon}>🎵</span> بكسل تيك توك
         </button>
+        <button 
+          className={`${styles.tabBtn} ${activeTab === 'snapchat' ? styles.activeTab : ''}`}
+          onClick={() => { setActiveTab('snapchat'); resetForm(); }}
+        >
+          <span className={styles.tabIcon}>👻</span> بكسل سناب شات
+        </button>
       </div>
 
       <div className={styles.contentGrid}>
@@ -162,28 +224,54 @@ export default function IntegrationsPage() {
         <div className={styles.formSection}>
           <div className={styles.formCard}>
             <h2 className={styles.formTitle}>
-              {editingId ? `تعديل ربط (${activeTab === 'meta' ? 'ميتا' : 'تيك توك'})` : `ربط جديد (${activeTab === 'meta' ? 'ميتا' : 'تيك توك'})`}
+              {editingId ? `تعديل ربط (${getPlatformArabicName()})` : `ربط جديد (${getPlatformArabicName()})`}
             </h2>
             <form onSubmit={handleSave} className={styles.form}>
               <div className={styles.formGroup}>
                 <label>اسم الربط (لتمييز البكسل)</label>
-                <input type="text" value={connectionName} onChange={e => setConnectionName(e.target.value)} placeholder="مثال: بكسل المتجر الرئيسي" required />
+                <input 
+                  type="text" 
+                  value={connectionName} 
+                  onChange={e => setConnectionName(e.target.value)} 
+                  placeholder={activeTab === 'snapchat' ? 'مثال: بكسل سناب شات لصفحة العبايات' : 'مثال: بكسل المتجر الرئيسي'} 
+                  required 
+                />
               </div>
 
               <div className={styles.formGroup}>
                 <label>Pixel ID (مطلوب)</label>
-                <input type="text" value={pixelId} onChange={e => setPixelId(e.target.value)} placeholder="مثال: 1234567890" required />
+                <input 
+                  type="text" 
+                  value={pixelId} 
+                  onChange={e => setPixelId(e.target.value)} 
+                  placeholder={activeTab === 'snapchat' ? 'مثال: 74262440-1baf-4c72-8fe1-2151b67081e4' : 'مثال: 1234567890'} 
+                  required 
+                />
               </div>
 
               <div className={styles.formGroup}>
                 <label>Access Token (Conversions API / Events API)</label>
-                <textarea value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="قم بلصق الرمز السري الطويل هنا" rows={4} />
-                <small>مطلوب لإرسال أحداث الشراء من السيرفر مباشرة لضمان الدقة العالية</small>
+                <textarea 
+                  value={accessToken} 
+                  onChange={e => setAccessToken(e.target.value)} 
+                  placeholder={activeTab === 'snapchat' ? 'ألصق Snap Conversions API Token السري هنا (اختياري للإرسال من السيرفر)' : 'قم بلصق الرمز السري الطويل هنا'} 
+                  rows={4} 
+                />
+                <small>
+                  {activeTab === 'snapchat' 
+                    ? 'يُستخدم لإرسال أحداث الشراء مباشرة من الخادم إلى Snapchat Conversions API (CAPI)'
+                    : 'مطلوب لإرسال أحداث الشراء من السيرفر مباشرة لضمان الدقة العالية'}
+                </small>
               </div>
 
               <div className={styles.formGroup}>
                 <label>Test Event Code (اختياري)</label>
-                <input type="text" value={testEventCode} onChange={e => setTestEventCode(e.target.value)} placeholder="مثال: TEST12345" />
+                <input 
+                  type="text" 
+                  value={testEventCode} 
+                  onChange={e => setTestEventCode(e.target.value)} 
+                  placeholder="مثال: TEST12345" 
+                />
                 <small>استخدمه لتجربة الإرسال والتأكد من وصول الأحداث في منصة الاختبار</small>
               </div>
 
@@ -238,15 +326,15 @@ export default function IntegrationsPage() {
               <p style={{textAlign: 'center', width: '100%', padding: '2rem'}}>جاري التحميل...</p>
             ) : currentConnections.length === 0 ? (
               <div className={styles.emptyState}>
-                <span className={styles.emptyIcon}>🔌</span>
-                <p>لا يوجد أي بكسل مربوط حالياً في هذه المنصة</p>
+                <span className={styles.emptyIcon}>👻</span>
+                <p>لا يوجد أي بكسل مربوط حالياً في {getPlatformArabicName()}</p>
               </div>
             ) : (
               currentConnections.map(conn => (
                 <div key={conn.id} className={`${styles.pixelCard} ${editingId === conn.id ? styles.editingCard : ''}`} onClick={() => handleEditClick(conn)}>
                   <div className={styles.cardHeader}>
                     <div className={styles.cardTitleArea}>
-                      <span className={styles.platformBadge}>{activeTab === 'meta' ? 'Meta' : 'TikTok'}</span>
+                      <span className={`${styles.platformBadge} ${getBadgeClass()}`}>{getPlatformBadge()}</span>
                       <h3>{conn.name}</h3>
                     </div>
                     <button className={styles.deleteBtn} onClick={(e) => handleDelete(conn.id, e)} title="حذف">🗑️</button>

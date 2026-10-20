@@ -189,8 +189,10 @@ export default function Dashboard() {
   }, [tempGaugeFilter, tempGaugeStartDate, tempGaugeEndDate]);
 
   useEffect(() => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+
     // Listen to orders
-    const unsubOrders = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), (snapshot) => {
+    const unsubOrders = onSnapshot(collection(db, 'users', activeUid, 'orders'), (snapshot) => {
       setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (error) => {
@@ -198,7 +200,7 @@ export default function Dashboard() {
     });
 
     // Listen to products count and instock stats
-    const unsubProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
+    const unsubProducts = onSnapshot(collection(db, 'users', activeUid, 'products'), (snapshot) => {
       const prods = snapshot.docs.map(doc => doc.data());
       setProductsCount(prods.length);
       
@@ -217,28 +219,28 @@ export default function Dashboard() {
     });
 
     // Listen to all products for profit analysis
-    const unsubAllProducts = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
+    const unsubAllProducts = onSnapshot(collection(db, 'users', activeUid, 'products'), (snapshot) => {
       setAllProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       console.error("Error fetching all products:", error);
     });
 
     // Listen to expenses for profit analysis
-    const unsubExpenses = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'expenses'), (snapshot) => {
+    const unsubExpenses = onSnapshot(collection(db, 'users', activeUid, 'expenses'), (snapshot) => {
       setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       console.error("Error fetching expenses:", error);
     });
 
     // Listen to categories for profit analysis
-    const unsubCategories = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
+    const unsubCategories = onSnapshot(collection(db, 'users', activeUid, 'categories'), (snapshot) => {
       setAllCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       console.error("Error fetching categories:", error);
     });
 
     // Listen to pages for profit analysis
-    const unsubPages = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
+    const unsubPages = onSnapshot(collection(db, 'users', activeUid, 'pages_stores'), (snapshot) => {
       setPages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       console.error("Error fetching pages:", error);
@@ -486,7 +488,7 @@ export default function Dashboard() {
     // Filter based on view mode (team vs landing pages)
     const isLandingPage = (name: string) => {
       const lower = name.toLowerCase();
-      return lower.includes('محبس') || lower.includes('عقيق') || lower.includes('landing') || lower.includes('هبوط');
+      return lower.includes('محبس') || lower.includes('عقيق') || lower.includes('landing') || lower.includes('هبوط') || lower.includes('عباية');
     };
 
     const filteredList = empList.filter(emp => {

@@ -516,23 +516,33 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
 
   const getOrderFinancials = (order: any) => {
     if (!order) return { isAdjusted: false, currentNet: 0, oldNet: null, delivery: 0, currentTotal: 0, oldTotal: null };
+    const orderNet = (order.totalAmount !== undefined && order.totalAmount !== null)
+      ? Number(order.totalAmount)
+      : (order.total_amount !== undefined && order.total_amount !== null)
+        ? Number(order.total_amount)
+        : (order.price !== undefined && order.price !== null)
+          ? Number(order.price)
+          : (order.totalPrice !== undefined && order.totalPrice !== null)
+            ? Number(order.totalPrice)
+            : 0;
+
     const isAdjusted = Boolean(
       order.priceAdjusted || 
-      (order.originalTotalAmount && order.originalTotalAmount !== (order.totalAmount || order.price || 0)) ||
-      (order.is_settled && order.paidAmount && order.paidAmount > 0 && order.paidAmount !== (order.totalAmount || order.price || 0))
+      (order.originalTotalAmount && order.originalTotalAmount !== orderNet) ||
+      (order.is_settled && order.paidAmount && order.paidAmount > 0 && order.paidAmount !== orderNet)
     );
 
     const currentNet = (order.priceAdjusted || !order.is_settled || !order.paidAmount)
-      ? (order.totalAmount || order.price || 0)
-      : (order.originalTotalAmount ? (order.totalAmount || order.price || 0) : order.paidAmount);
+      ? orderNet
+      : (order.originalTotalAmount ? orderNet : order.paidAmount);
 
     const oldNet = order.originalTotalAmount || order.previousTotalAmount || (
-      (order.is_settled && order.paidAmount && order.paidAmount !== (order.totalAmount || order.price || 0))
-        ? (order.totalAmount || order.price || 0)
+      (order.is_settled && order.paidAmount && order.paidAmount !== orderNet)
+        ? orderNet
         : null
     );
 
-    const delivery = order.deliveryCost || 0;
+    const delivery = Number(order.deliveryCost || order.shippingCost || 0);
     const currentTotal = currentNet + delivery;
     const oldTotal = oldNet !== null ? oldNet + delivery : null;
     const hasDiff = isAdjusted && oldNet !== null && oldNet !== currentNet;
@@ -551,7 +561,8 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
   useEffect(() => {
     // A simple query, assuming orders might not all have dates, we just order by client-side or we can order by date desc.
     // Ensure you have an index if using orderBy('date', 'desc'). For now, we fetch all and sort client-side.
-    const q = process.env.NEXT_PUBLIC_REQUIRE_INDEX ? query(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders'), orderBy('date', 'desc')) : collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders');
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const q = process.env.NEXT_PUBLIC_REQUIRE_INDEX ? query(collection(db, 'users', activeUid, 'orders'), orderBy('date', 'desc')) : collection(db, 'users', activeUid, 'orders');
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dbOrders: any[] = snapshot.docs.map(doc => {
@@ -566,12 +577,34 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
         }
 
         // Handle POS array structure or legacy structure gracefully
-        const totalAmount = data.totalAmount || data.price || 0;
+        const totalAmount = (data.totalAmount !== undefined && data.totalAmount !== null)
+          ? Number(data.totalAmount)
+          : (data.total_amount !== undefined && data.total_amount !== null)
+            ? Number(data.total_amount)
+            : (data.price !== undefined && data.price !== null)
+              ? Number(data.price)
+              : (data.totalPrice !== undefined && data.totalPrice !== null)
+                ? Number(data.totalPrice)
+                : 0;
         const formattedTotal = totalAmount ? new Intl.NumberFormat('en-US').format(totalAmount) : '0';
 
+        // Prefer numeric sequential order_id if present
+        const orderId = String(data.order_id || doc.id);
+
         return {
-          id: doc.id,
+          docId: doc.id,
+          order_id: orderId,
+          customerName: data.customerName || data.customer_name || '---',
+          customerPhone: data.customerPhone || data.customer_phone || data.phone || data.phoneNumber || '',
+          customerPhone2: data.customerPhone2 || data.customer_phone2 || data.phone2 || '',
+          employeeName: data.employeeName || data.bookingEmployeeName || (String(data.source || '').includes('صفحة') ? 'صفحة الهبوط' : ''),
+          adId: data.adId || data.ad_id || '',
+          adName: data.adName || data.ad_name || '',
+          campaignName: data.campaignName || data.campaign_name || '',
+          campaignId: data.campaignId || data.campaign_id || '',
           ...data,
+          id: orderId,
+          totalAmount: totalAmount,
           addDate,
           addTime,
           formattedTotal
@@ -594,7 +627,8 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
 
   // Fetch products from Firestore
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const unsub = onSnapshot(collection(db, 'users', activeUid, 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBaseProducts(pData);
     });
@@ -603,7 +637,8 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
 
   // Fetch composite products
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'composite_products'), (snapshot) => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const unsub = onSnapshot(collection(db, 'users', activeUid, 'composite_products'), (snapshot) => {
       const cData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCompositeProductsData(cData);
     });
@@ -612,7 +647,8 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
 
   // Fetch categories
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'categories'), (snapshot) => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const unsub = onSnapshot(collection(db, 'users', activeUid, 'categories'), (snapshot) => {
       setCategoriesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -620,7 +656,8 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
 
   // Fetch pages_stores
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'pages_stores'), (snapshot) => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const unsub = onSnapshot(collection(db, 'users', activeUid, 'pages_stores'), (snapshot) => {
       setPagesDb(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsub();
@@ -1071,10 +1108,38 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
     return phA.localeCompare(phB);
   });
 
+  const isLandingPageOrder = (o: any) => {
+    if (!o) return false;
+    const sourceStr = String(o.source || '').toLowerCase();
+    const notesStr = String(o.notes || '');
+    const empIdStr = String(o.employeeId || '');
+    const bookingEmpIdStr = String(o.bookingEmployeeId || '');
+    const bookingEmpNameStr = String(o.bookingEmployeeName || '');
+    const orderTypeStr = String(o.order_type || o.orderType || '').toLowerCase();
+
+    return (
+      empIdStr === 'landing_page_webhook' ||
+      bookingEmpIdStr === 'landing_page_webhook' ||
+      sourceStr.includes('landing') ||
+      sourceStr.includes('صفحة الهبوط') ||
+      sourceStr.includes('صفحة هبوط') ||
+      sourceStr.includes('سناب شات') ||
+      sourceStr.includes('snapchat') ||
+      sourceStr.includes('ياقوت') ||
+      notesStr.includes('طلب قادم من صفحة الهبوط') ||
+      notesStr.includes('صفحة الهبوط') ||
+      notesStr.includes('سناب شات') ||
+      notesStr.includes('snapchat') ||
+      bookingEmpNameStr.includes('صفحة') ||
+      orderTypeStr.includes('snapchat') ||
+      orderTypeStr.includes('landing')
+    );
+  };
+
   const returnedOrdersList = sourceOrders.filter(o => o.status === 'returned' || o.status === 'returned_agent');
   const returnedWarehouseList = sourceOrders.filter(o => o.status === 'returned_warehouse');
   const discrepancyOrdersList = sourceOrders.filter(o => o.has_discrepancy);
-  const landingPageOrdersList = sourceOrders.filter(o => o.notes?.includes('طلب قادم من صفحة الهبوط') || o.source?.toLowerCase().includes('landing page'));
+  const landingPageOrdersList = sourceOrders.filter(isLandingPageOrder);
 
   const baseList = activeTab === 'archived' ? archivedOrdersList 
                  : activeTab === 'duplicates' ? duplicateOrdersList 
@@ -4846,9 +4911,9 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
                         <div style={{ display: 'inline-block', background: 'var(--surface)', padding: '4px', borderRadius: '4px', overflow: 'hidden' }}>
-                          <QRCode value={order.id.slice(-6).toUpperCase()} size={40} />
+                          <QRCode value={String(order.order_id || order.id || '').slice(-6).toUpperCase()} size={40} />
                           <div style={{ textAlign: 'center', fontSize: '10px', color: 'var(--text-main)', fontWeight: 'bold', marginTop: '2px' }}>
-                            {order.id.slice(-6).toUpperCase()}
+                            {String(order.order_id || order.id || '').slice(-6).toUpperCase()}
                           </div>
                         </div>
                         {order.isArchived && (
@@ -4862,13 +4927,13 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
                   {visibleColumns.employeeName && (
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.9rem' }}>
-                        <span style={{ fontWeight: "600", color: "var(--primary)" }} title="مستخدم النظام">{order.employeeName || '---'}</span>
+                        <span style={{ fontWeight: "600", color: "var(--primary)" }} title="مستخدم النظام">{order.employeeName || (isLandingPageOrder(order) ? 'صفحة الهبوط' : '---')}</span>
                       </div>
                     </td>
                   )}
                   {visibleColumns.governorate && <td>{order.governorate}</td>}
-                  {visibleColumns.phone && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.phone}</td>}
-                  {visibleColumns.phone2 && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone2 || order.phone2 || ''}</td>}
+                  {visibleColumns.phone && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone || order.customer_phone || order.phone || order.phoneNumber || '-'}</td>}
+                  {visibleColumns.phone2 && <td style={{ direction: 'ltr', textAlign: 'right' }}>{order.customerPhone2 || order.customer_phone2 || order.phone2 || ''}</td>}
                   {visibleColumns.totalAmount && (() => {
                     const financials = getOrderFinancials(order);
                     return (
@@ -5760,6 +5825,49 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
                   <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.5' }}>
                     {selectedOrder.discrepancy_note || 'تمت محاولة استلام هذا الوصل ضمن كشف تسوية، ولكن كان هناك اختلاف في المبلغ.'}
                   </p>
+                </div>
+              )}
+              {/* Snapchat Ad Tracking Card */}
+              {(selectedOrder.adId || selectedOrder.adName || selectedOrder.campaignName || selectedOrder.source?.includes('سناب')) && (
+                <div style={{
+                  backgroundColor: 'rgba(255, 252, 0, 0.05)',
+                  border: '1px solid rgba(255, 252, 0, 0.25)',
+                  borderRadius: '10px',
+                  padding: '0.9rem 1.1rem',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.6rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 252, 0, 0.15)', paddingBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>👻</span>
+                      <span style={{ fontWeight: 'bold', color: '#facc15', fontSize: '0.95rem' }}>بيانات إعلان سناب شات (تتبع الإدارة)</span>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', backgroundColor: 'rgba(148, 163, 184, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                      🔒 داخلي فقط (لا يُطبع في بوليصة الشحن)
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.8rem', marginTop: '0.2rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>📢 الحملة الإعلانية:</span>
+                      <span style={{ fontSize: '0.92rem', color: '#fff', fontWeight: 'bold' }}>
+                        {selectedOrder.campaignName || 'حملة العبايات'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>🎬 اسم الإعلان:</span>
+                      <span style={{ fontSize: '0.92rem', color: '#38bdf8', fontWeight: 'bold' }}>
+                        {selectedOrder.adName || 'إعلان سناب شات'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>🆔 مُعرّف الإعلان (Ad ID):</span>
+                      <span style={{ fontSize: '0.92rem', color: '#a78bfa', fontFamily: 'monospace', fontWeight: 'bold' }}>
+                        {selectedOrder.adId || '---'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 

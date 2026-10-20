@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import styles from './ClientLayout.module.css';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User, GoogleAuthProvider, signInWithPopup, signInWithCustomToken } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
 import { doc, collection, writeBatch, getDoc } from "firebase/firestore";
 
@@ -33,7 +33,23 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const [showIntegrations, setShowIntegrations] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+    const unsubscribe = onAuthStateChanged(auth, async (usr) => {
+      const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+      const isLanding = currentPath.startsWith('/abaya') || currentPath.startsWith('/landing') || currentPath.startsWith('/snap');
+
+      if (usr && usr.isAnonymous && !isLanding) {
+        try {
+          const res = await fetch('/api/auth/restore-session', { method: 'POST' });
+          const data = await res.json();
+          if (data.success && data.token) {
+            await signInWithCustomToken(auth, data.token);
+            return;
+          }
+        } catch (e) {
+          console.error("Auto restore session failed", e);
+        }
+      }
+
       setUser(usr);
       setAuthLoading(false);
     });
@@ -49,7 +65,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     }
     
     return () => unsubscribe();
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     if (!user) return;
@@ -200,6 +216,17 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   };
 
   const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+  const isLandingPath = currentPath.startsWith('/abaya') || currentPath.startsWith('/landing') || currentPath.startsWith('/snap');
+
+  // Immediately render public landing pages without dashboard sidebar or auth blocking
+  if (isLandingPath) {
+    return (
+      <div style={{ minHeight: '100vh', width: '100%', direction: 'rtl' }}>
+        {children}
+      </div>
+    );
+  }
+
   const isMobilePath = currentPath.startsWith('/mobile') || currentPath === '/mobile-download' || currentPath === '/download';
 
   if (authLoading) {

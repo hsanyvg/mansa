@@ -297,7 +297,8 @@ export default function ProductsPage() {
 
   // Fetch real units from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'units'), (snapshot) => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const unsub = onSnapshot(collection(db, 'users', activeUid, 'units'), (snapshot) => {
       const uData = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
       setAvailableUnits(uData);
     });
@@ -306,7 +307,8 @@ export default function ProductsPage() {
 
   // Fetch products from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'products'), (snapshot) => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const unsub = onSnapshot(collection(db, 'users', activeUid, 'products'), (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       pData.sort((a: any, b: any) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       setProducts(pData);
@@ -316,7 +318,8 @@ export default function ProductsPage() {
 
   // Fetch stores from Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users', auth.currentUser?.uid || 'anonymous', 'stores'), (snapshot) => {
+    const activeUid = (auth.currentUser && !auth.currentUser.isAnonymous) ? auth.currentUser.uid : 'guAXkcygceeBkpwtFdf1n8O3dRX2';
+    const unsub = onSnapshot(collection(db, 'users', activeUid, 'stores'), (snapshot) => {
       const sData = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
       setStoresDb(sData);
     });
