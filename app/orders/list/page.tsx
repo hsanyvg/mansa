@@ -19,6 +19,17 @@ export default function OrdersListPage() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [printModalState, setPrintModalState] = useState({ show: false, size: '100x150' });
+  const [printStoreNameMode, setPrintStoreNameMode] = useState<'auto' | 'custom'>('auto');
+  const [customPrintStoreName, setCustomPrintStoreName] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const savedMode = localStorage.getItem('waybill_store_name_mode') as 'auto' | 'custom' | null;
+      if (savedMode) setPrintStoreNameMode(savedMode);
+      const savedName = localStorage.getItem('default_waybill_store_name');
+      if (savedName) setCustomPrintStoreName(savedName);
+    } catch (_) {}
+  }, []);
   const [dateFilter, setDateFilter] = useState('الكل'); // Modified to show All conceptually first
   const [showArchivedInFilter, setShowArchivedInFilter] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
@@ -3322,6 +3333,57 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
     }
   };
 
+  const getOrderWaybillStoreName = (order: any): string => {
+    if (printStoreNameMode === 'custom' && customPrintStoreName.trim()) {
+      return customPrintStoreName.trim();
+    }
+
+    // 1. Direct field on order if present
+    if (order.storeName && typeof order.storeName === 'string') return order.storeName;
+    if (order.pageName && typeof order.pageName === 'string') return order.pageName;
+    if (order.store && typeof order.store === 'string') return order.store;
+    if (order.page && typeof order.page === 'string') return order.page;
+
+    // 2. Resolve via items -> product -> category -> pagesDb
+    if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+      for (const item of order.items) {
+        const prod = products.find((p: any) => p.id === item.productId || p.id === item.id);
+        if (prod) {
+          if (prod.pageId) {
+            const pg = pagesDb.find((p: any) => p.id === prod.pageId);
+            if (pg?.name) return pg.name;
+          }
+          if (prod.pageStore) {
+            const pg = pagesDb.find((p: any) => p.id === prod.pageStore || p.name === prod.pageStore);
+            if (pg?.name) return pg.name;
+            return prod.pageStore;
+          }
+          if (prod.categoryId) {
+            const cat = categoriesDb.find((c: any) => c.id === prod.categoryId);
+            if (cat?.pageId) {
+              const pg = pagesDb.find((p: any) => p.id === cat.pageId);
+              if (pg?.name) return pg.name;
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Fallbacks based on landing page or order source / bookingEmployeeName
+    if (order.bookingEmployeeName && typeof order.bookingEmployeeName === 'string' && order.bookingEmployeeName.includes('عباية')) {
+      return 'دار الحشمة الملكية';
+    }
+    if (order.source && typeof order.source === 'string' && !order.source.includes('Landing Page Webhook') && !order.source.includes('Legacy')) {
+      return order.source;
+    }
+    if (order.employeeName && typeof order.employeeName === 'string' && !order.employeeName.includes('webhook') && !order.employeeName.includes('رابط خارجي') && !order.employeeName.includes('صفحة الهبوط')) {
+      return order.employeeName;
+    }
+
+    // 4. Default fallback
+    return customPrintStoreName.trim() || (pagesDb.length > 0 ? pagesDb[0].name : 'متجرنا');
+  };
+
   const handlePrintLabels = (size = '100x150', includeDeliveryCost = false) => {
     const ordersToPrint = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
     
@@ -3389,6 +3451,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
         ${ordersToPrint.map((order, index) => {
           const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
           const productNames = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join(' + ');
+          const orderStoreName = getOrderWaybillStoreName(order);
           let dateObj = new Date();
           if (order.date) {
             dateObj = order.date.toDate ? order.date.toDate() : (order.date.seconds ? new Date(order.date.seconds * 1000) : new Date(order.date));
@@ -3430,7 +3493,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
               <!-- Row 2: Store Info -->
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
                 <div style="font-size: 11pt; font-weight: bold;">
-                  اسم المتجر: <span style="font-weight: 900;">حساني</span>
+                  اسم المتجر: <span style="font-weight: 900;">${orderStoreName}</span>
                 </div>
                 <div style="text-align: center;">
                   <canvas class="qr-code" data-value="${orderId}" style="width: 32px; height: 32px;"></canvas>
@@ -6525,7 +6588,97 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
             </div>
             
             <div className={styles.modalBody}>
-              <div style={{ padding: '1rem', textAlign: 'center', marginBottom: '1rem', fontSize: '1.1rem', color: '#e2e8f0' }}>
+              {/* Store Name Selection for Waybills */}
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                marginBottom: '1rem',
+                textAlign: 'right'
+              }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#f8fafc', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🏷️</span>
+                    <span>اسم المتجر على البوليصة (الوصل):</span>
+                  </div>
+                  {printStoreNameMode === 'auto' && (
+                    <span style={{ fontSize: '0.75rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 8px', borderRadius: '6px' }}>
+                      ⚡ تحديد ذكي لكل طلب
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: printStoreNameMode === 'custom' ? '10px' : '0' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrintStoreNameMode('auto');
+                      try { localStorage.setItem('waybill_store_name_mode', 'auto'); } catch(_) {}
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: printStoreNameMode === 'auto' ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                      background: printStoreNameMode === 'auto' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.02)',
+                      color: printStoreNameMode === 'auto' ? '#60a5fa' : '#94a3b8',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '0.82rem',
+                      fontFamily: 'inherit'
+                    }}
+                  >
+                    ⚡ تلقائي حسب صفحة المنتج
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrintStoreNameMode('custom');
+                      try { localStorage.setItem('waybill_store_name_mode', 'custom'); } catch(_) {}
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: printStoreNameMode === 'custom' ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                      background: printStoreNameMode === 'custom' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.02)',
+                      color: printStoreNameMode === 'custom' ? '#34d399' : '#94a3b8',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '0.82rem',
+                      fontFamily: 'inherit'
+                    }}
+                  >
+                    ✏️ اسم ثابت مخصص
+                  </button>
+                </div>
+
+                {printStoreNameMode === 'custom' && (
+                  <div style={{ marginTop: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="اكتب اسم المتجر (مثال: دليلك الطبي)..."
+                      value={customPrintStoreName}
+                      onChange={(e) => {
+                        setCustomPrintStoreName(e.target.value);
+                        try { localStorage.setItem('default_waybill_store_name', e.target.value); } catch(_) {}
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        color: '#fff',
+                        fontFamily: 'inherit',
+                        fontSize: '0.9rem',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: '0.5rem', textAlign: 'center', marginBottom: '0.75rem', fontSize: '1.05rem', color: '#e2e8f0' }}>
                 هل تريد طباعة الملصق بالمبلغ الإجمالي أم الصافي؟
               </div>
               <div className={styles.companyList} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
