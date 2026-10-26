@@ -96,7 +96,7 @@ export default function UsersPage() {
     setShowPassword(false);
     setFormData({
       name: user.name,
-      email: user.email,
+      email: user.email?.endsWith('@mansa.app') ? user.email.replace('@mansa.app', '') : user.email,
       password: user.password || '',
       linkedEmployeeId: user.linkedEmployeeId
     });
@@ -155,7 +155,8 @@ export default function UsersPage() {
           linkedEmployeeId: formData.linkedEmployeeId
         };
         
-        let finalEmail = formData.email.trim();
+        let finalEmail = formData.email.trim().replace(/\s+/g, '');
+        finalEmail = finalEmail.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
         if (finalEmail && !finalEmail.includes('@')) {
           finalEmail = `${finalEmail}@mansa.app`;
         }
@@ -208,7 +209,8 @@ export default function UsersPage() {
           return;
         }
         let employeeAuthUid = null;
-        let employeeEmail = formData.email.trim();
+        let employeeEmail = formData.email.trim().replace(/\s+/g, '');
+        employeeEmail = employeeEmail.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
         if (!employeeEmail.includes('@')) {
           employeeEmail = `${employeeEmail}@mansa.app`;
         }
@@ -330,7 +332,17 @@ export default function UsersPage() {
                         </div>
                       )}
                     </td>
-                    <td>{user.email}</td>
+                    <td style={{ direction: 'ltr', textAlign: 'right' }}>
+                      {user.email?.endsWith('@mansa.app') ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#38bdf8', fontWeight: 600 }}>
+                          📱 {user.email.replace('@mansa.app', '')}
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          ✉️ {user.email}
+                        </span>
+                      )}
+                    </td>
                     <td>{empName}</td>
                     <td>{user.createdAt?.toDate ? user.createdAt.toDate().toLocaleDateString('en-GB') : '-'}</td>
                     <td>

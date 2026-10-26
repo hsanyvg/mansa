@@ -15,12 +15,24 @@ import {
   Animated,
   Easing,
   AppState,
-  Keyboard
+  Keyboard,
+  Vibration
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import * as Updates from 'expo-updates';
+import { useVideoPlayer, VideoView } from 'expo-video';
+
+// Safe dynamic require for expo-notifications to prevent Expo Go crashes
+let Notifications = null;
+try {
+  Notifications = require('expo-notifications');
+  if (Notifications && typeof Notifications.setNotificationHandler === 'function') {
+      }
+} catch (e) {
+  console.log('expo-notifications safe initialization notice:', e?.message);
+}
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -29,6 +41,7 @@ import Svg, { Path, Circle, G, Polygon, Defs, LinearGradient, Stop, Rect } from 
 import { db, auth } from './firebase';
 import { 
   collection, 
+  addDoc,
   onSnapshot, 
   doc, 
   writeBatch, 
@@ -57,6 +70,55 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 
+// Fullscreen Intro / Splash Video Screen
+function IntroVideoScreen({ onFinish }) {
+  // Safety timeout: automatically advance after 7.5 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onFinish();
+    }, 7500);
+    return () => clearTimeout(timer);
+  }, [onFinish]);
+
+  let player = null;
+  try {
+    player = useVideoPlayer(require('./assets/intro.mp4'), p => {
+      p.loop = false;
+      p.play();
+    });
+  } catch (e) {
+    console.log('Video player initialization notice:', e?.message);
+  }
+
+  useEffect(() => {
+    if (!player) return;
+    try {
+      const sub = player.addListener('playToEnd', () => {
+        onFinish();
+      });
+      return () => sub?.remove?.();
+    } catch (e) {}
+  }, [player, onFinish]);
+
+  if (!player) {
+    return null;
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center' }}>
+      <StatusBar hidden={true} />
+      <VideoView
+        style={StyleSheet.absoluteFill}
+        player={player}
+        allowsFullscreen={false}
+        allowsPictureInPicture={false}
+        nativeControls={false}
+        contentFit="cover"
+      />
+    </View>
+  );
+}
+
 export default function App() {
   const translateStatus = (status) => {
     switch (status) {
@@ -82,7 +144,21 @@ export default function App() {
     }
   };
 
+  const [isIntroFinished, setIsIntroFinished] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('appTheme').then(saved => {
+      if (saved !== null) {
+        setIsLightMode(saved === 'light');
+      }
+    }).catch(() => {});
+  }, []);
+
+  const toggleTheme = (val) => {
+    setIsLightMode(val);
+    AsyncStorage.setItem('appTheme', val ? 'light' : 'dark').catch(() => {});
+  };
   const formatDateLocal = (d) => {
     if (!d) return '';
     const date = new Date(d);
@@ -135,6 +211,512 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [userPermissions, setUserPermissions] = useState({});
+  const [statusChangeModal, setStatusChangeModal] = useState({ visible: false, order: null });
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
+  const [orderDetailsLogs, setOrderDetailsLogs] = useState([]);
+  const [isLoadingOrderLogs, setIsLoadingOrderLogs] = useState(false);
+
+  // Notifications State & Logic
+  const [notificationsList, setNotificationsList] = useState([]);
+  const [isNotificationsModalVisible, setIsNotificationsModalVisible] = useState(false);
+  const [notifFilterTab, setNotifFilterTab] = useState('all'); // 'all' | 'orders' | 'status'
+  const isInitialNotifsLoaded = useRef(false);
+  const prevOrdersMapRef = useRef(new Map());
+  const isInitialOrdersLoadedRef = useRef(false);
+  const lastLocalActionOrderId = useRef(null);
+
+  // In-App Notification Banner State ("البردة التفاعلية العلوية داخل التطبيق")
+  const [inAppNotification, setInAppNotification] = useState(null);
+  const inAppNotifAnim = useRef(new Animated.Value(-120)).current;
+
+  const showInAppNotificationBanner = (notif) => {
+    setInAppNotification(notif);
+    try {
+      Vibration.vibrate(250);
+    } catch (e) {}
+    Animated.sequence([
+      Animated.timing(inAppNotifAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.delay(5000),
+      Animated.timing(inAppNotifAnim, {
+        toValue: -120,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setInAppNotification(null);
+    });
+  };
+
+  // Setup Notification Channel on Android (Safely guarded)
+  useEffect(() => {
+    async function configureNotifications() {
+      try {
+        if (Notifications && typeof Notifications.setNotificationChannelAsync === 'function' && Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'إشعارات الطلبات',
+            importance: Notifications.AndroidImportance?.MAX || 4,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#8b5cf6',
+            sound: 'default',
+          });
+        }
+        if (Notifications && typeof Notifications.getPermissionsAsync === 'function') {
+          const { status: existingStatus } = await Notifications.getPermissionsAsync();
+          if (existingStatus !== 'granted' && typeof Notifications.requestPermissionsAsync === 'function') {
+            await Notifications.requestPermissionsAsync();
+          }
+        }
+      } catch (e) {
+        console.log('Safe notice: Notifications permissions / channel config:', e?.message);
+      }
+    }
+    configureNotifications();
+  }, []);
+
+  // Trigger Notification: shows in-app banner ("البردة") and triggers OS notification if available
+  const triggerDeviceNotification = async ({ title, body, data }) => {
+    // 1. In-App Banner ("البردة التفاعلية")
+    showInAppNotificationBanner({ title, body, data });
+
+    // 2. OS Notification shade if supported
+    try {
+      if (Notifications && typeof Notifications.scheduleNotificationAsync === 'function') {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: title || 'إشعار من منصة منسا',
+            body: body || '',
+            data: data || {},
+            sound: 'default',
+            priority: Notifications.AndroidNotificationPriority?.HIGH,
+          },
+          trigger: null,
+        });
+      }
+    } catch (err) {
+      console.log('Safe notice: scheduleNotificationAsync:', err?.message);
+    }
+  };
+
+  // Open Order Details from notification click
+  const openOrderDetailsById = async (orderId, fallbackReceiptNumber = null) => {
+    if (!orderId && !fallbackReceiptNumber) return;
+    const found = orders.find(o => 
+      String(o.id) === String(orderId) || 
+      (fallbackReceiptNumber && String(o.receiptNumber) === String(fallbackReceiptNumber))
+    );
+    if (found) {
+      setSelectedOrderForDetails(found);
+      return;
+    }
+    try {
+      if (!adminUid) return;
+      const snap = await getDoc(doc(db, 'users', adminUid, 'orders', String(orderId)));
+      if (snap.exists()) {
+        setSelectedOrderForDetails({ id: snap.id, ...snap.data() });
+      } else {
+        setAlertModal({ visible: true, message: 'تعذر العثور على بيانات هذا الطلب (قد يكون محذوفاً).' });
+      }
+    } catch (e) {
+      console.log('Error opening order details:', e);
+    }
+  };
+
+  // Handle clicking notification in system shade ("البردة")
+  useEffect(() => {
+    try {
+      if (Notifications && typeof Notifications.addNotificationResponseReceivedListener === 'function') {
+        const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+          const data = response?.notification?.request?.content?.data;
+          if (data?.orderId || data?.receiptNumber) {
+            openOrderDetailsById(data.orderId, data.receiptNumber);
+          }
+        });
+        return () => subscription?.remove?.();
+      }
+    } catch (e) {
+      console.log('Safe notice: addNotificationResponseReceivedListener:', e?.message);
+    }
+  }, [orders, adminUid]);
+
+  // Send Notification to Firestore: readBy and clearedBy start empty so every active user receives it independently
+  const sendAppNotification = async ({
+    title,
+    body,
+    type,
+    orderId,
+    receiptNumber,
+    customerName,
+    actorName,
+    actorId,
+    oldStatus,
+    newStatus
+  }) => {
+    try {
+      if (!adminUid) return;
+      const notifsRef = collection(db, 'users', adminUid, 'notifications');
+      const currentUid = user?.uid || 'unknown';
+      const currentActor = actorName || getCurrentActorName();
+      await addDoc(notifsRef, {
+        title: title || 'إشعار جديد',
+        body: body || '',
+        type: type || 'order_created',
+        orderId: String(orderId || ''),
+        receiptNumber: String(receiptNumber || ''),
+        customerName: customerName || '',
+        actorName: currentActor,
+        actorId: actorId || currentUid,
+        oldStatus: oldStatus || null,
+        newStatus: newStatus || null,
+        createdAt: serverTimestamp(),
+        readBy: [],      // Empty: every user must mark it read independently!
+        clearedBy: []    // Empty: every user must clear it independently!
+      });
+    } catch (e) {
+      console.log('Error writing notification to Firestore:', e);
+    }
+  };
+
+  // Real-time listener for notifications collection
+  useEffect(() => {
+    if (!adminUid || !user) {
+      setNotificationsList([]);
+      return;
+    }
+
+    const notifsQuery = fsQuery(
+      collection(db, 'users', adminUid, 'notifications'),
+      orderBy('createdAt', 'desc'),
+      limit(60)
+    );
+
+    const unsub = onSnapshot(notifsQuery, (snapshot) => {
+      const list = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setNotificationsList(list);
+
+      if (!isInitialNotifsLoaded.current) {
+        isInitialNotifsLoaded.current = true;
+        return;
+      }
+
+      // Check for incoming notifications from other users
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notifData = change.doc.data();
+          const currentUserId = user?.uid;
+          if (notifData.actorId !== currentUserId) {
+            triggerDeviceNotification({
+              title: notifData.title,
+              body: notifData.body,
+              data: { 
+                orderId: notifData.orderId, 
+                receiptNumber: notifData.receiptNumber 
+              }
+            });
+          }
+        }
+      });
+    }, (err) => {
+      console.log('Error listening to notifications:', err);
+    });
+
+    return () => unsub();
+  }, [adminUid, user]);
+
+  // Notifications visible to the current user (excluding those cleared specifically by this user)
+  const userVisibleNotifications = useMemo(() => {
+    if (!user?.uid || !notificationsList) return [];
+    return notificationsList.filter(n => {
+      const cleared = Array.isArray(n.clearedBy) ? n.clearedBy : [];
+      return !cleared.includes(user.uid);
+    });
+  }, [notificationsList, user]);
+
+  // Unread count strictly for the current user
+  const unreadNotificationsCount = useMemo(() => {
+    if (!user?.uid || !userVisibleNotifications) return 0;
+    return userVisibleNotifications.filter(n => {
+      const read = Array.isArray(n.readBy) ? n.readBy : [];
+      return !read.includes(user.uid);
+    }).length;
+  }, [userVisibleNotifications, user]);
+
+  // Mark all as read strictly for current user
+  const markAllNotificationsAsRead = async () => {
+    if (!user?.uid || !adminUid || userVisibleNotifications.length === 0) return;
+    try {
+      const unread = userVisibleNotifications.filter(n => {
+        const read = Array.isArray(n.readBy) ? n.readBy : [];
+        return !read.includes(user.uid);
+      });
+      if (unread.length === 0) return;
+      const batch = writeBatch(db);
+      unread.slice(0, 50).forEach(n => {
+        const nRef = doc(db, 'users', adminUid, 'notifications', n.id);
+        batch.update(nRef, {
+          readBy: arrayUnion(user.uid)
+        });
+      });
+      await batch.commit();
+    } catch (err) {
+      console.log('Error marking all notifications as read:', err);
+    }
+  };
+
+  // Clear/Dismiss notifications for current user (hides them only for this user; remains for other users!)
+  const clearNotificationsForCurrentUser = async () => {
+    if (!user?.uid || !adminUid || userVisibleNotifications.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      userVisibleNotifications.slice(0, 50).forEach(n => {
+        const nRef = doc(db, 'users', adminUid, 'notifications', n.id);
+        batch.update(nRef, {
+          clearedBy: arrayUnion(user.uid),
+          readBy: arrayUnion(user.uid)
+        });
+      });
+      await batch.commit();
+    } catch (err) {
+      console.log('Error clearing notifications for user:', err);
+    }
+  };
+
+  // Mark single as read strictly for current user
+  const markNotificationAsRead = async (notifId) => {
+    if (!user?.uid || !adminUid || !notifId) return;
+    try {
+      const nRef = doc(db, 'users', adminUid, 'notifications', notifId);
+      await updateDoc(nRef, {
+        readBy: arrayUnion(user.uid)
+      });
+    } catch (err) {
+      console.log('Error marking notification as read:', err);
+    }
+  };
+
+  // Open notification item
+  const handleOpenNotificationItem = async (item) => {
+    markNotificationAsRead(item.id);
+    setIsNotificationsModalVisible(false);
+    if (item.orderId || item.receiptNumber) {
+      await openOrderDetailsById(item.orderId, item.receiptNumber);
+    }
+  };
+
+  // Format notification time
+  const formatNotifTime = (timestamp) => {
+    if (!timestamp) return '';
+    let d = null;
+    if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+      d = timestamp.toDate();
+    } else if (timestamp instanceof Date) {
+      d = timestamp;
+    } else if (typeof timestamp === 'number' || typeof timestamp === 'string') {
+      d = new Date(timestamp);
+    }
+    if (!d || isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+    if (diffSec < 60) return 'الآن';
+    if (diffSec < 3600) return `منذ ${Math.floor(diffSec / 60)} دقيقة`;
+    if (diffSec < 86400) return `منذ ${Math.floor(diffSec / 3600)} ساعة`;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    let h = d.getHours();
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ampm = h >= 12 ? 'م' : 'ص';
+    h = h % 12 || 12;
+    return `${y}/${m}/${day} ${h}:${min} ${ampm}`;
+  };
+
+  useEffect(() => {
+    if (!selectedOrderForDetails || !adminUid) {
+      setOrderDetailsLogs([]);
+      return;
+    }
+    setIsLoadingOrderLogs(true);
+    const logsRef = collection(db, 'users', adminUid, 'orders', selectedOrderForDetails.id.toString(), 'logs');
+    const q = fsQuery(logsRef, orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      let logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const hasCreation = logs.some(l => l.action && (l.action.includes('إنشاء') || l.action.includes('تثبيت')));
+      if (!hasCreation) {
+        const creator = selectedOrderForDetails.customerName || selectedOrderForDetails.systemUser || selectedOrderForDetails.bookingEmployeeName || 'موظف';
+        logs.push({
+          id: 'syn-create',
+          action: 'إنشاء الطلب',
+          details: `تم إنشاء وتثبيت الطلب من تطبيق الهاتف برقم #${selectedOrderForDetails.receiptNumber || selectedOrderForDetails.id}`,
+          employeeName: creator,
+          timestamp: selectedOrderForDetails.date || selectedOrderForDetails.createdAt || new Date(),
+          source: 'mobile_app'
+        });
+      }
+      setOrderDetailsLogs(logs);
+      setIsLoadingOrderLogs(false);
+    }, (err) => {
+      console.log('Error fetching order logs:', err);
+      setIsLoadingOrderLogs(false);
+    });
+
+    return () => unsub();
+  }, [selectedOrderForDetails, adminUid]);
+
+  const canChangeOrderStatus = !isEmployee || userPermissions?.canChangeOrderStatus === true;
+  const canDeleteOrders = !isEmployee || userPermissions?.canDeleteOrders === true;
+
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({ visible: false, order: null });
+
+  const confirmDeleteOrder = (order) => {
+    if (!canDeleteOrders) {
+      setAlertModal({ visible: true, message: 'عذراً، ليس لديك صلاحية حذف الطلبات. يرجى مراجعة المسؤول لمنحك الصلاحية.' });
+      return;
+    }
+    setDeleteConfirmModal({ visible: true, order });
+  };
+
+  const executeDeleteOrder = async () => {
+    if (!deleteConfirmModal.order || !adminUid) return;
+    if (!canDeleteOrders) {
+      setAlertModal({ visible: true, message: 'عذراً، ليس لديك صلاحية حذف الطلبات.' });
+      setDeleteConfirmModal({ visible: false, order: null });
+      return;
+    }
+    const ord = deleteConfirmModal.order;
+    try {
+      const batch = writeBatch(db);
+      const orderRef = doc(db, 'users', adminUid, 'orders', ord.id.toString());
+
+      if (Array.isArray(ord.items)) {
+        for (const item of ord.items) {
+          if (item.productId) {
+            const prodRef = doc(db, 'users', adminUid, 'products', item.productId);
+            const pSnap = await getDoc(prodRef);
+            if (pSnap.exists()) {
+              const pData = pSnap.data();
+              let stock = { ...pData.stock };
+              const firstStoreKey = Object.keys(stock)[0] || 'default_store';
+              if (stock[firstStoreKey]) {
+                stock[firstStoreKey].reserved = Math.max(0, (stock[firstStoreKey].reserved || 0) - (item.quantity || 1));
+                batch.update(prodRef, { stock });
+              }
+            }
+          }
+        }
+      }
+
+      batch.delete(orderRef);
+      await batch.commit();
+
+      const actor = getCurrentActorName();
+      console.log('Order deleted successfully by:', actor);
+
+      setDeleteConfirmModal({ visible: false, order: null });
+      setSelectedOrderForDetails(null);
+      setAlertModal({ visible: true, message: 'تم حذف الطلب وإعادة المواد للمخزن بنجاح.' });
+    } catch(err) {
+      console.log('Error deleting order:', err);
+      setDeleteConfirmModal({ visible: false, order: null });
+      setAlertModal({ visible: true, message: 'حدث خطأ أثناء حذف الطلب.' });
+    }
+  };
+
+  const STATUS_LABELS_MAP = {
+    'pending': 'قيد الانتظار',
+    'backordered': 'بانتظار المخزون',
+    'processing': 'قيد المعالجة',
+    'shipped': 'تم الشحن / مع المندوب',
+    'delivered': 'تم التسليم (واصل)',
+    'partial': 'واصل جزئي',
+    'postponed': 'مؤجل',
+    'returned': 'راجع',
+    'returned_warehouse': 'راجع مستلم بالمخزن',
+    'cancelled': 'ملغي'
+  };
+
+  const getCurrentActorName = () => {
+    if (isEmployee) {
+      return loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'موظف';
+    }
+    return user?.displayName || 'المدير';
+  };
+
+  const logOrderAction = async (orderId, actionType, details, customActor = null) => {
+    try {
+      if (!adminUid || !orderId) return;
+      const logsRef = collection(db, 'users', adminUid, 'orders', orderId.toString(), 'logs');
+      const actor = customActor || getCurrentActorName();
+      await addDoc(logsRef, {
+        action: actionType,
+        details: details,
+        employeeName: actor,
+        timestamp: serverTimestamp(),
+        source: 'mobile_app'
+      });
+    } catch (e) {
+      console.log('Failed to write order log:', e);
+    }
+  };
+
+  const applyStatusChange = async (newStatus) => {
+    if (!statusChangeModal.order || !adminUid) return;
+    if (!canChangeOrderStatus) {
+      setAlertModal({ visible: true, message: 'عذراً، ليس لديك صلاحية تعديل حالة الطلب. يرجى مراجعة المسؤول.' });
+      return;
+    }
+    const order = statusChangeModal.order;
+    const oldStatus = order.status || 'pending';
+    if (oldStatus === newStatus) {
+      setStatusChangeModal({ visible: false, order: null });
+      return;
+    }
+    try {
+      const oRef = doc(db, 'users', adminUid, 'orders', order.id);
+      await updateDoc(oRef, { 
+        status: newStatus, 
+        updatedAt: serverTimestamp() 
+      });
+
+      const oldStatusLabel = STATUS_LABELS_MAP[oldStatus] || oldStatus;
+      const newStatusLabel = STATUS_LABELS_MAP[newStatus] || newStatus;
+      const actor = getCurrentActorName();
+
+      await logOrderAction(
+        order.id,
+        'تغيير حالة',
+        `تم تغيير الحالة من "${oldStatusLabel}" إلى "${newStatusLabel}" بواسطة الموظف ${actor} عبر تطبيق الهاتف`,
+        actor
+      );
+
+      lastLocalActionOrderId.current = order.id;
+      await sendAppNotification({
+        title: `🔄 تحديث حالة الطلب #${order.receiptNumber || order.id}`,
+        body: `تم تغيير الحالة من "${oldStatusLabel}" إلى "${newStatusLabel}" بواسطة: ${actor}`,
+        type: 'status_changed',
+        orderId: order.id,
+        receiptNumber: order.receiptNumber || order.id,
+        customerName: order.customerName || '',
+        actorName: actor,
+        actorId: user?.uid,
+        oldStatus: oldStatus,
+        newStatus: newStatus
+      });
+
+      setStatusChangeModal({ visible: false, order: null });
+      setAlertModal({ visible: true, message: 'تم تحديث حالة الطلب بنجاح.' });
+    } catch(err) {
+      console.log("Error updating status:", err);
+      setAlertModal({ visible: true, message: 'حدث خطأ أثناء تحديث حالة الطلب.' });
+    }
+  };
 
   const handleLogout = async () => {
     if (isEmployee && adminUid && user) {
@@ -159,19 +741,33 @@ export default function App() {
              setSelectedEmployeeId(data.employeeId);
              setLoggedInEmployeeId(data.employeeId);
              setIsEmployee(true);
+             setUserPermissions(data.permissions || {});
+
+             // Realtime listener on mapping permissions
+             onSnapshot(mappingRef, (snap) => {
+               if (snap.exists() && snap.data()?.permissions) {
+                 setUserPermissions(snap.data().permissions);
+               }
+             });
              
              try {
                 const sysUserRef = doc(db, 'users', data.adminUid, 'system_users', usr.uid);
-                const sysUserSnap = await getDoc(sysUserRef);
-                if (sysUserSnap.exists()) {
-                   setLoggedInSystemUserName(sysUserSnap.data().name);
-                }
+                onSnapshot(sysUserRef, (snap) => {
+                  if (snap.exists()) {
+                    const sData = snap.data();
+                    if (sData.name) setLoggedInSystemUserName(sData.name);
+                    if (sData.permissions) {
+                      setUserPermissions(prev => ({ ...prev, ...sData.permissions }));
+                    }
+                  }
+                });
                 await updateDoc(sysUserRef, { isOnline: true, lastActive: serverTimestamp() });
              } catch(e){}
              
           } else {
              setAdminUid(usr.uid);
              setIsEmployee(false);
+             setUserPermissions({ canChangeOrderStatus: true, canDeleteOrders: true });
           }
         } catch(err) {
            console.log("Error checking mapping", err);
@@ -345,6 +941,40 @@ export default function App() {
   const [isSearchingServer, setIsSearchingServer] = useState(false);
   
   
+  const parseOrderDate = (ord) => {
+    if (!ord) return null;
+    const candidates = [ord.date, ord.createdAt, ord.rawCreatedAt, ord.updatedAt];
+    for (const val of candidates) {
+      if (!val) continue;
+      if (typeof val?.toDate === 'function') {
+        const d = val.toDate();
+        if (!isNaN(d.getTime())) return d;
+      }
+      if (val.seconds) {
+        const d = new Date(val.seconds * 1000);
+        if (!isNaN(d.getTime())) return d;
+      }
+      if (val instanceof Date && !isNaN(val.getTime())) {
+        return val;
+      }
+      if (typeof val === 'string') {
+        if (val.includes('/')) {
+          const parts = val.split('/');
+          if (parts.length === 3) {
+            const dd = parseInt(parts[0], 10);
+            const mm = parseInt(parts[1], 10) - 1;
+            const yyyy = parseInt(parts[2].split(' ')[0], 10);
+            const d = new Date(yyyy, mm, dd, 12, 0, 0);
+            if (!isNaN(d.getTime())) return d;
+          }
+        }
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+    return null;
+  };
+
   const executeAdvancedSearch = () => {
     const hasSearchCriteria = !!(advSearchGov || advSearchMonth || advSearchYear || advSearchDateFrom || advSearchDateTo || advSearchReceipt || advSearchPhone || advSearchStatus);
     if (!hasSearchCriteria && !selectedGridStatus) {
@@ -359,52 +989,35 @@ export default function App() {
         if (!String(ord.governorate || '').toLowerCase().includes(advSearchGov.toLowerCase().trim())) match = false;
       }
       
-      // Use rawCreatedAt if available, otherwise try to parse the string
-      let orderDateObj = null;
-      if (ord.rawCreatedAt) {
-         orderDateObj = new Date(ord.rawCreatedAt);
-      } else if (ord.createdAt && typeof ord.createdAt.toDate === 'function') {
-         // It's a Firebase Timestamp
-         orderDateObj = ord.createdAt.toDate();
-      } else if (ord.createdAt) {
-         // Fallback parsing for string dates
-         const d = String(ord.createdAt);
-         if (d.includes('/')) {
-            const parts = d.split('/');
-            if (parts.length === 3) {
-               const dd = parseInt(parts[0], 10);
-               const mm = parseInt(parts[1], 10) - 1;
-               const yyyy = parseInt(parts[2].split(' ')[0], 10);
-               orderDateObj = new Date(yyyy, mm, dd, 12, 0, 0);
-            }
-         }
-         if (!orderDateObj || isNaN(orderDateObj.getTime())) {
-            orderDateObj = new Date(d);
-         }
-      }
-      
+      const orderDateObj = parseOrderDate(ord);
       const isValidDate = orderDateObj && !isNaN(orderDateObj.getTime());
-      const orderDateIso = isValidDate ? orderDateObj.toISOString() : '';
       
       if (advSearchMonth && advSearchMonth.trim()) {
-        if (!isValidDate) match = false;
-        else {
-           const m = String(advSearchMonth).padStart(2, '0');
-           if (!orderDateIso.includes('-' + m + '-')) match = false;
+        if (!isValidDate) {
+          match = false;
+        } else {
+          const orderMonth = String(orderDateObj.getMonth() + 1).padStart(2, '0');
+          if (orderMonth !== String(advSearchMonth).padStart(2, '0')) match = false;
         }
       }
       if (advSearchYear && advSearchYear.trim()) {
-        if (!isValidDate) match = false;
-        else if (!orderDateIso.includes(advSearchYear)) match = false;
+        if (!isValidDate) {
+          match = false;
+        } else {
+          const orderYear = String(orderDateObj.getFullYear());
+          if (orderYear !== String(advSearchYear).trim()) match = false;
+        }
       }
       if (advSearchDateFrom || advSearchDateTo) {
         if (isValidDate) {
           if (advSearchDateFrom) {
-             const f = new Date(advSearchDateFrom); f.setHours(0,0,0,0);
+             const f = new Date(advSearchDateFrom); 
+             f.setHours(0, 0, 0, 0);
              if (orderDateObj < f) match = false;
           }
           if (advSearchDateTo) {
-             const t = new Date(advSearchDateTo); t.setHours(23,59,59,999);
+             const t = new Date(advSearchDateTo); 
+             t.setHours(23, 59, 59, 999);
              if (orderDateObj > t) match = false;
           }
         } else {
@@ -425,12 +1038,55 @@ export default function App() {
       
       if (advSearchStatus && advSearchStatus.trim()) {
         if (ord.status !== advSearchStatus) match = false;
+      }
+      
+      return match;
+    });
+
+    setAdvancedSearchResults(result);
+  };
+
+  const handleServerSearch = async () => {
+    if (!serverSearchQuery.trim()) {
+      setServerSearchResult(null);
+      return;
+    }
+    setIsSearchingServer(true);
+    setServerSearchResult(null);
+    try {
+       let q = fsQuery(collection(db, 'users', adminUid, 'orders'), where('receiptNumber', '==', serverSearchQuery.trim()));
+       let snap = await getDocs(q);
+       
+       if (snap.empty) {
+          // Try customerPhone
+          q = fsQuery(collection(db, 'users', adminUid, 'orders'), where('customerPhone', '==', serverSearchQuery.trim()));
+          snap = await getDocs(q);
+       }
+       if (snap.empty) {
+          // Try id
+          const docRef = doc(db, 'users', adminUid, 'orders', serverSearchQuery.trim());
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+             setServerSearchResult([{ id: docSnap.id, ...docSnap.data() }]);
+             setIsSearchingServer(false);
+             return;
+          }
+       }
+       
+       if (!snap.empty) {
+         setServerSearchResult(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+       } else {
+         setServerSearchResult([]); // not found
+       }
+    } catch (e) {
+       console.log("Server search error:", e);
     }
     setIsSearchingServer(false);
   };
   
   // Edit Order State
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editOrderStatus, setEditOrderStatus] = useState('pending');
   const [originalOrderDetails, setOriginalOrderDetails] = useState(null);
   const [originalOrderItems, setOriginalOrderItems] = useState([]);
   const [originalOrderStatus, setOriginalOrderStatus] = useState('pending');
@@ -970,7 +1626,7 @@ export default function App() {
 
   const handleAuthSubmit = async () => {
     if (!email.trim() || !password.trim()) {
-      setAlertModal({ visible: true, message: 'يرجى ملء كافة الحقول.' });
+      setAlertModal({ visible: true, message: 'يرجى إدخال البريد الإلكتروني أو رقم الهاتف وكلمة المرور.' });
       return;
     }
     if (authMode === 'register' && password !== confirmPassword) {
@@ -979,10 +1635,15 @@ export default function App() {
     }
     setIsSubmitting(true);
     try {
+      let finalEmail = email.trim().replace(/[\s\-]/g, '');
+      finalEmail = finalEmail.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+      if (!finalEmail.includes('@')) {
+        finalEmail = `${finalEmail}@mansa.app`;
+      }
       if (authMode === 'login') {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        await signInWithEmailAndPassword(auth, finalEmail, password);
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const userCredential = await createUserWithEmailAndPassword(auth, finalEmail, password);
         const userId = userCredential.user.uid;
         
         // Initialize User Data
@@ -1021,11 +1682,11 @@ export default function App() {
     } catch (err) {
       console.log("Auth error:", err);
       let errMsg = 'حدث خطأ أثناء الاتصال. يرجى المحاولة لاحقاً.';
-      if (err.code === 'auth/invalid-email') errMsg = 'البريد الإلكتروني غير صالح.';
-      else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') errMsg = 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
-      else if (err.code === 'auth/email-already-in-use') errMsg = 'البريد الإلكتروني مستخدم بالفعل.';
+      if (err.code === 'auth/invalid-email') errMsg = 'البريد الإلكتروني أو رقم الهاتف غير صالح.';
+      else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') errMsg = 'البريد الإلكتروني / رقم الهاتف أو كلمة المرور غير صحيحة.';
+      else if (err.code === 'auth/email-already-in-use') errMsg = 'البريد الإلكتروني أو رقم الهاتف مسجل بالفعل.';
       else if (err.code === 'auth/weak-password') errMsg = 'كلمة المرور ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل).';
-      else if (err.code === 'auth/invalid-credential') errMsg = 'بيانات الاعتماد المدخلة غير صحيحة.';
+      else if (err.code === 'auth/invalid-credential') errMsg = 'البريد الإلكتروني / رقم الهاتف أو كلمة المرور غير صحيحة.';
       setAlertModal({ visible: true, message: errMsg });
     } finally {
       setIsSubmitting(false);
@@ -1034,18 +1695,23 @@ export default function App() {
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      setAlertModal({ visible: true, message: 'يرجى إدخال البريد الإلكتروني أولاً لإرسال رابط إعادة تعيين كلمة المرور.' });
+      setAlertModal({ visible: true, message: 'يرجى إدخال البريد الإلكتروني أو رقم الهاتف أولاً.' });
       return;
+    }
+    let finalEmail = email.trim().replace(/[\s\-]/g, '');
+    finalEmail = finalEmail.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+    if (!finalEmail.includes('@')) {
+      finalEmail = `${finalEmail}@mansa.app`;
     }
     setIsSubmitting(true);
     try {
-      await sendPasswordResetEmail(auth, email.trim());
-      setAlertModal({ visible: true, message: 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.' });
+      await sendPasswordResetEmail(auth, finalEmail);
+      setAlertModal({ visible: true, message: 'تم إرسال رابط إعادة تعيين كلمة المرور بنجاح.' });
     } catch (err) {
       console.log("Reset password error:", err);
       let errMsg = 'حدث خطأ أثناء إرسال رابط إعادة التعيين.';
-      if (err.code === 'auth/user-not-found') errMsg = 'لا يوجد حساب مرتبط بهذا البريد الإلكتروني.';
-      else if (err.code === 'auth/invalid-email') errMsg = 'البريد الإلكتروني غير صالح.';
+      if (err.code === 'auth/user-not-found') errMsg = 'لا يوجد حساب مرتبط بهذا البريد أو الرقم.';
+      else if (err.code === 'auth/invalid-email') errMsg = 'البريد الإلكتروني أو رقم الهاتف غير صالح.';
       setAlertModal({ visible: true, message: errMsg });
     } finally {
       setIsSubmitting(false);
@@ -1247,13 +1913,15 @@ export default function App() {
           }
           
           const newOrderRef = doc(db, 'users', adminUid, 'orders', newOrderId.toString());
+          const actor = isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير';
           transaction.set(newOrderRef, {
             receiptNumber: newBarcodeReceipt.trim(),
             bookingEmployeeId: orderBookingEmployeeId || 'agent',
             bookingEmployeeName: employees?.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
             employeeId: loggedInEmployeeId || 'admin',
-            employeeName: isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
-            customerName: isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
+            employeeName: actor,
+            customerName: actor,
+            systemUser: actor,
             customerPhone: '',
             governorate: '',
             region: '',
@@ -1263,8 +1931,30 @@ export default function App() {
             items: [],
             date: serverTimestamp(),
             status: 'waiting',
-            is_settled: false
+            is_settled: false,
+            source: 'mobile_app',
+            createdVia: 'mobile_app'
           });
+      });
+
+      const actor = isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير';
+      await logOrderAction(
+        newOrderId.toString(),
+        'إنشاء الطلب',
+        `تم إنشاء وتثبيت الطلب من تطبيق الهاتف عبر الباركود برقم #${newBarcodeReceipt.trim()}`,
+        actor
+      );
+
+      lastLocalActionOrderId.current = newOrderId.toString();
+      await sendAppNotification({
+        title: `📦 طلب وصل باركود #${newBarcodeReceipt.trim()}`,
+        body: `تم إضافة وصل باركود جديد برقم #${newBarcodeReceipt.trim()} بواسطة الموظف: ${actor}`,
+        type: 'order_created',
+        orderId: newOrderId.toString(),
+        receiptNumber: newBarcodeReceipt.trim(),
+        customerName: actor,
+        actorName: actor,
+        actorId: user?.uid,
       });
 
       setAddBarcodeModalVisible(false);
@@ -1309,12 +1999,14 @@ export default function App() {
     let orderDocId = null;
 
     try {
+      const currentActor = isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير';
       const orderData = {
         bookingEmployeeId: orderBookingEmployeeId,
         bookingEmployeeName: employees.find(e => e.id === orderBookingEmployeeId)?.name || 'مجهول',
         employeeId: loggedInEmployeeId || 'admin',
-        employeeName: isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
-        customerName: isEmployee ? (loggedInSystemUserName || employees.find(e => e.id === loggedInEmployeeId)?.name || 'مجهول') : 'المدير',
+        employeeName: currentActor,
+        customerName: currentActor,
+        systemUser: currentActor,
         customerPhone: customerPhone,
         customerPhone2: customerPhone2,
         governorate: governorate,
@@ -1334,7 +2026,9 @@ export default function App() {
         })),
         date: serverTimestamp(),
         status: 'pending',
-        is_settled: false
+        is_settled: false,
+        source: 'mobile_app',
+        createdVia: 'mobile_app'
       };
 
       const batch = writeBatch(db);
@@ -1396,6 +2090,27 @@ export default function App() {
 
       await batch.commit();
 
+      if (orderDocId) {
+        await logOrderAction(
+          orderDocId,
+          'إنشاء الطلب',
+          `تم إنشاء وتثبيت الطلب من تطبيق الهاتف برقم #${orderData.receiptNumber}`,
+          orderData.systemUser
+        );
+
+        lastLocalActionOrderId.current = orderDocId;
+        await sendAppNotification({
+          title: `📦 طلب جديد #${orderData.receiptNumber}`,
+          body: `العميل: ${orderData.customerName || 'زبون'} (${orderData.governorate || 'المحافظة'}) - المبلغ: ${Number(orderData.totalAmount || 0).toLocaleString()} د.ع | الموظف: ${orderData.systemUser}`,
+          type: 'order_created',
+          orderId: orderDocId,
+          receiptNumber: orderData.receiptNumber,
+          customerName: orderData.customerName,
+          actorName: orderData.systemUser,
+          actorId: user?.uid,
+        });
+      }
+
       // Trigger Webhook
       try {
         if (orderDocId) {
@@ -1442,12 +2157,13 @@ export default function App() {
   };
 
   const handleEditOrder = (order) => {
-    if (order.status === 'delivered' || order.status === 'cancelled' || order.status === 'returned_warehouse' || order.status === 'returned_agent' || order.status === 'returned') {
-      setAlertModal({ visible: true, message: 'لا يمكن تعديل هذا الطلب بسبب حالته الحالية.' });
+    if (!canChangeOrderStatus) {
+      setAlertModal({ visible: true, message: 'عذراً، ليس لديك صلاحية تعديل هذا الطلب. يرجى مراجعة المسؤول.' });
       return;
     }
     
     setEditingOrderId(order.id);
+    setEditOrderStatus(order.status || 'pending');
     setOriginalOrderDetails(order);
     setOriginalOrderItems(order.items || []);
     setOriginalOrderStatus(order.status || 'pending');
@@ -1478,13 +2194,22 @@ export default function App() {
       setCart([]);
     }
     
+    if (order.bookingEmployeeId) {
+      setOrderBookingEmployeeId(order.bookingEmployeeId);
+    }
+    if (order.receiptNumber) {
+      setCustomReceiptNumber(order.receiptNumber);
+    }
     setCustomTotalAmount(order.totalAmount ? order.totalAmount.toString() : null);
     setActiveTab('entry');
   };
 
-  const cancelEdit = () => {
+  const resetOrderForm = () => {
     setEditingOrderId(null);
+    setEditOrderStatus('pending');
+    setOriginalOrderDetails(null);
     setOriginalOrderItems([]);
+    setOriginalOrderStatus('pending');
     setCustomerName('');
     setCustomerPhone('');
     setCustomerPhone2('');
@@ -1493,8 +2218,16 @@ export default function App() {
     setNotes('');
     setFbLoginId('');
     setCart([]);
+    setCustomReceiptNumber('');
     setCustomTotalAmount(null);
     setHasAttemptedSubmit(false);
+    if (loggedInEmployeeId) {
+      setOrderBookingEmployeeId(loggedInEmployeeId);
+    }
+  };
+
+  const cancelEdit = () => {
+    resetOrderForm();
     setActiveTab('orders');
   };
 
@@ -1529,6 +2262,7 @@ export default function App() {
       const batch = writeBatch(db);
       
       const updates = {
+        status: editOrderStatus,
         customerName,
         customerPhone,
         customerPhone2,
@@ -1546,10 +2280,46 @@ export default function App() {
           total: item.quantity * item.unitPrice,
           isComposite: item.product.isComposite || false,
           composition: item.product.composition || null
-        }))
+        })),
+        updatedAt: serverTimestamp()
       };
 
       batch.update(orderRef, updates);
+
+      const oldStatus = originalOrderStatus || 'pending';
+      const statusChanged = editOrderStatus && editOrderStatus !== oldStatus;
+      const oldStatusLabel = STATUS_LABELS_MAP[oldStatus] || oldStatus;
+      const newStatusLabel = STATUS_LABELS_MAP[editOrderStatus] || editOrderStatus;
+      const actor = getCurrentActorName();
+
+      const logDetails = statusChanged
+        ? `تم تعديل بيانات الطلب وتغيير الحالة من "${oldStatusLabel}" إلى "${newStatusLabel}" بواسطة الموظف ${actor} عبر تطبيق الهاتف`
+        : `تم تعديل بيانات الطلب بواسطة الموظف ${actor} عبر تطبيق الهاتف`;
+
+      const logsRef = collection(db, 'users', adminUid, 'orders', editingOrderId.toString(), 'logs');
+      batch.set(doc(logsRef), {
+        action: statusChanged ? 'تغيير حالة' : 'تعديل يدوي',
+        details: logDetails,
+        employeeName: actor,
+        timestamp: serverTimestamp(),
+        source: 'mobile_app'
+      });
+
+      if (statusChanged) {
+        lastLocalActionOrderId.current = editingOrderId;
+        sendAppNotification({
+          title: `🔄 تحديث حالة الطلب #${customReceiptNumber || editingOrderId}`,
+          body: `تم تغيير الحالة من "${oldStatusLabel}" إلى "${newStatusLabel}" بواسطة: ${actor}`,
+          type: 'status_changed',
+          orderId: editingOrderId,
+          receiptNumber: customReceiptNumber || editingOrderId,
+          customerName: customerName,
+          actorName: actor,
+          actorId: user?.uid,
+          oldStatus: oldStatus,
+          newStatus: editOrderStatus
+        }).catch(err => console.log('sendAppNotification edit error:', err));
+      }
 
       // Revert stock for original items
       for (const oldItem of originalOrderItems) {
@@ -1625,7 +2395,8 @@ export default function App() {
 
       await batch.commit();
       setAlertModal({ visible: true, message: 'تم تحديث الطلب والمخزون بنجاح!' });
-      cancelEdit();
+      resetOrderForm();
+      setActiveTab('orders');
 
     } catch (err) {
       console.log("Edit order native error:", err);
@@ -1822,6 +2593,10 @@ export default function App() {
     return CardContent;
   };
 
+  if (!isIntroFinished) {
+    return <IntroVideoScreen onFinish={() => setIsIntroFinished(true)} />;
+  }
+
   if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -1834,21 +2609,21 @@ export default function App() {
   if (!user) {
     return (
       <SafeAreaView style={styles.authContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#121216" />
+        <StatusBar barStyle={isLightMode ? "dark-content" : "light-content"} backgroundColor={isLightMode ? "#eaddf5" : "#121216"} />
         <ScrollView contentContainerStyle={styles.authScroll}>
           <View style={styles.authCard}>
             <Text style={styles.authTitle}>منصة منسا</Text>
             <Text style={styles.authSubtitle}>لوحة التحكم وإدارة المخازن والمبيعات</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>البريد الإلكتروني</Text>
+              <Text style={styles.inputLabel}>البريد الإلكتروني أو رقم الهاتف</Text>
               <TextInput
                 style={styles.authInput}
-                placeholder="example@email.com"
+                placeholder="077... أو user@email.com"
                 placeholderTextColor="#64748b"
                 value={email}
                 onChangeText={setEmail}
-                keyboardType="email-address"
+                keyboardType="default"
                 autoCapitalize="none"
               />
             </View>
@@ -1966,7 +2741,60 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#0d0d12" />
+      {/* In-App Notification Banner ("البردة التفاعلية العلوية داخل التطبيق") */}
+      {inAppNotification && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: Platform.OS === 'android' ? 35 : 50,
+            left: 12,
+            right: 12,
+            zIndex: 999999,
+            transform: [{ translateY: inAppNotifAnim }],
+            backgroundColor: isLightMode ? '#ffffff' : '#1e1b2e',
+            borderRadius: 18,
+            padding: 14,
+            shadowColor: '#8b5cf6',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.35,
+            shadowRadius: 10,
+            elevation: 25,
+            borderWidth: 1.5,
+            borderColor: '#8b5cf6',
+          }}
+        >
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              const ordId = inAppNotification.data?.orderId;
+              const recNum = inAppNotification.data?.receiptNumber;
+              setInAppNotification(null);
+              if (ordId || recNum) {
+                openOrderDetailsById(ordId, recNum);
+              }
+            }}
+            style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(139, 92, 246, 0.2)', justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ fontSize: 18 }}>🔔</Text>
+              </View>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 14, fontWeight: 'bold', color: isLightMode ? '#0f172a' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                  {inAppNotification.title}
+                </Text>
+                <Text style={{ fontSize: 12, color: isLightMode ? '#475569' : '#cbd5e1', marginTop: 2, textAlign: 'right' }} numberOfLines={2}>
+                  {inAppNotification.body}
+                </Text>
+              </View>
+            </View>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#8b5cf6', borderRadius: 8, marginRight: 8 }}>
+              <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>عرض 👁️</Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+      <StatusBar barStyle={isLightMode ? "dark-content" : "light-content"} backgroundColor={isLightMode ? "#f4f0fa" : "#0d0d12"} />
       
       
       {/* Global Header & Search */}
@@ -2002,15 +2830,19 @@ export default function App() {
             {/* Notification Bell */}
             <TouchableOpacity 
               style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isLightMode ? '#fff' : '#1e293b', justifyContent: 'center', alignItems: 'center', marginRight: 8, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }}
-              onPress={() => setAlertModal({ visible: true, message: 'لا توجد إشعارات جديدة حالياً.' })}
+              onPress={() => setIsNotificationsModalVisible(true)}
             >
               <Svg width={24} height={24} viewBox='0 0 24 24' fill='none' stroke={isLightMode ? '#0f172a' : '#e2e8f0'} strokeWidth={2}>
                 <Path d='M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9' />
                 <Path d='M13.73 21a2 2 0 0 1-3.46 0' />
               </Svg>
-              <View style={{ position: 'absolute', top: -4, right: -4, backgroundColor: '#ef4444', borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: isLightMode ? '#f8fafc' : '#0f172a' }}>
-                <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>52</Text>
-              </View>
+              {unreadNotificationsCount > 0 && (
+                <View style={{ position: 'absolute', top: -4, right: -4, backgroundColor: '#ef4444', borderRadius: 12, minWidth: 22, height: 22, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: isLightMode ? '#f8fafc' : '#0f172a' }}>
+                  <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>
+                    {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
             
             
@@ -2557,10 +3389,83 @@ export default function App() {
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding} keyboardShouldPersistTaps="handled">
           <View style={styles.formContainer}>
             
+            {/* Edit Mode Top Banner */}
+            {editingOrderId && (
+              <View style={{ 
+                backgroundColor: isLightMode ? '#fffbeb' : '#1e1b4b', 
+                borderRadius: 14, 
+                borderWidth: 1.5, 
+                borderColor: isLightMode ? '#f59e0b' : '#818cf8', 
+                padding: 14, 
+                marginBottom: 16,
+                elevation: 3,
+                shadowColor: '#000',
+                shadowOpacity: 0.1,
+                shadowRadius: 4
+              }}>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 22 }}>✏️</Text>
+                    <View>
+                      <Text style={{ color: isLightMode ? '#92400e' : '#e0e7ff', fontWeight: 'bold', fontSize: 16, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', textAlign: 'right' }}>
+                        أنت الآن في وضع تعديل الطلب
+                      </Text>
+                      <Text style={{ color: isLightMode ? '#b45309' : '#a5b4fc', fontSize: 13, textAlign: 'right' }}>
+                        رقم الوصل: #{originalOrderDetails?.receiptNumber || editingOrderId.substring(0, 8)}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      resetOrderForm();
+                      setAlertModal({ visible: true, message: 'تم إلغاء التعديل والبدء بطلب جديد فارغ بنجاح.' });
+                    }}
+                    style={{ 
+                      backgroundColor: '#ef4444', 
+                      paddingHorizontal: 10, 
+                      paddingVertical: 6, 
+                      borderRadius: 8,
+                      flexDirection: 'row-reverse',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 11 }}>✕ إلغاء وبدء طلب جديد</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Status Selector */}
+                <View style={{ marginTop: 2 }}>
+                  <Text style={{ color: isLightMode ? '#7c3aed' : '#c084fc', fontWeight: 'bold', fontSize: 13, marginBottom: 6, textAlign: 'right', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    🔄 حالة الطلب الحالية:
+                  </Text>
+                  <View style={{ backgroundColor: isLightMode ? '#ffffff' : '#0f172a', borderRadius: 10, borderWidth: 1, borderColor: isLightMode ? '#cbd5e1' : '#334155', overflow: 'hidden' }}>
+                    <Picker
+                      selectedValue={editOrderStatus}
+                      onValueChange={(val) => setEditOrderStatus(val)}
+                      style={{ color: isLightMode ? '#0f172a' : '#ffffff', height: 48 }}
+                      dropdownIconColor={isLightMode ? '#0f172a' : '#ffffff'}
+                    >
+                      <Picker.Item label="🟡 قيد الانتظار" value="pending" />
+                      <Picker.Item label="🟣 بانتظار المخزون" value="backordered" />
+                      <Picker.Item label="🔵 قيد المعالجة" value="processing" />
+                      <Picker.Item label="🚚 تم الشحن / مع المندوب" value="shipped" />
+                      <Picker.Item label="🟢 تم التسليم (واصل)" value="delivered" />
+                      <Picker.Item label="📦 واصل جزئي" value="partial" />
+                      <Picker.Item label="🟠 مؤجل" value="postponed" />
+                      <Picker.Item label="🔴 راجع" value="returned" />
+                      <Picker.Item label="🏬 راجع مستلم بالمخزن" value="returned_warehouse" />
+                      <Picker.Item label="⚫ ملغي" value="cancelled" />
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {/* Section Title */}
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 18 }}>👤</Text>
-              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#e2e8f0', marginRight: 8 }}>بيانات الزبون والعنوان</Text>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#0f172a' : '#e2e8f0', marginRight: 8 }}>بيانات الزبون والعنوان</Text>
             </View>
 
             {/* Employee Selector */}
@@ -2765,27 +3670,27 @@ export default function App() {
             </View>
 
 
-            {/* Submit Button */}
-            <View style={{ flexDirection: 'row' }}>
+            {/* Submit & Action Buttons */}
+            <View style={{ flexDirection: 'row-reverse', gap: 10 }}>
               <TouchableOpacity 
-                style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }, { flex: 1, marginRight: editingOrderId ? 8 : 0 }]}
+                style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }, { flex: 1 }]}
                 onPress={editingOrderId ? handleEditSubmit : handleSubmit}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
                   <ActivityIndicator color="white" size="small" />
                 ) : (
-                  <Text style={styles.submitBtnText}>{editingOrderId ? 'حفظ التعديلات' : '💾 حفظ وإرسال الطلب'}</Text>
+                  <Text style={styles.submitBtnText}>{editingOrderId ? '💾 حفظ التعديلات' : '💾 حفظ وإرسال الطلب'}</Text>
                 )}
               </TouchableOpacity>
 
               {editingOrderId && (
                 <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: '#475569', flex: 1, marginLeft: 8 }]}
+                  style={[styles.submitBtn, { backgroundColor: '#ef4444', flex: 1 }]}
                   onPress={cancelEdit}
                   disabled={isSubmitting}
                 >
-                  <Text style={styles.submitBtnText}>إلغاء التعديل</Text>
+                  <Text style={styles.submitBtnText}>✕ إلغاء ورجوع للبحث</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2869,41 +3774,73 @@ export default function App() {
 
             {/* From / To Date */}
             <View style={{ flexDirection: 'row-reverse', gap: 10, marginBottom: 12 }}>
-              <View style={{ flex: 1, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', overflow: 'hidden' }}>
-                <TouchableOpacity onPress={() => setShowAdvSearchDateFromPicker(true)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ color: advSearchDateFrom ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b'), fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
-                    {advSearchDateFrom ? formatDateLocal(advSearchDateFrom) : '-- من تاريخ --'}
+              {/* From Date */}
+              <View style={{ 
+                flex: 1, 
+                backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', 
+                borderRadius: 10, 
+                height: 48, 
+                borderWidth: 1.5, 
+                borderColor: advSearchDateFrom ? '#8b5cf6' : (isLightMode ? '#e2e8f0' : '#334155'), 
+                flexDirection: 'row-reverse', 
+                alignItems: 'center', 
+                paddingHorizontal: 8 
+              }}>
+                <TouchableOpacity 
+                  onPress={() => setShowAdvSearchDateFromPicker(true)} 
+                  style={{ flex: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}
+                >
+                  <Text style={{ 
+                    color: advSearchDateFrom ? (isLightMode ? '#7c3aed' : '#c084fc') : (isLightMode ? '#94a3b8' : '#64748b'), 
+                    fontWeight: advSearchDateFrom ? 'bold' : 'normal', 
+                    fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', 
+                    fontSize: 13 
+                  }}>
+                    {advSearchDateFrom ? formatDateLocal(advSearchDateFrom) : '📅 من تاريخ'}
                   </Text>
                 </TouchableOpacity>
-                {showAdvSearchDateFromPicker && (
-                  <DateTimePicker
-                    value={advSearchDateFrom || new Date()}
-                    mode="date"
-                    display="default"
-                    onChange={(event, date) => {
-                      setShowAdvSearchDateFromPicker(false);
-                      if (date) setAdvSearchDateFrom(date);
-                    }}
-                  />
+                {advSearchDateFrom && (
+                  <TouchableOpacity 
+                    onPress={() => setAdvSearchDateFrom(null)} 
+                    style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}
+                  >
+                    <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 13 }}>✕</Text>
+                  </TouchableOpacity>
                 )}
               </View>
 
-              <View style={{ flex: 1, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 10, height: 48, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', overflow: 'hidden' }}>
-                <TouchableOpacity onPress={() => setShowAdvSearchDateToPicker(true)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ color: advSearchDateTo ? (isLightMode ? '#1e293b' : '#f8fafc') : (isLightMode ? '#94a3b8' : '#64748b'), fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
-                    {advSearchDateTo ? formatDateLocal(advSearchDateTo) : '-- الى تاريخ --'}
+              {/* To Date */}
+              <View style={{ 
+                flex: 1, 
+                backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', 
+                borderRadius: 10, 
+                height: 48, 
+                borderWidth: 1.5, 
+                borderColor: advSearchDateTo ? '#8b5cf6' : (isLightMode ? '#e2e8f0' : '#334155'), 
+                flexDirection: 'row-reverse', 
+                alignItems: 'center', 
+                paddingHorizontal: 8 
+              }}>
+                <TouchableOpacity 
+                  onPress={() => setShowAdvSearchDateToPicker(true)} 
+                  style={{ flex: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}
+                >
+                  <Text style={{ 
+                    color: advSearchDateTo ? (isLightMode ? '#7c3aed' : '#c084fc') : (isLightMode ? '#94a3b8' : '#64748b'), 
+                    fontWeight: advSearchDateTo ? 'bold' : 'normal', 
+                    fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', 
+                    fontSize: 13 
+                  }}>
+                    {advSearchDateTo ? formatDateLocal(advSearchDateTo) : '📅 الى تاريخ'}
                   </Text>
                 </TouchableOpacity>
-                {showAdvSearchDateToPicker && (
-                  <DateTimePicker
-                    value={advSearchDateTo || new Date()}
-                    mode="date"
-                    display="default"
-                    onChange={(event, date) => {
-                      setShowAdvSearchDateToPicker(false);
-                      if (date) setAdvSearchDateTo(date);
-                    }}
-                  />
+                {advSearchDateTo && (
+                  <TouchableOpacity 
+                    onPress={() => setAdvSearchDateTo(null)} 
+                    style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}
+                  >
+                    <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 13 }}>✕</Text>
+                  </TouchableOpacity>
                 )}
               </View>
             </View>
@@ -3008,34 +3945,68 @@ export default function App() {
               </Modal>
             </View>
 
-            {/* Clear Button */}
-            <TouchableOpacity 
-              style={{ paddingVertical: 10, alignItems: 'center', marginBottom: 10 }}
-              onPress={() => {
-                setAdvSearchGov('');
-                setAdvSearchMonth('');
-              setAdvSearchYear('');
-                setAdvSearchReceipt('');
-                setAdvSearchName('');
-                setAdvSearchPhone('');
-                setAdvSearchStatus('');
-                Keyboard.dismiss();
-              }}
-            >
-              <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: 'bold' }}>مسح الحقول</Text>
-            </TouchableOpacity>
+            {/* Action Buttons: Search & Clear */}
+            <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 5 }}>
+              <TouchableOpacity 
+                style={{ 
+                  flex: 2, 
+                  backgroundColor: isLightMode ? '#3b82f6' : '#8b5cf6', 
+                  paddingVertical: 14, 
+                  borderRadius: 12, 
+                  alignItems: 'center', 
+                  shadowColor: isLightMode ? '#3b82f6' : '#8b5cf6', 
+                  shadowOpacity: 0.3, 
+                  shadowRadius: 5, 
+                  elevation: 4,
+                  flexDirection: 'row-reverse',
+                  justifyContent: 'center',
+                  gap: 8
+                }}
+                onPress={() => { 
+                  Keyboard.dismiss();
+                  setSelectedGridStatus(null); 
+                  executeAdvancedSearch(); 
+                  setIsSearchModalVisible(true);
+                }}
+              >
+                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><Circle cx="11" cy="11" r="8" /><Path d="m21 21-4.3-4.3" /></Svg>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>بدء البحث</Text>
+              </TouchableOpacity>
 
-            {/* Search Button */}
-            <TouchableOpacity 
-              style={{ backgroundColor: isLightMode ? '#3b82f6' : '#a855f7', paddingVertical: 14, borderRadius: 12, alignItems: 'center', shadowColor: isLightMode ? '#3b82f6' : '#a855f7', shadowOpacity: 0.3, shadowRadius: 5, elevation: 4 }}
-              onPress={() => { 
-                console.log('Search Triggered with:', {advSearchGov, advSearchMonth, advSearchYear, advSearchDateFrom, advSearchDateTo, advSearchReceipt, advSearchPhone, advSearchStatus});
-                Keyboard.dismiss(); 
-                setSelectedGridStatus(null); executeAdvancedSearch(); setIsSearchModalVisible(true); 
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>بحث</Text>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={{ 
+                  flex: 1.2, 
+                  backgroundColor: isLightMode ? '#fee2e2' : 'rgba(239, 68, 68, 0.15)', 
+                  borderWidth: 1.5, 
+                  borderColor: isLightMode ? '#fca5a5' : '#ef4444', 
+                  paddingVertical: 14, 
+                  borderRadius: 12, 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  flexDirection: 'row-reverse', 
+                  gap: 6,
+                  elevation: 1
+                }}
+                onPress={() => {
+                  setAdvSearchGov('');
+                  setAdvSearchMonth('');
+                  setAdvSearchYear('');
+                  setAdvSearchDateFrom(null);
+                  setAdvSearchDateTo(null);
+                  setAdvSearchReceipt('');
+                  setAdvSearchName('');
+                  setAdvSearchPhone('');
+                  setAdvSearchStatus('');
+                  setAdvancedSearchResults([]);
+                  setSelectedGridStatus(null);
+                  Keyboard.dismiss();
+                  setAlertModal({ visible: true, message: 'تم مسح كافة حقول وتواريخ البحث بنجاح.' });
+                }}
+              >
+                <Text style={{ fontSize: 16 }}>🗑️</Text>
+                <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>مسح الحقول</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Search Results Modal */}
@@ -3119,53 +4090,157 @@ export default function App() {
                                 borderWidth: 1,
                                 borderColor: '#eab308'
                              }}>
-                                {/* Top row: Edit Pen & Status */}
-                                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                                   <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
-                                      رقم الوصل : {ord.receiptNumber || (ord.id ? ord.id.substring(0,6) : '')}
-                                   </Text>
-                                   <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
-                                      <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginLeft: 15 }}>
-                                         {info.label}
-                                      </Text>
-                                      {(!isEmployee) && (
-                                         <TouchableOpacity onPress={() => { setSelectedGridStatus(null); setIsSearchModalVisible(false); setTimeout(() => handleEditOrder(ord), 300); }} style={{ padding: 6, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 20 }}>
-                                            <Text style={{ fontSize: 18 }}>✏️</Text>
-                                         </TouchableOpacity>
-                                      )}
-                                   </View>
-                                </View>
+                                 {/* Top row: Receipt & Clean Status Badge */}
+                                 <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                    <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                                       رقم الوصل : {ord.receiptNumber || (ord.id ? ord.id.substring(0,6) : '')}
+                                    </Text>
+                                    <View style={{ 
+                                       backgroundColor: 'rgba(0,0,0,0.08)', 
+                                       paddingHorizontal: 12, 
+                                       paddingVertical: 5, 
+                                       borderRadius: 8,
+                                       borderWidth: 1,
+                                       borderColor: 'rgba(0,0,0,0.15)'
+                                    }}>
+                                       <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                                          {info.label}
+                                       </Text>
+                                    </View>
+                                 </View>
 
-                                {/* Fields */}
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
-                                   هاتف المستلم : {ord.customerPhone} {ord.customerPhone2 ? ` - ${ord.customerPhone2}` : ''}
-                                </Text>
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
-                                   المحافظة : {ord.governorate}
-                                </Text>
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
-                                   المنطقة : {ord.address || 'غير محدد'}
-                                </Text>
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
-                                   هاتف السائق : {ord.driverPhone || ''}
-                                </Text>
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
-                                   المنتجات : {Array.isArray(ord.products) ? ord.products.map(p => p.name).join('، ') : 'بدون منتجات'}
-                                </Text>
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
-                                   الملاحظات : {ord.notes || 'لا توجد'}
-                                </Text>
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
-                                   المبلغ الكلي : {(ord.totalCost || 0).toLocaleString('en-US')}
-                                </Text>
-                                <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 15, textAlign: 'right', fontWeight: 'bold' }}>
-                                   اخر تحديث : {ord.createdAt && typeof ord.createdAt.toDate === 'function' ? formatDateLocal(ord.createdAt.toDate()) : (ord.createdAt || '')}
-                                </Text>
+                                 {/* Fields */}
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    هاتف المستلم : {ord.customerPhone || ord.phone || '---'} {ord.customerPhone2 ? ` - ${ord.customerPhone2}` : ''}
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    المحافظة : {ord.governorate || '---'}
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    المنطقة : {ord.region || ord.address || 'غير محدد'}
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    مستخدم النظام : {ord.customerName || ord.systemUser || '---'}
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    الموظف المسؤول : {ord.bookingEmployeeName || ord.employeeName || '---'}
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    هاتف السائق : {ord.driverPhone || ord.deliveryPhone || '---'}
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    المنتجات : {
+                                       Array.isArray(ord.items) && ord.items.length > 0 
+                                          ? ord.items.map(p => `${p.productName || p.name || 'منتج'} (${p.quantity || 1})`).join('، ')
+                                          : (Array.isArray(ord.products) && ord.products.length > 0 
+                                                ? ord.products.map(p => `${p.name || p.productName || 'منتج'} (${p.quantity || 1})`).join('، ') 
+                                                : 'بدون منتجات')
+                                    }
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    الملاحظات : {ord.notes || 'لا توجد'}
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                    المبلغ الكلي : {Number(ord.totalAmount ?? ord.totalCost ?? ord.totalPrice ?? 0).toLocaleString('en-US')} د.ع
+                                 </Text>
+                                 <Text style={{ fontSize: 15, color: '#000', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal', marginBottom: 15, textAlign: 'right', fontWeight: 'bold' }}>
+                                    تاريخ الطلب : {parseOrderDate(ord) ? formatDateLocal(parseOrderDate(ord)) : 'غير محدد'}
+                                 </Text>
 
-                                {/* Details Button */}
-                                <TouchableOpacity style={{ backgroundColor: '#eab308', paddingVertical: 10, borderRadius: 20, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 }}>
-                                   <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>عرض التفاصيل</Text>
-                                </TouchableOpacity>
+                                 {/* Action Buttons: 1. Full Details, 2. Status Change, 3. Edit Order */}
+                                 <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 5 }}>
+                                    <TouchableOpacity 
+                                       onPress={() => setSelectedOrderForDetails(ord)}
+                                       style={{ 
+                                          flex: 1.3, 
+                                          backgroundColor: '#0284c7', 
+                                          paddingVertical: 10, 
+                                          borderRadius: 12, 
+                                          alignItems: 'center', 
+                                          justifyContent: 'center',
+                                          shadowColor: '#0284c7', 
+                                          shadowOpacity: 0.3, 
+                                          shadowRadius: 4, 
+                                          elevation: 3,
+                                          flexDirection: 'row-reverse',
+                                          gap: 4
+                                       }}
+                                    >
+                                       <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                                          👁️ تفاصيل الطلب
+                                       </Text>
+                                    </TouchableOpacity>
+
+                                    {canChangeOrderStatus && (
+                                       <TouchableOpacity 
+                                          onPress={() => setStatusChangeModal({ visible: true, order: ord })}
+                                          style={{ 
+                                             flex: 1, 
+                                             backgroundColor: '#8b5cf6', 
+                                             paddingVertical: 10, 
+                                             borderRadius: 12, 
+                                             alignItems: 'center', 
+                                             justifyContent: 'center',
+                                             shadowColor: '#8b5cf6', 
+                                             shadowOpacity: 0.3, 
+                                             shadowRadius: 4, 
+                                             elevation: 2,
+                                             flexDirection: 'row-reverse',
+                                             gap: 4
+                                          }}
+                                       >
+                                          <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                                             🔄 الحالة
+                                          </Text>
+                                       </TouchableOpacity>
+                                    )}
+
+                                    {canChangeOrderStatus && (
+                                       <TouchableOpacity 
+                                          onPress={() => { 
+                                             setSelectedGridStatus(null); 
+                                             setIsSearchModalVisible(false); 
+                                             setTimeout(() => handleEditOrder(ord), 300); 
+                                          }}
+                                          style={{ 
+                                             flex: 1, 
+                                             backgroundColor: '#eab308', 
+                                             paddingVertical: 10, 
+                                             borderRadius: 12, 
+                                             alignItems: 'center', 
+                                             justifyContent: 'center',
+                                             shadowColor: '#000', 
+                                             shadowOpacity: 0.1, 
+                                             shadowRadius: 3, 
+                                             elevation: 2,
+                                             flexDirection: 'row-reverse',
+                                             gap: 4
+                                          }}
+                                       >
+                                          <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                                             ✏️ تعديل
+                                          </Text>
+                                       </TouchableOpacity>
+                                    )}
+
+                                    {canDeleteOrders && (
+                                       <TouchableOpacity 
+                                          onPress={() => confirmDeleteOrder(ord)}
+                                          style={{ 
+                                             width: 38,
+                                             backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                             paddingVertical: 10, 
+                                             borderRadius: 12, 
+                                             alignItems: 'center', 
+                                             justifyContent: 'center',
+                                             borderWidth: 1,
+                                             borderColor: 'rgba(239, 68, 68, 0.3)'
+                                          }}
+                                       >
+                                          <Text style={{ fontSize: 14 }}>🗑️</Text>
+                                       </TouchableOpacity>
+                                    )}
+                                 </View>
                              </View>
                           )}
                        />
@@ -3313,79 +4388,63 @@ export default function App() {
         </View>
 ) : activeTab === 'settings' ? (
           <ScrollView style={styles.tabContent} contentContainerStyle={styles.scrollPadding}>
-          {/* Settings Tab Content */}
-          <View style={styles.tabHeaderCard}>
-            <Text style={styles.tabHeaderTitle}>⚙️ إعدادات النظام</Text>
-          </View>
-          <View style={styles.statCardBig}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View>
-                <Text style={styles.profileLabel}>المظهر:</Text>
-                <Text style={styles.profileValue}>{isLightMode ? 'فاتح' : 'داكن'}</Text>
-              </View>
-              <Switch 
-                value={isLightMode} 
-                onValueChange={setIsLightMode} 
-                trackColor={{ false: '#334155', true: '#a855f7' }}
-                thumbColor={isLightMode ? '#fff' : '#94a3b8'}
-              />
+            {/* Settings Tab Content */}
+            <View style={styles.tabHeaderCard}>
+              <Text style={styles.tabHeaderTitle}>⚙️ إعدادات النظام</Text>
             </View>
-          </View>
-  
-          <View style={styles.statCardBig}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View>
-                <Text style={styles.profileLabel}>المظهر:</Text>
-                <Text style={styles.profileValue}>{isLightMode ? 'فاتح' : 'داكن'}</Text>
+
+            {/* Single Theme Switch Card */}
+            <View style={styles.statCardBig}>
+              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.settingLabel}>مظهر التطبيق</Text>
+                  <Text style={[styles.settingValue, { color: isLightMode ? '#7c3aed' : '#c084fc', marginTop: 3 }]}>
+                    {isLightMode ? '☀️ الوضع الفاتح (النهاري)' : '🌙 الوضع الداكن (الليلي)'}
+                  </Text>
+                </View>
+                <Switch 
+                  value={isLightMode} 
+                  onValueChange={toggleTheme} 
+                  trackColor={{ false: '#334155', true: '#8b5cf6' }}
+                  thumbColor={isLightMode ? '#ffffff' : '#94a3b8'}
+                />
               </View>
-              <Switch 
-                value={isLightMode} 
-                onValueChange={setIsLightMode} 
-                trackColor={{ false: '#334155', true: '#a855f7' }}
-                thumbColor={isLightMode ? '#fff' : '#94a3b8'}
-              />
             </View>
-          </View>
-  
 
-          <View style={styles.statCardBig}>
-            <Text style={styles.profileLabel}>الموظف الحالي:</Text>
-            <Text style={styles.profileValue}>{systemUserName}</Text>
-            <Text style={styles.profileDescription}>
-              مسؤول عن إدخال الطلبات الحالية وتعديلها.
-            </Text>
-            <TouchableOpacity 
-              style={styles.profileSwitchBtn} 
-              onPress={() => setActiveTab('settings')}
-            >
-              <Text style={styles.profileSwitchBtnText}>🔄 تغيير الموظف</Text>
-            </TouchableOpacity>
-          </View>
+            {/* Current Employee Info (without change employee button) */}
+            <View style={styles.statCardBig}>
+              <Text style={styles.profileLabel}>الموظف الحالي</Text>
+              <Text style={styles.profileValue}>{systemUserName || 'المسؤول'}</Text>
+              <Text style={styles.profileDescription}>
+                مسؤول عن إدخال وتعديل ومتابعة الطلبات.
+              </Text>
+            </View>
 
-          <View style={styles.statCardBig}>
-            <Text style={styles.profileLabel}>تسجيل الخروج:</Text>
-            <Text style={styles.profileValue}>{user?.email}</Text>
-            <TouchableOpacity 
-              style={[styles.profileSwitchBtn, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444', marginTop: 10 }]} 
-              onPress={handleLogout}
-            >
-              <Text style={[styles.profileSwitchBtnText, { color: '#ef4444' }]}>🚪 تسجيل الخروج</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.statCardBig}>
-            <Text style={styles.settingLabel}>حالة الاتصال بـ Firebase:</Text>
-            <Text style={[styles.settingValue, { color: '#10b981' }]}>🟢 متصل ويعمل بشكل سليم</Text>
-          </View>
+            {/* Account & Logout */}
+            <View style={styles.statCardBig}>
+              <Text style={styles.profileLabel}>الحساب المسجل</Text>
+              <Text style={styles.profileValue}>{user?.email?.endsWith('@mansa.app') ? `📱 ${user.email.replace('@mansa.app', '')}` : `✉️ ${user?.email}`}</Text>
+              <TouchableOpacity 
+                style={[styles.profileSwitchBtn, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444', marginTop: 10 }]} 
+                onPress={handleLogout}
+              >
+                <Text style={[styles.profileSwitchBtnText, { color: '#ef4444' }]}>🚪 تسجيل الخروج</Text>
+              </TouchableOpacity>
+            </View>
 
-          <View style={styles.statCardBig}>
-            <Text style={styles.settingLabel}>إصدار التطبيق:</Text>
-            <Text style={styles.settingValue}>v1.2.0 (رقم البناء 48)</Text>
-          </View>
-          
-          <View style={styles.statCardBig}>
-            <Text style={styles.settingLabel}>عن منصة منسا:</Text>
-            <Text style={styles.settingValue}>نظام إدارة ومتابعة الطلبات اللوجستية المتكامل للجوال.</Text>
+            {/* App Info & About */}
+            <View style={styles.statCardBig}>
+              <View style={{ width: '100%', flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={styles.settingLabel}>إصدار التطبيق:</Text>
+                <Text style={styles.settingValue}>v1.2.0 (رقم البناء 48)</Text>
+              </View>
+              <View style={{ width: '100%', height: 1, backgroundColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)', marginVertical: 8 }} />
+              <View style={{ width: '100%', alignItems: 'flex-end' }}>
+                <Text style={styles.settingLabel}>عن منصة منسا:</Text>
+                <Text style={[styles.settingValue, { color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 13, marginTop: 4 }]}>
+                  نظام إدارة ومتابعة الطلبات اللوجستية والمخازن المتكامل.
+                </Text>
+              </View>
             </View>
           </ScrollView>
         ) : null}
@@ -3567,9 +4626,28 @@ export default function App() {
           <View style={{ backgroundColor: isLightMode ? '#fff' : '#1e293b', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, alignItems: 'center' }}>
             <View style={{ width: 40, height: 5, backgroundColor: isLightMode ? '#cbd5e1' : '#475569', borderRadius: 5, marginBottom: 20 }} />
             
-            <TouchableOpacity style={{ width: '100%', flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155' }} onPress={() => { setPlusMenuVisible(false); setActiveTab('entry'); }}>
-              <Text style={{ fontSize: 18, color: isLightMode ? '#1e293b' : '#f8fafc', fontWeight: 'bold' }}>📦 إضافة طلب</Text>
+            <TouchableOpacity 
+              style={{ width: '100%', flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155' }} 
+              onPress={() => { 
+                resetOrderForm(); 
+                setPlusMenuVisible(false); 
+                setActiveTab('entry'); 
+              }}
+            >
+              <Text style={{ fontSize: 18, color: isLightMode ? '#1e293b' : '#f8fafc', fontWeight: 'bold' }}>📦 إضافة طلب جديد</Text>
             </TouchableOpacity>
+
+            {editingOrderId && (
+              <TouchableOpacity 
+                style={{ width: '100%', flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155', backgroundColor: isLightMode ? '#fef3c7' : 'rgba(234, 179, 8, 0.15)' }} 
+                onPress={() => { 
+                  setPlusMenuVisible(false); 
+                  setActiveTab('entry'); 
+                }}
+              >
+                <Text style={{ fontSize: 16, color: '#eab308', fontWeight: 'bold' }}>✏️ متابعة تعديل الطلب السابق (#{originalOrderDetails?.receiptNumber || editingOrderId.substring(0, 6)})</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity style={{ width: '100%', flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155' }} onPress={() => { setPlusMenuVisible(false); setActiveTab('add_expense'); }}>
               <Text style={{ fontSize: 18, color: isLightMode ? '#1e293b' : '#f8fafc', fontWeight: 'bold' }}>💸 إضافة مصروف</Text>
@@ -3798,6 +4876,567 @@ export default function App() {
         </View>
       </Modal>
 
+      {/* Notifications Center Modal */}
+      <Modal
+        visible={isNotificationsModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsNotificationsModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 12 }}>
+          <View style={{ width: '100%', maxHeight: '90%', backgroundColor: isLightMode ? '#ffffff' : '#1e1e2d', borderRadius: 24, padding: 18, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#2d2d42', elevation: 15, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12 }}>
+            
+            {/* Header */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#f1f5f9' : '#2d2d42', paddingBottom: 12 }}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isLightMode ? '#f3e8ff' : '#2e2640', justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 20 }}>🔔</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#0f172a' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                      مركز الإشعارات
+                    </Text>
+                    {unreadNotificationsCount > 0 && (
+                      <View style={{ backgroundColor: '#ef4444', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 }}>
+                        <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>
+                          {unreadNotificationsCount} جديد
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 12, color: isLightMode ? '#64748b' : '#94a3b8', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    آخر التغييرات والطلبات في النظام
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity 
+                onPress={() => setIsNotificationsModalVisible(false)} 
+                style={{ width: 34, height: 34, backgroundColor: isLightMode ? '#f1f5f9' : '#262638', borderRadius: 17, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 16, color: '#ef4444', fontWeight: 'bold' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Actions Row */}
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+              {/* Filter Tabs */}
+              <View style={{ flexDirection: 'row-reverse', backgroundColor: isLightMode ? '#f1f5f9' : '#14141e', borderRadius: 12, padding: 3, flex: 1 }}>
+                <TouchableOpacity 
+                  onPress={() => setNotifFilterTab('all')}
+                  style={{ flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 9, backgroundColor: notifFilterTab === 'all' ? '#8b5cf6' : 'transparent' }}
+                >
+                  <Text style={{ color: notifFilterTab === 'all' ? '#fff' : (isLightMode ? '#64748b' : '#94a3b8'), fontSize: 12, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    الكل ({userVisibleNotifications.length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  onPress={() => setNotifFilterTab('orders')}
+                  style={{ flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 9, backgroundColor: notifFilterTab === 'orders' ? '#8b5cf6' : 'transparent' }}
+                >
+                  <Text style={{ color: notifFilterTab === 'orders' ? '#fff' : (isLightMode ? '#64748b' : '#94a3b8'), fontSize: 12, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    📦 طلبات
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  onPress={() => setNotifFilterTab('status')}
+                  style={{ flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 9, backgroundColor: notifFilterTab === 'status' ? '#8b5cf6' : 'transparent' }}
+                >
+                  <Text style={{ color: notifFilterTab === 'status' ? '#fff' : (isLightMode ? '#64748b' : '#94a3b8'), fontSize: 12, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    🔄 تغيير حالات
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Action Buttons: Mark all read & Clear */}
+              <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
+                {unreadNotificationsCount > 0 && (
+                  <TouchableOpacity 
+                    onPress={markAllNotificationsAsRead}
+                    style={{ paddingHorizontal: 10, paddingVertical: 7, backgroundColor: isLightMode ? '#ede9fe' : '#2c224d', borderRadius: 10, borderWidth: 1, borderColor: '#8b5cf6' }}
+                  >
+                    <Text style={{ color: '#8b5cf6', fontSize: 11, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                      ✓ قراءة الكل
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {userVisibleNotifications.length > 0 && (
+                  <TouchableOpacity 
+                    onPress={clearNotificationsForCurrentUser}
+                    style={{ paddingHorizontal: 10, paddingVertical: 7, backgroundColor: isLightMode ? '#fee2e2' : '#3d1d24', borderRadius: 10, borderWidth: 1, borderColor: '#ef4444' }}
+                  >
+                    <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                      🗑️ مسح
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Notifications Stream */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+              {(() => {
+                const filtered = userVisibleNotifications.filter(n => {
+                  if (notifFilterTab === 'orders') return n.type === 'order_created';
+                  if (notifFilterTab === 'status') return n.type === 'status_changed';
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+                      <Text style={{ fontSize: 44, marginBottom: 12 }}>🔕</Text>
+                      <Text style={{ fontSize: 16, fontWeight: 'bold', color: isLightMode ? '#1e293b' : '#f8fafc', marginBottom: 6, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                        لا توجد إشعارات حتى الآن
+                      </Text>
+                      <Text style={{ fontSize: 13, color: isLightMode ? '#64748b' : '#94a3b8', textAlign: 'center', maxWidth: 260, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                        ستظهر هنا الإشعارات الفورية عند إنشاء أي طلب أو تغيير حالة طلب من الموظفين أو شركة الشحن.
+                      </Text>
+                    </View>
+                  );
+                }
+
+                return filtered.map((item) => {
+                  const readList = Array.isArray(item.readBy) ? item.readBy : [];
+                  const isUnread = !readList.includes(user?.uid);
+                  const isOrderCreated = item.type === 'order_created';
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      activeOpacity={0.75}
+                      onPress={() => handleOpenNotificationItem(item)}
+                      style={{
+                        backgroundColor: isUnread 
+                          ? (isLightMode ? '#f5f3ff' : '#27203b') 
+                          : (isLightMode ? '#f8fafc' : '#171724'),
+                        borderRadius: 16,
+                        padding: 14,
+                        marginBottom: 10,
+                        borderWidth: 1,
+                        borderColor: isUnread 
+                          ? '#a855f7' 
+                          : (isLightMode ? '#e2e8f0' : '#28283c'),
+                        shadowColor: isUnread ? '#8b5cf6' : '#000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: isUnread ? 0.15 : 0.05,
+                        shadowRadius: 4,
+                        elevation: isUnread ? 3 : 1,
+                      }}
+                    >
+                      {/* Top Row: Icon + Title + Status + Dot */}
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1 }}>
+                          <View style={{ 
+                            width: 32, 
+                            height: 32, 
+                            borderRadius: 16, 
+                            backgroundColor: isOrderCreated ? 'rgba(16, 185, 129, 0.15)' : 'rgba(139, 92, 246, 0.15)', 
+                            justifyContent: 'center', 
+                            alignItems: 'center',
+                            borderWidth: 1,
+                            borderColor: isOrderCreated ? '#10b981' : '#8b5cf6'
+                          }}>
+                            <Text style={{ fontSize: 16 }}>{isOrderCreated ? '📦' : '🔄'}</Text>
+                          </View>
+                          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                            <Text style={{ 
+                              fontSize: 14, 
+                              fontWeight: 'bold', 
+                              color: isLightMode ? '#0f172a' : '#f8fafc',
+                              fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal'
+                            }}>
+                              {item.title}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: isLightMode ? '#64748b' : '#94a3b8', marginTop: 1 }}>
+                              {formatNotifTime(item.createdAt)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {isUnread && (
+                          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: 'rgba(239, 68, 68, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' }} />
+                            <Text style={{ color: '#ef4444', fontSize: 10, fontWeight: 'bold' }}>جديد</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Transition info if status changed */}
+                      {item.type === 'status_changed' && (item.oldStatus || item.newStatus) && (
+                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: isLightMode ? '#ede9fe' : '#1e1830', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginVertical: 6 }}>
+                          <Text style={{ fontSize: 12, color: isLightMode ? '#475569' : '#cbd5e1' }}>
+                            من: <Text style={{ fontWeight: 'bold' }}>{STATUS_LABELS_MAP[item.oldStatus] || translateStatus(item.oldStatus)}</Text>
+                          </Text>
+                          <Text style={{ fontSize: 12, color: '#8b5cf6', fontWeight: 'bold' }}>➔</Text>
+                          <Text style={{ fontSize: 12, color: '#10b981', fontWeight: 'bold' }}>
+                            إلى: {STATUS_LABELS_MAP[item.newStatus] || translateStatus(item.newStatus)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Body Description */}
+                      <Text style={{ 
+                        fontSize: 12.5, 
+                        color: isLightMode ? '#334155' : '#cbd5e1', 
+                        lineHeight: 18, 
+                        textAlign: 'right',
+                        fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal'
+                      }}>
+                        {item.body}
+                      </Text>
+
+                      {/* Bottom Action Footer */}
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: isLightMode ? '#f1f5f9' : '#232336' }}>
+                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 11, color: isLightMode ? '#64748b' : '#94a3b8' }}>بواسطة:</Text>
+                          <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#8b5cf6' }}>{item.actorName || 'النظام'}</Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 11, color: '#3b82f6', fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                            عرض الطلب 👁️
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                });
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full Order Details Modal */}
+      <Modal visible={!!selectedOrderForDetails} transparent animationType="slide" onRequestClose={() => setSelectedOrderForDetails(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 12 }}>
+          {selectedOrderForDetails && (
+            <View style={{ width: '100%', maxHeight: '92%', backgroundColor: isLightMode ? '#ffffff' : '#1e293b', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', elevation: 10, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10 }}>
+              
+              {/* Header */}
+              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#f1f5f9' : '#334155', paddingBottom: 12 }}>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 20 }}>📄</Text>
+                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: isLightMode ? '#0f172a' : '#f8fafc', fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                    تفاصيل الطلب
+                  </Text>
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#8b5cf6' }}>
+                    #{selectedOrderForDetails.receiptNumber || selectedOrderForDetails.id?.substring(0, 8)}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setSelectedOrderForDetails(null)} style={{ padding: 6, backgroundColor: isLightMode ? '#f1f5f9' : '#0f172a', borderRadius: 20, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 16, color: '#ef4444', fontWeight: 'bold' }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                {/* Status Banner */}
+                <View style={{ backgroundColor: isLightMode ? '#f8fafc' : '#0f172a', padding: 12, borderRadius: 12, marginBottom: 14, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
+                  <Text style={{ color: isLightMode ? '#64748b' : '#94a3b8', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>حالة الطلب الحالية:</Text>
+                  <View style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#8b5cf6' }}>
+                    <Text style={{ color: '#8b5cf6', fontWeight: 'bold', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                      {STATUS_LABELS_MAP[selectedOrderForDetails.status] || selectedOrderForDetails.status || 'غير محدد'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Information Grid */}
+                <View style={{ backgroundColor: isLightMode ? '#f8fafc' : '#0f172a', borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>مستخدم النظام</Text>
+                      <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 14, fontWeight: 'bold' }}>
+                        {selectedOrderForDetails.customerName || selectedOrderForDetails.systemUser || '---'}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>الموظف المسؤول</Text>
+                      <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 14, fontWeight: 'bold' }}>
+                        {selectedOrderForDetails.bookingEmployeeName || selectedOrderForDetails.employeeName || '---'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>رقم الهاتف</Text>
+                      <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 14, fontWeight: 'bold' }}>
+                        {selectedOrderForDetails.customerPhone || '---'}
+                      </Text>
+                      {selectedOrderForDetails.customerPhone2 ? (
+                        <Text style={{ color: '#64748b', fontSize: 12 }}>{selectedOrderForDetails.customerPhone2}</Text>
+                      ) : null}
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>المحافظة / المنطقة</Text>
+                      <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 14, fontWeight: 'bold' }}>
+                        {selectedOrderForDetails.governorate || '---'} - {selectedOrderForDetails.region || selectedOrderForDetails.address || 'غير محدد'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>تاريخ وتوقيت الطلب</Text>
+                      <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 13, fontWeight: 'bold' }}>
+                        {parseOrderDate(selectedOrderForDetails) ? parseOrderDate(selectedOrderForDetails).toLocaleString('en-GB') : '---'}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>طريقة الدفع</Text>
+                      <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 13, fontWeight: 'bold' }}>
+                        {selectedOrderForDetails.paymentMethod || 'كاش عند التوصيل'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Items Table */}
+                <Text style={{ fontSize: 15, fontWeight: 'bold', color: isLightMode ? '#0f172a' : '#f8fafc', textAlign: 'right', marginBottom: 8, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                  📦 المواد المطلوبة:
+                </Text>
+                <View style={{ borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', marginBottom: 16 }}>
+                  {/* Table Header */}
+                  <View style={{ flexDirection: 'row-reverse', backgroundColor: '#10b981', paddingVertical: 10, paddingHorizontal: 8 }}>
+                    <Text style={{ flex: 0.6, color: '#fff', fontWeight: 'bold', textAlign: 'center', fontSize: 12 }}>#</Text>
+                    <Text style={{ flex: 2.5, color: '#fff', fontWeight: 'bold', textAlign: 'right', fontSize: 12 }}>الصنف</Text>
+                    <Text style={{ flex: 1, color: '#fff', fontWeight: 'bold', textAlign: 'center', fontSize: 12 }}>الكمية</Text>
+                    <Text style={{ flex: 1.8, color: '#fff', fontWeight: 'bold', textAlign: 'center', fontSize: 12 }}>السعر</Text>
+                    <Text style={{ flex: 2, color: '#fff', fontWeight: 'bold', textAlign: 'center', fontSize: 12 }}>الإجمالي</Text>
+                  </View>
+
+                  {/* Table Rows */}
+                  {Array.isArray(selectedOrderForDetails.items) && selectedOrderForDetails.items.length > 0 ? (
+                    selectedOrderForDetails.items.map((item, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row-reverse', backgroundColor: isLightMode ? (idx % 2 === 0 ? '#fff' : '#f8fafc') : (idx % 2 === 0 ? '#1e293b' : '#0f172a'), paddingVertical: 10, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: isLightMode ? '#f1f5f9' : '#334155', alignItems: 'center' }}>
+                        <Text style={{ flex: 0.6, color: isLightMode ? '#64748b' : '#94a3b8', textAlign: 'center', fontSize: 12 }}>{idx + 1}</Text>
+                        <Text style={{ flex: 2.5, color: isLightMode ? '#0f172a' : '#f8fafc', textAlign: 'right', fontSize: 12, fontWeight: 'bold' }}>{item.productName || item.name || 'منتج'}</Text>
+                        <Text style={{ flex: 1, color: isLightMode ? '#0f172a' : '#f8fafc', textAlign: 'center', fontSize: 13, fontWeight: 'bold' }}>{item.quantity || 1}</Text>
+                        <Text style={{ flex: 1.8, color: isLightMode ? '#64748b' : '#94a3b8', textAlign: 'center', fontSize: 12 }}>{Number(item.unitPrice || 0).toLocaleString()} د.ع</Text>
+                        <Text style={{ flex: 2, color: '#10b981', fontWeight: 'bold', textAlign: 'center', fontSize: 13 }}>{Number(item.total || ((item.unitPrice || 0) * (item.quantity || 1))).toLocaleString()} د.ع</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={{ padding: 15, backgroundColor: isLightMode ? '#fff' : '#1e293b', alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', fontSize: 13 }}>لا توجد منتجات مسجلة في هذا الطلب</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Total & Notes */}
+                <View style={{ backgroundColor: isLightMode ? '#f8fafc' : '#0f172a', borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 8, borderBottomWidth: 1, borderBottomColor: isLightMode ? '#e2e8f0' : '#334155', paddingBottom: 8 }}>
+                    <Text style={{ color: '#94a3b8', fontSize: 14 }}>المبلغ الكلي:</Text>
+                    <Text style={{ color: '#10b981', fontSize: 15, fontWeight: 'bold' }}>
+                      {Number(selectedOrderForDetails.totalAmount ?? selectedOrderForDetails.totalCost ?? 0).toLocaleString()} د.ع
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 16, fontWeight: 'bold' }}>المبلغ الصافي:</Text>
+                    <Text style={{ color: '#8b5cf6', fontSize: 18, fontWeight: 'bold' }}>
+                      {Number(selectedOrderForDetails.totalAmount ?? selectedOrderForDetails.totalCost ?? 0).toLocaleString()} د.ع
+                    </Text>
+                  </View>
+                  <View style={{ marginTop: 4 }}>
+                    <Text style={{ color: '#94a3b8', fontSize: 12, textAlign: 'right', marginBottom: 2 }}>الملاحظات:</Text>
+                    <Text style={{ color: isLightMode ? '#0f172a' : '#f8fafc', fontSize: 13, textAlign: 'right' }}>
+                      {selectedOrderForDetails.notes || 'لا توجد ملاحظات'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Activity Logs Timeline */}
+                <Text style={{ fontSize: 15, fontWeight: 'bold', color: isLightMode ? '#0f172a' : '#f8fafc', textAlign: 'right', marginBottom: 10, fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal' }}>
+                  🕒 سجل عمليات الطلب:
+                </Text>
+                <View style={{ backgroundColor: isLightMode ? '#f8fafc' : '#0f172a', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155', marginBottom: 16 }}>
+                  {isLoadingOrderLogs ? (
+                    <ActivityIndicator color="#8b5cf6" size="small" style={{ marginVertical: 10 }} />
+                  ) : orderDetailsLogs.length > 0 ? (
+                    orderDetailsLogs.map((log, index) => {
+                      const isCreate = log.action && log.action.includes('إنشاء');
+                      const isStatus = log.action && log.action.includes('حالة');
+                      const badgeBg = isCreate ? 'rgba(14, 165, 233, 0.15)' : (isStatus ? 'rgba(217, 70, 239, 0.15)' : 'rgba(245, 158, 11, 0.15)');
+                      const badgeColor = isCreate ? '#0284c7' : (isStatus ? '#c026d3' : '#d97706');
+                      const dotColor = isCreate ? '#0284c7' : (isStatus ? '#c026d3' : '#f59e0b');
+                      const dateObj = log.timestamp && typeof log.timestamp.toDate === 'function' 
+                        ? log.timestamp.toDate() 
+                        : (log.timestamp?.seconds ? new Date(log.timestamp.seconds * 1000) : new Date(log.timestamp || Date.now()));
+
+                      return (
+                        <View key={log.id || index} style={{ flexDirection: 'row-reverse', marginBottom: 14 }}>
+                          <View style={{ alignItems: 'center', marginLeft: 10 }}>
+                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: dotColor, marginTop: 4 }} />
+                            {index < orderDetailsLogs.length - 1 && (
+                              <View style={{ width: 2, flex: 1, backgroundColor: isLightMode ? '#e2e8f0' : '#334155', marginVertical: 4 }} />
+                            )}
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: isLightMode ? '#fff' : '#1e293b', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: isLightMode ? '#e2e8f0' : '#334155' }}>
+                            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                              <View style={{ backgroundColor: badgeBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                                <Text style={{ color: badgeColor, fontSize: 12, fontWeight: 'bold' }}>{log.action || 'إجراء'}</Text>
+                              </View>
+                              <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
+                                <Text style={{ color: '#10b981', fontSize: 11, fontWeight: 'bold' }}>👤 {log.employeeName || 'موظف'}</Text>
+                              </View>
+                            </View>
+                            <Text style={{ color: isLightMode ? '#334155' : '#cbd5e1', fontSize: 13, textAlign: 'right', marginBottom: 4 }}>
+                              {log.details || ''}
+                            </Text>
+                            <Text style={{ color: '#94a3b8', fontSize: 11, textAlign: 'left' }}>
+                              {dateObj ? dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + ' - ' + dateObj.toLocaleDateString('en-GB') : ''}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>لا توجد سجلات بعد لهذا الطلب</Text>
+                  )}
+                </View>
+
+                {/* Modal Bottom Actions */}
+                <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 4 }}>
+                  {canChangeOrderStatus && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const target = selectedOrderForDetails;
+                        setSelectedOrderForDetails(null);
+                        setTimeout(() => setStatusChangeModal({ visible: true, order: target }), 300);
+                      }}
+                      style={{ flex: 1, backgroundColor: '#8b5cf6', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>🔄 تعديل الحالة</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {canChangeOrderStatus && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const target = selectedOrderForDetails;
+                        setSelectedOrderForDetails(null);
+                        setSelectedGridStatus(null);
+                        setIsSearchModalVisible(false);
+                        setTimeout(() => handleEditOrder(target), 300);
+                      }}
+                      style={{ flex: 1, backgroundColor: '#eab308', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>✏️ تعديل الطلب</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    onPress={() => setSelectedOrderForDetails(null)}
+                    style={{ flex: 0.8, backgroundColor: isLightMode ? '#f1f5f9' : '#334155', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text style={{ color: isLightMode ? '#0f172a' : '#fff', fontWeight: 'bold', fontSize: 14 }}>إغلاق</Text>
+                  </TouchableOpacity>
+                </View>
+
+              </ScrollView>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Status Change Modal */}
+      <Modal visible={statusChangeModal.visible} transparent animationType="slide" onRequestClose={() => setStatusChangeModal({ visible: false, order: null })}>
+        <View style={styles.modalBg}>
+          <View style={[styles.modalContent, { backgroundColor: isLightMode ? '#fff' : '#1e293b', maxHeight: '80%' }]}>
+            <Text style={[styles.modalTitle, { color: isLightMode ? '#0f172a' : '#fff', marginBottom: 4 }]}>
+              🔄 تعديل حالة الطلب
+            </Text>
+            <Text style={{ textAlign: 'center', color: '#64748b', fontSize: 13, marginBottom: 15 }}>
+              رقم الوصل: {statusChangeModal.order?.receiptNumber || statusChangeModal.order?.id}
+            </Text>
+            
+            <ScrollView style={{ width: '100%' }}>
+              {[
+                { id: 'pending', label: '🟡 قيد الانتظار', color: '#eab308', bg: '#fef9c3' },
+                { id: 'backordered', label: '🟣 بانتظار المخزون', color: '#8b5cf6', bg: '#ede9fe' },
+                { id: 'processing', label: '🔵 قيد المعالجة', color: '#2563eb', bg: '#dbeafe' },
+                { id: 'shipped', label: '🚚 تم الشحن / مع المندوب', color: '#0284c7', bg: '#e0f2fe' },
+                { id: 'delivered', label: '🟢 تم التسليم (واصل)', color: '#16a34a', bg: '#dcfce7' },
+                { id: 'partial', label: '📦 واصل جزئي', color: '#0284c7', bg: '#e0f2fe' },
+                { id: 'postponed', label: '🟠 مؤجل', color: '#ea580c', bg: '#ffedd5' },
+                { id: 'returned', label: '🔴 راجع', color: '#dc2626', bg: '#fee2e2' },
+                { id: 'returned_warehouse', label: '🏬 راجع مستلم بالمخزن', color: '#b91c1c', bg: '#fee2e2' },
+                { id: 'cancelled', label: '⚫ ملغي', color: '#475569', bg: '#f1f5f9' },
+              ].map(st => (
+                <TouchableOpacity
+                  key={st.id}
+                  style={{
+                    backgroundColor: st.bg,
+                    borderColor: st.color,
+                    borderWidth: 1.5,
+                    borderRadius: 12,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    marginBottom: 10,
+                    flexDirection: 'row-reverse',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                  onPress={() => applyStatusChange(st.id)}
+                >
+                  <Text style={{ color: st.color, fontWeight: 'bold', fontSize: 16 }}>{st.label}</Text>
+                  {statusChangeModal.order?.status === st.id && (
+                    <Text style={{ color: st.color, fontWeight: 'bold', fontSize: 15 }}>✓ الحالية</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalCloseBtn, { marginTop: 15 }]}
+              onPress={() => setStatusChangeModal({ visible: false, order: null })}
+            >
+              <Text style={styles.modalCloseText}>إلغاء</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Order Confirmation Modal */}
+      <Modal visible={deleteConfirmModal.visible} transparent animationType="fade" onRequestClose={() => setDeleteConfirmModal({ visible: false, order: null })}>
+        <View style={styles.alertBg}>
+          <View style={[styles.alertContent, { maxWidth: 360 }]}>
+            <Text style={{ fontSize: 34, textAlign: 'center', marginBottom: 10 }}>🗑️</Text>
+            <Text style={[styles.alertMessage, { fontWeight: 'bold', fontSize: 18, marginBottom: 8, color: '#ef4444' }]}>
+              تأكيد حذف الطلب
+            </Text>
+            <Text style={{ textAlign: 'center', color: isLightMode ? '#475569' : '#cbd5e1', fontSize: 14, marginBottom: 6 }}>
+              هل أنت متأكد من رغبتك في حذف الطلب رقم:
+            </Text>
+            <Text style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 16, color: '#38bdf8', marginBottom: 15 }}>
+              #{deleteConfirmModal.order?.receiptNumber || deleteConfirmModal.order?.id}
+            </Text>
+            <Text style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, marginBottom: 20 }}>
+              سيتم حذف الطلب نهائياً وإعادة المواد المحجوزة للمخزن.
+            </Text>
+
+            <View style={{ flexDirection: 'row-reverse', gap: 10, width: '100%' }}>
+              <TouchableOpacity
+                style={[styles.alertBtn, { flex: 1, backgroundColor: '#ef4444' }]}
+                onPress={executeDeleteOrder}
+              >
+                <Text style={styles.alertBtnText}>نعم، حذف الطلب</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.alertBtn, { flex: 1, backgroundColor: isLightMode ? '#e2e8f0' : '#334155' }]}
+                onPress={() => setDeleteConfirmModal({ visible: false, order: null })}
+              >
+                <Text style={[styles.alertBtnText, { color: isLightMode ? '#0f172a' : '#fff' }]}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* 4. Global Alert Modal */}
       <Modal visible={alertModal.visible} transparent animationType="fade">
         <View style={styles.alertBg}>
@@ -3814,6 +5453,28 @@ export default function App() {
       </Modal>
 
     
+      {showAdvSearchDateFromPicker && (
+        <DateTimePicker
+          value={advSearchDateFrom || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowAdvSearchDateFromPicker(false);
+            if (date) setAdvSearchDateFrom(date);
+          }}
+        />
+      )}
+      {showAdvSearchDateToPicker && (
+        <DateTimePicker
+          value={advSearchDateTo || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowAdvSearchDateToPicker(false);
+            if (date) setAdvSearchDateTo(date);
+          }}
+        />
+      )}
       {showStartDatePicker && (
         <DateTimePicker
           value={tempCustomStartDate}
@@ -3976,53 +5637,54 @@ export default function App() {
 const getStyles = (isLightMode) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0d0d12',
+    backgroundColor: isLightMode ? '#f4f0fa' : '#0d0d12',
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0d0d12',
+    backgroundColor: isLightMode ? '#f4f0fa' : '#0d0d12',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 15,
   },
   loadingText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
     fontSize: 16,
   },
   header: {
     height: 60,
-    backgroundColor: 'rgba(30, 30, 40, 0.4)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.4)',
     borderBottomWidth: 1,
-    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 15,
   },
   headerTitle: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   empBadgeBtn: {
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: isLightMode ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.15)',
     paddingVertical: 5,
     paddingHorizontal: 12,
     borderRadius: 99,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: isLightMode ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)',
     maxWidth: 160,
   },
   empBadgeText: {
-    color: '#c4b5fd',
+    color: isLightMode ? '#7c3aed' : '#c4b5fd',
     fontSize: 13,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   tabContent: {
     flex: 1,
+    backgroundColor: isLightMode ? '#f4f0fa' : '#0d0d12',
   },
   scrollPadding: {
     padding: 15,
@@ -4031,7 +5693,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
   gridTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     marginBottom: 10,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4044,20 +5706,20 @@ const getStyles = (isLightMode) => StyleSheet.create({
   },
   newStatCard: {
     flex: 1,
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     padding: 12,
-    elevation: 3,
-    shadowColor: '#000',
+    elevation: isLightMode ? 2 : 3,
+    shadowColor: isLightMode ? 'rgba(0,0,0,0.06)' : '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isLightMode ? 0.08 : 0.2,
     shadowRadius: 5,
   },
   newStatLabel: {
     fontSize: 12,
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     marginBottom: 6,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4070,7 +5732,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
   newStatValue: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
     flex: 1,
     textAlign: 'right',
@@ -4087,31 +5749,31 @@ const getStyles = (isLightMode) => StyleSheet.create({
     fontSize: 16,
   },
   statCardBig: {
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     padding: 18,
     marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
+    elevation: isLightMode ? 2 : 3,
+    shadowColor: isLightMode ? 'rgba(0,0,0,0.06)' : '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isLightMode ? 0.08 : 0.2,
     shadowRadius: 5,
     alignItems: 'center',
   },
   gaugeCard: {
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     paddingVertical: 12,
     paddingHorizontal: 12,
     marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#000',
+    elevation: isLightMode ? 2 : 3,
+    shadowColor: isLightMode ? 'rgba(0,0,0,0.06)' : '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isLightMode ? 0.08 : 0.2,
     shadowRadius: 5,
     alignItems: 'center',
     width: 280,
@@ -4120,7 +5782,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
   gaugeCardHeader: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     marginBottom: 10,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -4137,13 +5799,13 @@ const getStyles = (isLightMode) => StyleSheet.create({
   gaugeValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#c084fc',
+    color: isLightMode ? '#7c3aed' : '#c084fc',
     marginTop: 5,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   gaugeDescription: {
     fontSize: 12,
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     marginTop: 5,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -4153,45 +5815,45 @@ const getStyles = (isLightMode) => StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   statValue: {
     fontSize: 15,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   statValueBig: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     marginTop: 4,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   bigCard: {
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     padding: 18,
-    shadowColor: '#000',
+    shadowColor: isLightMode ? 'rgba(0,0,0,0.06)' : '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isLightMode ? 0.08 : 0.2,
     shadowRadius: 5,
   },
   cardTitle: {
     fontSize: 15,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     marginBottom: 15,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   orderItem: {
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.02)' : isLightMode ? 'rgba(15, 23, 42, 0.02)' : 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(255, 255, 255, 0.02)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.03)',
     borderRadius: 12,
     padding: 12,
     flexDirection: 'row-reverse',
@@ -4204,13 +5866,13 @@ const getStyles = (isLightMode) => StyleSheet.create({
     gap: 4,
   },
   orderCustName: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontWeight: 'bold',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   orderMetaText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -4219,7 +5881,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
     gap: 6,
   },
   orderAmountText: {
-    color: '#c084fc',
+    color: isLightMode ? '#7c3aed' : '#c084fc',
     fontWeight: 'bold',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4235,25 +5897,25 @@ const getStyles = (isLightMode) => StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   badgePending: {
-    backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    backgroundColor: isLightMode ? '#fef3c7' : 'rgba(251, 191, 36, 0.15)',
   },
   badgeDelivered: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: isLightMode ? '#d1fae5' : 'rgba(16, 185, 129, 0.15)',
   },
   badgePartial: {
-    backgroundColor: 'rgba(14, 165, 233, 0.15)',
+    backgroundColor: isLightMode ? '#e0f2fe' : 'rgba(14, 165, 233, 0.15)',
   },
   badgeReturned: {
-    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+    backgroundColor: isLightMode ? '#ffe4e6' : 'rgba(244, 63, 94, 0.15)',
   },
   badgeCancelled: {
-    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+    backgroundColor: isLightMode ? '#ffe4e6' : 'rgba(244, 63, 94, 0.15)',
   },
   badgeBackordered: {
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: isLightMode ? '#ede9fe' : 'rgba(139, 92, 246, 0.15)',
   },
   emptyText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     textAlign: 'center',
     paddingVertical: 20,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4267,7 +5929,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#c4b5fd',
+    color: isLightMode ? '#6d28d9' : '#c4b5fd',
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -4277,13 +5939,13 @@ const getStyles = (isLightMode) => StyleSheet.create({
     alignItems: 'center',
   },
   input: {
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 15,
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 14,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4296,9 +5958,9 @@ const getStyles = (isLightMode) => StyleSheet.create({
     textAlignVertical: 'top',
   },
   phoneDropdown: {
-    backgroundColor: '#1e1e28',
+    backgroundColor: isLightMode ? '#ffffff' : '#1e1e28',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
     marginTop: 4,
     maxHeight: 180,
@@ -4307,25 +5969,25 @@ const getStyles = (isLightMode) => StyleSheet.create({
   dropdownItem: {
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
+    borderBottomColor: isLightMode ? '#f1f5f9' : 'rgba(255, 255, 255, 0.03)',
     alignItems: 'flex-end',
   },
   dropdownItemTitle: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontWeight: 'bold',
     fontSize: 13,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   dropdownItemSubtitle: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 11,
     marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   modalTrigger: {
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 15,
@@ -4334,23 +5996,23 @@ const getStyles = (isLightMode) => StyleSheet.create({
     alignItems: 'center',
   },
   triggerText: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   triggerPlaceholder: {
-    color: isLightMode ? 'rgba(15, 23, 42, 0.3)' : isLightMode ? 'rgba(15, 23, 42, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+    color: isLightMode ? '#94a3b8' : 'rgba(255, 255, 255, 0.3)',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   triggerArrow: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
   },
   cartSection: {
-    backgroundColor: 'rgba(30, 30, 40, 0.3)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(30, 30, 40, 0.3)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.04)' : isLightMode ? 'rgba(15, 23, 42, 0.04)' : 'rgba(255, 255, 255, 0.04)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.04)',
     borderRadius: 16,
     padding: 12,
     gap: 10,
@@ -4363,19 +6025,19 @@ const getStyles = (isLightMode) => StyleSheet.create({
   cartLabel: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#c4b5fd',
+    color: isLightMode ? '#6d28d9' : '#c4b5fd',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   addProdBtn: {
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: isLightMode ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.15)',
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: isLightMode ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)',
   },
   addProdBtnText: {
-    color: '#c4b5fd',
+    color: isLightMode ? '#7c3aed' : '#c4b5fd',
     fontSize: 12,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4384,23 +6046,23 @@ const getStyles = (isLightMode) => StyleSheet.create({
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.02)' : isLightMode ? 'rgba(15, 23, 42, 0.02)' : 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: isLightMode ? '#f8fafc' : 'rgba(255, 255, 255, 0.02)',
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.03)',
   },
   cartItemLeft: {
     alignItems: 'flex-end',
   },
   cartItemName: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 13,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   cartItemSub: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 11,
     marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4411,11 +6073,11 @@ const getStyles = (isLightMode) => StyleSheet.create({
     marginTop: 5,
   },
   cartPriceInput: {
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(0, 0, 0, 0.25)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 6,
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 12,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -4424,13 +6086,13 @@ const getStyles = (isLightMode) => StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   currencyLabel: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 11,
     marginRight: 4,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   multiplierLabel: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     marginRight: 6,
     fontWeight: 'bold',
@@ -4441,7 +6103,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
     gap: 8,
   },
   qtyBtn: {
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.08)',
     width: 26,
     height: 26,
     borderRadius: 13,
@@ -4449,16 +6111,16 @@ const getStyles = (isLightMode) => StyleSheet.create({
     justifyContent: 'center',
   },
   qtyBtnText: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 15,
     fontWeight: 'bold',
   },
   cartQtyInput: {
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(0, 0, 0, 0.25)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 6,
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 13,
     width: 36,
     height: 26,
@@ -4479,18 +6141,18 @@ const getStyles = (isLightMode) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.1)',
     borderStyle: 'dashed',
     marginTop: 5,
   },
   totalLabel: {
-    color: '#e9d5ff',
+    color: isLightMode ? '#6d28d9' : '#e9d5ff',
     fontWeight: 'bold',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   totalValue: {
-    color: '#e9d5ff',
+    color: isLightMode ? '#6d28d9' : '#e9d5ff',
     fontWeight: 'bold',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4500,11 +6162,11 @@ const getStyles = (isLightMode) => StyleSheet.create({
     alignItems: 'center',
   },
   totalAmountInput: {
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(0, 0, 0, 0.25)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 8,
-    color: '#e9d5ff',
+    color: isLightMode ? '#6d28d9' : '#e9d5ff',
     fontSize: 15,
     fontWeight: 'bold',
     paddingHorizontal: 10,
@@ -4514,14 +6176,14 @@ const getStyles = (isLightMode) => StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   totalCurrencyLabel: {
-    color: '#e9d5ff',
+    color: isLightMode ? '#6d28d9' : '#e9d5ff',
     fontSize: 14,
     fontWeight: 'bold',
     marginRight: 6,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   emptyCartText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     textAlign: 'center',
     paddingVertical: 15,
@@ -4533,36 +6195,36 @@ const getStyles = (isLightMode) => StyleSheet.create({
   },
   paymentBtn: {
     flex: 1,
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
   },
   paymentBtnActive: {
     borderColor: '#8b5cf6',
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: isLightMode ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.15)',
   },
   paymentBtnText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   paymentBtnTextActive: {
-    color: '#c4b5fd',
+    color: isLightMode ? '#7c3aed' : '#c4b5fd',
   },
   replaceBtn: {
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: isLightMode ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.15)',
     paddingVertical: 2,
     paddingHorizontal: 8,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: isLightMode ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.3)',
   },
   replaceBtnText: {
-    color: '#c4b5fd',
+    color: isLightMode ? '#7c3aed' : '#c4b5fd',
     fontSize: 11,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -4592,9 +6254,9 @@ const getStyles = (isLightMode) => StyleSheet.create({
     left: 0,
     right: 0,
     height: 55,
-    backgroundColor: 'rgba(20, 20, 30, 0.95)',
+    backgroundColor: isLightMode ? 'rgba(253, 252, 255, 0.98)' : 'rgba(20, 20, 30, 0.95)',
     borderTopWidth: 1,
-    borderTopColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    borderTopColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.08)',
     flexDirection: 'row-reverse',
     justifyContent: 'space-around',
     alignItems: 'center',
@@ -4606,29 +6268,29 @@ const getStyles = (isLightMode) => StyleSheet.create({
     justifyContent: 'center',
   },
   navItemActive: {
-    backgroundColor: 'rgba(168, 85, 247, 0.05)',
+    backgroundColor: isLightMode ? 'rgba(139, 92, 246, 0.08)' : 'rgba(168, 85, 247, 0.05)',
     borderRadius: 12,
     paddingVertical: 6,
     marginHorizontal: 4,
   },
   navIcon: {
     fontSize: 20,
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#64748b' : '#94a3b8',
     marginBottom: 2,
   },
   navIconActive: {
-    color: '#a855f7',
+    color: isLightMode ? '#7c3aed' : '#a855f7',
   },
   navText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#64748b' : '#94a3b8',
     fontSize: 10,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   navTextActive: {
-    color: '#d8b4fe',
+    color: isLightMode ? '#7c3aed' : '#d8b4fe',
     fontWeight: 'bold',
-    textShadowColor: 'rgba(168, 85, 247, 0.6)',
+    textShadowColor: isLightMode ? 'transparent' : 'rgba(168, 85, 247, 0.6)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 6,
   },
@@ -4642,21 +6304,21 @@ const getStyles = (isLightMode) => StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: 'rgba(168, 85, 247, 0.85)',
+    backgroundColor: '#8b5cf6',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#a855f7',
+    shadowColor: '#8b5cf6',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 5,
     borderWidth: 1.5,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.2)' : isLightMode ? 'rgba(15, 23, 42, 0.2)' : 'rgba(255, 255, 255, 0.2)',
+    borderColor: isLightMode ? '#ffffff' : 'rgba(255, 255, 255, 0.2)',
   },
   centerNavBtnActive: {
-    backgroundColor: '#a855f7',
+    backgroundColor: '#7c3aed',
     borderColor: '#e9d5ff',
-    shadowColor: '#a855f7',
+    shadowColor: '#8b5cf6',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.9,
     shadowRadius: 15,
@@ -4668,29 +6330,29 @@ const getStyles = (isLightMode) => StyleSheet.create({
     fontWeight: 'bold',
   },
   tabHeaderCard: {
-    backgroundColor: 'rgba(30, 30, 40, 0.4)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.4)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     padding: 15,
     marginBottom: 20,
     alignItems: 'center',
   },
   tabHeaderTitle: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   profileLabel: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 13,
     marginBottom: 4,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   profileValue: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 10,
@@ -4698,36 +6360,36 @@ const getStyles = (isLightMode) => StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   profileDescription: {
-    color: '#64748b',
+    color: isLightMode ? '#64748b' : '#64748b',
     fontSize: 12,
     marginBottom: 15,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   profileSwitchBtn: {
-    backgroundColor: 'rgba(168, 85, 247, 0.15)',
+    backgroundColor: isLightMode ? 'rgba(139, 92, 246, 0.1)' : 'rgba(168, 85, 247, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(168, 85, 247, 0.3)',
+    borderColor: isLightMode ? 'rgba(139, 92, 246, 0.3)' : 'rgba(168, 85, 247, 0.3)',
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 15,
     alignSelf: 'center',
   },
   profileSwitchBtnText: {
-    color: '#c084fc',
+    color: isLightMode ? '#7c3aed' : '#c084fc',
     fontSize: 13,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   settingLabel: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 13,
     marginBottom: 4,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   settingValue: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'right',
@@ -4743,39 +6405,43 @@ const getStyles = (isLightMode) => StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.65)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: isLightMode ? 2 : 0,
+    shadowColor: '#000',
+    shadowOpacity: isLightMode ? 0.06 : 0,
+    shadowRadius: 4,
   },
   headerIconText: {
     fontSize: 18,
-    color: '#a855f7',
+    color: isLightMode ? '#7c3aed' : '#a855f7',
   },
   headerCenter: {
     alignItems: 'center',
   },
   ordersHeaderTitle: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 22,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   ordersHeaderDate: {
-    color: '#64748b',
+    color: isLightMode ? '#64748b' : '#64748b',
     fontSize: 12,
     marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   segmentedControl: {
     flexDirection: 'row-reverse',
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.03)' : isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.03)',
     borderRadius: 14,
     padding: 4,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.05)',
   },
   segmentBtn: {
     flex: 1,
@@ -4784,16 +6450,20 @@ const getStyles = (isLightMode) => StyleSheet.create({
     borderRadius: 10,
   },
   segmentBtnActive: {
-    backgroundColor: '#6366f1',
+    backgroundColor: isLightMode ? '#ffffff' : '#6366f1',
+    elevation: isLightMode ? 2 : 0,
+    shadowColor: '#000',
+    shadowOpacity: isLightMode ? 0.08 : 0,
+    shadowRadius: 4,
   },
   segmentBtnText: {
-    color: '#64748b',
+    color: isLightMode ? '#64748b' : '#64748b',
     fontSize: 13,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   segmentBtnTextActive: {
-    color: '#ffffff',
+    color: isLightMode ? '#7c3aed' : '#ffffff',
     fontWeight: 'bold',
   },
   countersRow: {
@@ -4804,13 +6474,17 @@ const getStyles = (isLightMode) => StyleSheet.create({
   },
   counterCard: {
     flex: 1,
-    backgroundColor: 'rgba(30, 30, 40, 0.65)',
+    backgroundColor: isLightMode ? '#fdfcff' : 'rgba(30, 30, 40, 0.65)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     paddingVertical: 14,
     paddingHorizontal: 8,
     alignItems: 'center',
+    elevation: isLightMode ? 2 : 0,
+    shadowColor: '#000',
+    shadowOpacity: isLightMode ? 0.05 : 0,
+    shadowRadius: 4,
   },
   statusDot: {
     width: 6,
@@ -4819,19 +6493,19 @@ const getStyles = (isLightMode) => StyleSheet.create({
     marginBottom: 8,
   },
   counterNumber: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 4,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   counterLabel: {
-    color: '#64748b',
+    color: isLightMode ? '#475569' : '#64748b',
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   sectionHeaderTitle: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 10,
@@ -4840,25 +6514,25 @@ const getStyles = (isLightMode) => StyleSheet.create({
   },
   modalBg: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1e1e28',
+    backgroundColor: isLightMode ? '#fdfcff' : '#1e1e28',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
     maxHeight: '75%',
   },
   modalContentBig: {
-    backgroundColor: '#1e1e28',
+    backgroundColor: isLightMode ? '#fdfcff' : '#1e1e28',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
     height: '85%',
   },
   modalTitle: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 15,
@@ -4868,37 +6542,38 @@ const getStyles = (isLightMode) => StyleSheet.create({
   modalItem: {
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: isLightMode ? '#f1f5f9' : 'rgba(255, 255, 255, 0.05)',
     alignItems: 'center',
   },
   modalItemText: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 15,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   modalCloseBtn: {
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)',
     paddingVertical: 12,
     borderRadius: 12,
     marginTop: 15,
     alignItems: 'center',
   },
   modalCloseText: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 14,
     fontWeight: 'bold',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   searchBar: {
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: isLightMode ? '#cbd5e1' : 'transparent',
     borderRadius: 12,
     padding: 12,
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     textAlign: 'right',
     marginBottom: 15,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
-  // Shadow wrapper: holds glow/shadow without overflow:hidden (required on iOS)
   neonSearchShadowWrapper: {
     marginBottom: 20,
     marginHorizontal: 4,
@@ -4908,14 +6583,12 @@ const getStyles = (isLightMode) => StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  // Clip container: clips the spinning SVG to rounded corners
   neonSearchContainer: {
     height: 42,
     borderRadius: 12,
-    backgroundColor: '#07070b',
+    backgroundColor: isLightMode ? '#ffffff' : '#07070b',
     overflow: 'hidden',
   },
-  // Legacy alias kept for safety (unused now)
   neonSearchClip: {
     flex: 1,
     borderRadius: 14,
@@ -4939,14 +6612,14 @@ const getStyles = (isLightMode) => StyleSheet.create({
     right: 1.5,
     bottom: 1.5,
     borderRadius: 10.5,
-    backgroundColor: '#0a0a12',
+    backgroundColor: isLightMode ? '#ffffff' : '#0a0a12',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     paddingHorizontal: 3,
   },
   neonSearchInput: {
     flex: 1,
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 13,
     textAlign: 'right',
     paddingHorizontal: 12,
@@ -4957,14 +6630,13 @@ const getStyles = (isLightMode) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 8,
-    backgroundColor: 'rgba(168, 85, 247, 0.12)',
+    backgroundColor: isLightMode ? 'rgba(139, 92, 246, 0.12)' : 'rgba(168, 85, 247, 0.12)',
     borderWidth: 1.2,
-    borderColor: 'rgba(168, 85, 247, 0.4)',
+    borderColor: isLightMode ? 'rgba(139, 92, 246, 0.4)' : 'rgba(168, 85, 247, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 2,
   },
-  // Neon card: outer shadow aura (no overflow:hidden so shadow renders on iOS)
   neonCardShadow: {
     borderRadius: 16,
     shadowColor: '#a855f7',
@@ -4972,12 +6644,10 @@ const getStyles = (isLightMode) => StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
-  // Neon card: clips the spinning SVG to border radius
   neonCardClip: {
     borderRadius: 16,
     overflow: 'hidden',
   },
-  // Neon card: large spinning gradient disc
   neonCardSpinBg: {
     position: 'absolute',
     width: 600,
@@ -4987,11 +6657,10 @@ const getStyles = (isLightMode) => StyleSheet.create({
     marginLeft: -300,
     marginTop: -300,
   },
-  // Neon card: inner dark content area inset by border thickness (1.5px)
   neonCardInner: {
     margin: 1.5,
     borderRadius: 14.5,
-    backgroundColor: '#0e0e18',
+    backgroundColor: isLightMode ? '#fdfcff' : '#0e0e18',
     padding: 18,
   },
   productSearchItem: {
@@ -5000,40 +6669,41 @@ const getStyles = (isLightMode) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: isLightMode ? '#f1f5f9' : 'rgba(255, 255, 255, 0.05)',
   },
   productPriceText: {
-    color: '#a78bfa',
+    color: isLightMode ? '#7c3aed' : '#a78bfa',
     fontWeight: 'bold',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   emptySearchText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     textAlign: 'center',
     paddingVertical: 40,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   alertBg: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
   },
   alertContent: {
-    backgroundColor: '#1e1e28',
+    backgroundColor: isLightMode ? '#fdfcff' : '#1e1e28',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.1)',
     borderRadius: 16,
     padding: 20,
     width: '100%',
     maxWidth: 300,
     alignItems: 'center',
     gap: 15,
+    elevation: 5,
   },
   alertMessage: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,
@@ -5055,7 +6725,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
   },
   authContainer: {
     flex: 1,
-    backgroundColor: '#121216',
+    backgroundColor: isLightMode ? '#eaddf5' : '#121216',
   },
   authScroll: {
     flexGrow: 1,
@@ -5064,7 +6734,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
     padding: 20,
   },
   authTitle: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -5072,23 +6742,23 @@ const getStyles = (isLightMode) => StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authSubtitle: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 32,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authCard: {
-    backgroundColor: '#1e1e24',
+    backgroundColor: isLightMode ? '#fdfcff' : '#1e1e24',
     borderRadius: 16,
     padding: 40,
     width: '100%',
     maxWidth: 420,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.2)',
+    borderColor: isLightMode ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.2)',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
+    shadowOpacity: isLightMode ? 0.1 : 0.4,
     shadowRadius: 32,
     elevation: 8,
   },
@@ -5096,20 +6766,20 @@ const getStyles = (isLightMode) => StyleSheet.create({
     marginBottom: 20,
   },
   inputLabel: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 13,
     marginBottom: 8,
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
   authInput: {
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.05)' : isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.1)' : isLightMode ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 15,
     textAlign: 'right',
   },
@@ -5118,7 +6788,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
     marginBottom: 16,
   },
   forgotPasswordText: {
-    color: '#a78bfa',
+    color: '#8b5cf6',
     fontSize: 13,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -5145,7 +6815,7 @@ const getStyles = (isLightMode) => StyleSheet.create({
     alignItems: 'center',
   },
   authToggleText: {
-    color: '#a78bfa',
+    color: '#8b5cf6',
     fontSize: 14,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
   },
@@ -5157,10 +6827,10 @@ const getStyles = (isLightMode) => StyleSheet.create({
   authSeparatorLine: {
     flex: 1,
     height: 1,
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.08)' : isLightMode ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.08)',
   },
   authSeparatorText: {
-    color: isLightMode ? isLightMode ? isLightMode ? '#475569' : '#94a3b8' : '#475569' : isLightMode ? '#475569' : '#94a3b8',
+    color: isLightMode ? '#475569' : '#94a3b8',
     fontSize: 12,
     marginHorizontal: 10,
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',
@@ -5170,15 +6840,15 @@ const getStyles = (isLightMode) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: isLightMode ? 'rgba(15, 23, 42, 0.02)' : isLightMode ? 'rgba(15, 23, 42, 0.02)' : 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: isLightMode ? '#ffffff' : 'rgba(255, 255, 255, 0.02)',
     borderWidth: 1,
-    borderColor: isLightMode ? 'rgba(15, 23, 42, 0.12)' : isLightMode ? 'rgba(15, 23, 42, 0.12)' : 'rgba(255, 255, 255, 0.12)',
+    borderColor: isLightMode ? '#cbd5e1' : 'rgba(255, 255, 255, 0.12)',
     borderRadius: 8,
     paddingVertical: 12,
     marginTop: 2,
   },
   authGoogleBtnText: {
-    color: '#ffffff',
+    color: isLightMode ? '#0f172a' : '#ffffff',
     fontSize: 14,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Cairo' : 'normal',

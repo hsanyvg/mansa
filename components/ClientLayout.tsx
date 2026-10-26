@@ -104,7 +104,9 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
     setIsSubmitting(true);
     try {
-      let finalEmail = email.trim();
+      let finalEmail = email.trim().replace(/\s+/g, '');
+      // Convert Arabic digits to English digits if user entered phone with Arabic keyboard
+      finalEmail = finalEmail.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
       if (!finalEmail.includes('@')) {
         finalEmail = `${finalEmail}@mansa.app`;
       }
@@ -262,11 +264,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
           <form onSubmit={handleAuthSubmit}>
             <div className={styles.inputGroup}>
-              <label className={styles.inputLabel}>البريد الإلكتروني للموظف</label>
+              <label className={styles.inputLabel}>البريد الإلكتروني أو رقم الهاتف للموظف</label>
               <input
                 className={styles.authInput}
-                type="email"
-                placeholder="employee@email.com"
+                type="text"
+                placeholder="077... أو employee@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -310,11 +312,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
           <form onSubmit={handleAuthSubmit}>
             <div className={styles.inputGroup}>
-              <label className={styles.inputLabel}>البريد الإلكتروني</label>
+              <label className={styles.inputLabel}>البريد الإلكتروني أو رقم الهاتف</label>
               <input
                 className={styles.authInput}
-                type="email"
-                placeholder="example@email.com"
+                type="text"
+                placeholder="077... أو example@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -505,10 +507,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <span>المستخدمين</span>
             <span className={styles.submenuIcon}>👥</span>
           </Link>
-          <div className={styles.submenuItem}>
+          <Link href="/permissions" className={`${styles.submenuItem} ${pathname === '/permissions' ? styles.active : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <span>صلاحيات المستخدمين</span>
             <span className={styles.submenuIcon}>👮</span>
-          </div>
+          </Link>
         </div>
 
 

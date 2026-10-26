@@ -96,12 +96,15 @@ export default function OrdersListPage() {
       (l.details && (l.details.includes('إنشاء') || l.details.includes('تثبيت')))
     );
     if (!hasCreationLog && (order.date || order.createdAt)) {
-      const creator = order.systemUser || order.bookingEmployeeName || order.employeeName || 'النظام';
+      const isFromMobile = order.source === 'mobile_app' || order.createdVia === 'mobile_app' || (order.notes && order.notes.includes('تطبيق')) || (order.notes && order.notes.includes('وصل باركود'));
+      const creator = order.systemUser || order.employeeName || order.bookingEmployeeName || 'النظام';
       const createTime = order.createdAt || order.date || new Date();
       logs.push({
         id: 'synthetic-creation',
         action: 'إنشاء الطلب',
-        details: `تم إنشاء وتثبيت الطلب في المنصة برقم #${order.orderNumber || order.id?.slice(0, 6)}`,
+        details: isFromMobile 
+          ? `تم إنشاء وتثبيت الطلب من تطبيق الهاتف برقم #${order.orderNumber || order.receiptNumber || order.id?.slice(0, 6)}`
+          : `تم إنشاء وتثبيت الطلب في المنصة برقم #${order.orderNumber || order.receiptNumber || order.id?.slice(0, 6)}`,
         employeeName: creator,
         timestamp: createTime,
         type: 'create'
@@ -3100,189 +3103,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
         
         let formattedNotes = itemsList;
         if (order.notes) {
-          formattedNotes += `\n\n
-    {/* Advanced Filters Row - MultiSelect */}
-    <div style={{ display: 'flex', gap: '1.5rem', padding: '0.8rem 1.5rem', flexWrap: 'wrap', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
-      
-      {/* Pages MultiSelect */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
-        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>البيج:</span>
-        <button 
-          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'page' ? null : 'page')}
-          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{filterByPage.length === 0 ? 'الكل' : 'محدد (' + filterByPage.length + ')'}</span>
-          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
-        </button>
-        {openFilterDropdown === 'page' && (
-          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <button onClick={() => { setFilterByPage(pagesDb.map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
-              <button onClick={() => { setFilterByPage([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
-            </div>
-            
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-              <input type="text" autoFocus placeholder="بحث عن بيج..." value={pageSearchTerm} onChange={e => setPageSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
-            </div>
-            {pagesDb.filter(p => p.name && p.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).map(p => (
-              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
-                <input type="checkbox" checked={filterByPage.includes(p.id)} onChange={() => { setFilterByPage(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* MainCat MultiSelect */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
-        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📁 التصنيف:</span>
-        <button 
-          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'mainCat' ? null : 'mainCat')}
-          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{filterByMainCat.length === 0 ? 'الكل' : 'محدد (' + filterByMainCat.length + ')'}</span>
-          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
-        </button>
-        {openFilterDropdown === 'mainCat' && (
-          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <button onClick={() => { setFilterByMainCat(categoriesDb.map(c => c.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
-              <button onClick={() => { setFilterByMainCat([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
-            </div>
-            
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-              <input type="text" autoFocus placeholder="بحث عن فئة..." value={mainCatSearchTerm} onChange={e => setMainCatSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
-            </div>
-            {categoriesDb.filter(c => c.name && c.name.toLowerCase().includes(mainCatSearchTerm.toLowerCase())).map(c => (
-              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
-                <input type="checkbox" checked={filterByMainCat.includes(c.id)} onChange={() => { setFilterByMainCat(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Product MultiSelect */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
-        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📦 الفئة:</span>
-        <button 
-          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'product' ? null : 'product')}
-          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{filterByProduct.length === 0 ? 'الكل' : 'محدد (' + filterByProduct.length + ')'}</span>
-          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
-        </button>
-        {openFilterDropdown === 'product' && (
-          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <button onClick={() => { setFilterByProduct([...baseProducts, ...compositeProductsData].map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
-              <button onClick={() => { setFilterByProduct([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
-            </div>
-            
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-              <input type="text" autoFocus placeholder="بحث عن تصنيف..." value={productSearchTerm} onChange={e => setProductSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
-            </div>
-            {[...baseProducts, ...compositeProductsData].filter(p => p.name && p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map(p => (
-              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
-                <input type="checkbox" checked={filterByProduct.includes(p.id)} onChange={() => { setFilterByProduct(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-    </div>\n
-    {/* Advanced Filters Row - MultiSelect */}
-    <div style={{ display: 'flex', gap: '1.5rem', padding: '0.8rem 1.5rem', flexWrap: 'wrap', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
-      
-      {/* Pages MultiSelect */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
-        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>البيج:</span>
-        <button 
-          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'page' ? null : 'page')}
-          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{filterByPage.length === 0 ? 'الكل' : 'محدد (' + filterByPage.length + ')'}</span>
-          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
-        </button>
-        {openFilterDropdown === 'page' && (
-          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <button onClick={() => { setFilterByPage(pagesDb.map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
-              <button onClick={() => { setFilterByPage([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
-            </div>
-            
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-              <input type="text" autoFocus placeholder="بحث عن بيج..." value={pageSearchTerm} onChange={e => setPageSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
-            </div>
-            {pagesDb.filter(p => p.name && p.name.toLowerCase().includes(pageSearchTerm.toLowerCase())).map(p => (
-              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
-                <input type="checkbox" checked={filterByPage.includes(p.id)} onChange={() => { setFilterByPage(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* MainCat MultiSelect */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
-        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📁 التصنيف:</span>
-        <button 
-          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'mainCat' ? null : 'mainCat')}
-          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{filterByMainCat.length === 0 ? 'الكل' : 'محدد (' + filterByMainCat.length + ')'}</span>
-          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
-        </button>
-        {openFilterDropdown === 'mainCat' && (
-          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <button onClick={() => { setFilterByMainCat(categoriesDb.map(c => c.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
-              <button onClick={() => { setFilterByMainCat([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
-            </div>
-            
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-              <input type="text" autoFocus placeholder="بحث عن فئة..." value={mainCatSearchTerm} onChange={e => setMainCatSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
-            </div>
-            {categoriesDb.filter(c => c.name && c.name.toLowerCase().includes(mainCatSearchTerm.toLowerCase())).map(c => (
-              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
-                <input type="checkbox" checked={filterByMainCat.includes(c.id)} onChange={() => { setFilterByMainCat(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Product MultiSelect */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', position: 'relative' }}>
-        <span style={{color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 'bold'}}>📦 الفئة:</span>
-        <button 
-          onClick={() => setOpenFilterDropdown(openFilterDropdown === 'product' ? null : 'product')}
-          style={{ padding: '0.5rem 1rem', borderRadius: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '0.95rem', cursor: 'pointer', minWidth: '160px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{filterByProduct.length === 0 ? 'الكل' : 'محدد (' + filterByProduct.length + ')'}</span>
-          <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>▼</span>
-        </button>
-        {openFilterDropdown === 'product' && (
-          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '220px', maxHeight: '350px', overflowY: 'auto', padding: '0.5rem' }}>
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <button onClick={() => { setFilterByProduct([...baseProducts, ...compositeProductsData].map(p => p.id)); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>تحديد الكل</button>
-              <button onClick={() => { setFilterByProduct([]); setCurrentPage(1); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>إلغاء</button>
-            </div>
-            
-            <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-              <input type="text" autoFocus placeholder="بحث عن تصنيف..." value={productSearchTerm} onChange={e => setProductSearchTerm(e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)' }} />
-            </div>
-            {[...baseProducts, ...compositeProductsData].filter(p => p.name && p.name.toLowerCase().includes(productSearchTerm.toLowerCase())).map(p => (
-              <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor='var(--bg-card)'} onMouseOut={e => e.currentTarget.style.backgroundColor='transparent'}>
-                <input type="checkbox" checked={filterByProduct.includes(p.id)} onChange={() => { setFilterByProduct(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]); setCurrentPage(1); }} style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{p.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-    </div>\n\n*${order.notes}`;
+          formattedNotes += `\n\n*${order.notes}`;
         }
 
         let phone1 = order.customerPhone || order.phone || '';
@@ -3327,6 +3148,92 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'البرق');
       XLSX.writeFile(workbook, 'AlBarq_Orders_Export.xlsx');
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      setNotificationModal({ show: true, message: 'حدث خطأ أثناء التصدير' });
+    }
+  };
+
+  const handleExportAlLaithExcel = () => {
+    try {
+      const ordersToExport = selectedOrders.length > 0 ? selectedOrders : filteredOrders;
+      if (ordersToExport.length === 0) {
+        setNotificationModal({ show: true, message: 'لا توجد طلبات للتصدير' });
+        return;
+      }
+
+      const mapToLaythGov = (rawGov: string) => {
+        const g = (rawGov || '').trim();
+        if (g.includes('بغداد')) return 'بغداد مركز';
+        if (g.includes('ذي قار') || g.includes('ناصرية') || g.includes('ناصريه')) return 'ناصريه';
+        if (g.includes('نجف')) return 'نجف';
+        if (g.includes('واسط') || g.includes('كوت')) return 'واسط';
+        if (g.includes('قادسية') || g.includes('قادسيه') || g.includes('ديوانية') || g.includes('ديوانيه')) return 'ديوانيه';
+        if (g.includes('بابل') || g.includes('حلة') || g.includes('حله')) return 'بابل';
+        if (g.includes('كربلاء')) return 'كربلاء';
+        if (g.includes('ميسان') || g.includes('عمارة') || g.includes('عماره')) return 'ميسان';
+        if (g.includes('أنبار') || g.includes('انبار') || g.includes('رمادي')) return 'الانبار';
+        if (g.includes('نينوى') || g.includes('موصل')) return 'موصل';
+        if (g.includes('دهوك')) return 'دهوك';
+        if (g.includes('ديالى') || g.includes('بعقوبة') || g.includes('بعقوبه')) return 'ديالى';
+        if (g.includes('كركوك')) return 'كركوك';
+        if (g.includes('أربيل') || g.includes('اربيل')) return 'اربيل';
+        if (g.includes('صلاح الدين') || g.includes('تكريت') || g.includes('سامراء')) return 'صلاح الدين';
+        if (g.includes('سليمانية') || g.includes('سليمانيه')) return 'سليمانيه';
+        if (g.includes('بصرة') || g.includes('بصره')) return 'بصره';
+        if (g.includes('مثنى') || g.includes('سماوة') || g.includes('سماوه')) return 'السماوة';
+        return g;
+      };
+
+      const exportData = ordersToExport.map((order, index) => {
+        const itemsList = (order.items || []).map((item: any) => `${item.productName}(${item.quantity || 1})`).join(' + ');
+        const totalQuantity = (order.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
+        
+        let formattedNotes = itemsList;
+        if (order.notes) {
+          formattedNotes += `\n\n*${order.notes}`;
+        }
+
+        let phone1 = order.customerPhone || order.phone || '';
+        let phone2 = order.customerPhone2 || order.phone2 || '';
+        if (phone1.includes('-')) {
+          const parts = phone1.split('-');
+          phone1 = parts[0].trim();
+          if (!phone2 && parts[1]) phone2 = parts[1].trim();
+        } else if (phone1.includes('/')) {
+          const parts = phone1.split('/');
+          phone1 = parts[0].trim();
+          if (!phone2 && parts[1]) phone2 = parts[1].trim();
+        } else if (phone1.includes(',')) {
+          const parts = phone1.split(',');
+          phone1 = parts[0].trim();
+          if (!phone2 && parts[1]) phone2 = parts[1].trim();
+        }
+
+        const laythGov = mapToLaythGov(order.governorate);
+        const orderReceiptNumber = order.orderNumber || order.albarqReceiptNumber || order.shipmentId || (order.id.length > 10 ? order.id.slice(-6).toUpperCase() : order.id);
+        const customerName = order.customerName || order.customer_name || order.bookingEmployeeName || order.employeeName || '';
+
+        return {
+          'رقم الوصل': orderReceiptNumber,
+          'اسم الزبون': customerName,
+          'هاتف الزبون': phone1,
+          'هاتف الزبون2': phone2,
+          'المحافظة': laythGov,
+          'المنطقة': order.region || '',
+          'العنوان': order.address || order.region || '',
+          'المبلغ الكلي': order.totalAmount || order.price || 0,
+          'نوع البضاعة': itemsList,
+          'العدد': totalQuantity,
+          'الملاحظات': formattedNotes
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      worksheet['!dir'] = 'rtl';
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'شركة الليث');
+      XLSX.writeFile(workbook, 'AlLaith_Orders_Export.xlsx');
     } catch (error) {
       console.error("Error exporting to Excel:", error);
       setNotificationModal({ show: true, message: 'حدث خطأ أثناء التصدير' });
@@ -4602,6 +4509,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#7c3aed', color: '#fff', border: 'none' }} onClick={() => { handleExportZitaExcel(); setShowExportDropdown(false); }}>اكسل نظام (زيطة)</button>
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#6d28d9', color: '#fff', border: 'none' }} onClick={() => { handleExportPrimeExcel(); setShowExportDropdown(false); }}>اكسل لبرايم</button>
                 <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#5b21b6', color: '#fff', border: 'none' }} onClick={() => { handleExportAlBarqExcel(); setShowExportDropdown(false); }}>اكسل للبرق</button>
+                <button className={styles.controlButton} style={{ width: '100%', textAlign: 'center', backgroundColor: '#ec4899', color: '#fff', border: 'none' }} onClick={() => { handleExportAlLaithExcel(); setShowExportDropdown(false); }}>🦁 اكسل شركة الليث</button>
               </div>
             )}
           </div>
