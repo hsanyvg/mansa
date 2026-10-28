@@ -2,11 +2,13 @@
 
 import React, { useEffect } from 'react';
 
+const FIREBASE_APK_URL = "https://firebasestorage.googleapis.com/v0/b/management-easy-order.firebasestorage.app/o/apps%2Fmansa-mobile.apk?alt=media";
+
 export default function DownloadRedirect() {
   useEffect(() => {
-    // Redirect to the actual APK file in public folder
+    // Redirect to the actual APK file hosted on high-speed Firebase Storage CDN
     setTimeout(() => {
-      window.location.href = '/mansa-mobile.apk';
+      window.location.href = FIREBASE_APK_URL;
     }, 1000);
   }, []);
 
@@ -35,11 +37,11 @@ export default function DownloadRedirect() {
         <span style={{ fontSize: '4rem', marginBottom: '1.5rem', display: 'block' }}>📥</span>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>جاري بدء تحميل التطبيق...</h1>
         <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '2rem' }}>
-          يرجى الانتظار ثانية واحدة، سيقوم هاتفك بتحميل ملف الـ APK الخاص بتطبيق منسا موبايل تلقائياً.
+          يرجى الانتظار ثانية واحدة، سيقوم هاتفك بتحميل ملف الـ APK الخاص بتطبيق منسا موبايل تلقائياً من خوادم سريعة.
         </p>
         
         <a 
-          href="/mansa-mobile.apk" 
+          href={FIREBASE_APK_URL}
           download
           style={{
             display: 'inline-block',

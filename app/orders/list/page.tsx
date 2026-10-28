@@ -1535,6 +1535,172 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
     setIsSendingToDelivery(true);
     try {
       const selectedOrdersData = orders.filter(o => selectedOrderIds.includes(o.id));
+      const apiIntegration = company.apiIntegration || '';
+      const companyName = company.name;
+      const uid = auth.currentUser?.uid || 'anonymous';
+
+      // ==========================================
+      // المسار فائق السرعة للشركات بدون API (مثل شركة الليث وغيرها)
+      // ترحيل جماعي ذري (Atomic Batch) دفعة واحدة خلال أجزاء من الثانية!
+      // ==========================================
+      if (!apiIntegration) {
+        const validOrders = selectedOrdersData.filter(o => 
+          o.status !== 'shipped' && o.status !== 'delivered' && o.status !== 'partial'
+        );
+        
+        if (validOrders.length === 0) {
+          setNotificationModal({ show: true, message: 'جميع الطلبات المحددة مشحونة أو مكتملة مسبقاً.' });
+          setShowCompanyModal(false);
+          setIsSendingToDelivery(false);
+          return;
+        }
+
+        // 1. تجميع معرفات المنتجات لجلبها بالتوازي
+        const productIdsToFetch = new Set<string>();
+        validOrders.forEach(order => {
+          (order.items || []).forEach((item: any) => {
+            if (item.isComposite && item.composition) {
+              item.composition.forEach((comp: any) => {
+                if (comp.itemId) productIdsToFetch.add(comp.itemId);
+              });
+            } else if (item.productId) {
+              productIdsToFetch.add(item.productId);
+            }
+          });
+        });
+
+        // 2. جلب المنتجات دفعة واحدة بالتوازي
+        const productCache: Record<string, any> = {};
+        await Promise.all(
+          Array.from(productIdsToFetch).map(async (productId) => {
+            const prodRef = doc(db, 'users', uid, 'products', productId);
+            const prodSnap = await getDoc(prodRef);
+            if (prodSnap.exists()) {
+              const prodData = prodSnap.data();
+              productCache[productId] = {
+                ref: prodRef,
+                data: prodData,
+                stock: JSON.parse(JSON.stringify(prodData.stock || {})),
+                isDirty: false
+              };
+            }
+          })
+        );
+
+        // 3. معالجة الطلبات في مجموعات (Chunks) بحد أقصى 100 طلب لكل Batch
+        const CHUNK_SIZE = 100;
+        const GOV_ALIASES: Record<string, string[]> = {
+          'بغداد': ['بغداد'],
+          'البصرة': ['البصرة', 'بصرة'],
+          'نينوى': ['نينوى', 'الموصل', 'موصل'],
+          'أربيل': ['أربيل', 'اربيل'],
+          'بابل': ['بابل', 'الحلة', 'حله', 'حلة'],
+          'ذي قار': ['ذي قار', 'الناصرية', 'ناصرية', 'ناصريه'],
+          'الأنبار': ['الأنبار', 'الانبار', 'الرمادي', 'رمادي', 'فلوجة', 'فلوجه'],
+          'واسط': ['واسط', 'الكوت', 'كوت'],
+          'النجف': ['النجف', 'نجف'],
+          'كربلاء': ['كربلاء'],
+          'السليمانية': ['السليمانية', 'سليمانية', 'سليمانيه'],
+          'كركوك': ['كركوك'],
+          'ميسان': ['ميسان', 'العمارة', 'عمارة', 'عماره'],
+          'ديالى': ['ديالى', 'بعقوبة', 'بعقوبه'],
+          'القادسية': ['القادسية', 'قادسية', 'الديوانية', 'ديوانية', 'ديوانيه'],
+          'المثنى': ['المثنى', 'السماوة', 'سماوة', 'السماوه', 'سماوه', 'مثنى'],
+          'دهوك': ['دهوك'],
+          'صلاح الدين': ['صلاح الدين', 'تكريت', 'سامراء']
+        };
+
+        for (let i = 0; i < validOrders.length; i += CHUNK_SIZE) {
+          const chunk = validOrders.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+
+          for (const orderData of chunk) {
+            const orderRef = doc(db, 'users', uid, 'orders', orderData.id);
+            
+            // حساب كلفة التوصيل
+            let deliveryCostToDeduct = 0;
+            if (company.rates && orderData.governorate) {
+              const oGov = orderData.governorate.toLowerCase();
+              let matchedKey = Object.keys(company.rates).find(k => k.toLowerCase() === oGov);
+              if (!matchedKey) {
+                matchedKey = Object.keys(company.rates).find(rKey => {
+                  const aliases = GOV_ALIASES[rKey] || [rKey];
+                  return aliases.some(alias => oGov.includes(alias.toLowerCase()) || alias.toLowerCase().includes(oGov));
+                });
+              }
+              if (matchedKey) {
+                deliveryCostToDeduct = company.rates[matchedKey] || 0;
+              }
+            }
+
+            const updateData: any = {
+              status: 'shipped',
+              shippingCompany: companyName,
+              shipmentCompany: companyName,
+              updatedAt: serverTimestamp()
+            };
+
+            if (deliveryCostToDeduct > 0 && !orderData.deliveryCost) {
+              updateData.deliveryCost = deliveryCostToDeduct;
+              const currentTotal = orderData.totalAmount || orderData.price || 0;
+              updateData.totalAmount = currentTotal - deliveryCostToDeduct;
+            }
+
+            batch.update(orderRef, updateData);
+            addLogToBatch(batch, orderData.id, 'ترحيل الطلب', `تم التحديث إلى مشحون عبر ${companyName}`);
+
+            // معالجة المخزون بالذاكرة
+            const oldState = getStockState(orderData.status);
+            const newState = getStockState('shipped');
+            if (oldState !== newState) {
+              for (const item of (orderData.items || [])) {
+                if (item.isComposite && item.composition) {
+                  for (const comp of item.composition) {
+                    const cached = productCache[comp.itemId];
+                    if (cached) {
+                      let qty = comp.quantityNeeded * item.quantity;
+                      applyStockTransition(cached.stock, oldState, newState, qty, cached.data.units?.[0]?.type || 'قطعة');
+                      cached.isDirty = true;
+                    }
+                  }
+                } else if (item.productId) {
+                  const cached = productCache[item.productId];
+                  if (cached) {
+                    let qty = item.quantity;
+                    applyStockTransition(cached.stock, oldState, newState, qty, cached.data.units?.[0]?.type || 'قطعة');
+                    cached.isDirty = true;
+                  }
+                }
+              }
+            }
+          }
+
+          // تحديث المنتجات المتأثرة بالمخزون
+          for (const productId in productCache) {
+            const cached = productCache[productId];
+            if (cached.isDirty) {
+              let newTotalBaseQuantity = 0;
+              Object.values(cached.stock).forEach((s: any) => {
+                const uMul = cached.data.units?.find((u: any) => u.type === s.unit)?.count || 1;
+                newTotalBaseQuantity += (Number(s.quantity) || 0) * uMul;
+              });
+              batch.update(cached.ref, { stock: cached.stock, totalBaseQuantity: newTotalBaseQuantity });
+              cached.isDirty = false;
+            }
+          }
+
+          await batch.commit();
+        }
+
+        setShowCompanyModal(false);
+        setSelectedOrderIds([]);
+        setNotificationModal({ show: true, message: `✅ تم ترحيل ${validOrders.length} طلبات إلى ${companyName} بنجاح!` });
+        return;
+      }
+
+      // ==========================================
+      // المسار الخاص بالشركات المربوطة بـ API (مثل البرق، برايم، جني)
+      // ==========================================
       let successCount = 0;
       let failCount = 0;
       let lastError = '';
@@ -1546,23 +1712,18 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
            continue;
         }
 
-        const apiIntegration = company.apiIntegration || '';
-        const companyName = company.name;
-
-        // Calculate delivery cost
         let deliveryCostToDeduct = 0;
         if (company.rates && orderData.governorate) {
           const oGov = orderData.governorate.toLowerCase();
           let matchedKey = Object.keys(company.rates).find(k => k.toLowerCase() === oGov);
           if (!matchedKey) {
-            // company.rates keys are standard Arabic names like 'بغداد', 'ذي قار'
             const GOV_ALIASES: Record<string, string[]> = {
               'بغداد': ['بغداد'],
               'البصرة': ['البصرة', 'بصرة'],
               'نينوى': ['نينوى', 'الموصل', 'موصل'],
               'أربيل': ['أربيل', 'اربيل'],
-              'بابل': ['بابل', 'الحلة', 'حلة'],
-              'ذي قار': ['ذي قار', 'الناصرية', 'ناصرية'],
+              'بابل': ['بابل', 'الحلة', 'حله', 'حلة'],
+              'ذي قار': ['ذي قار', 'الناصرية', 'ناصرية', 'ناصريه'],
               'الأنبار': ['الأنبار', 'الانبار', 'الرمادي', 'رمادي'],
               'واسط': ['واسط', 'الكوت', 'كوت'],
               'النجف': ['النجف', 'نجف'],
@@ -1576,10 +1737,9 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
               'دهوك': ['دهوك'],
               'صلاح الدين': ['صلاح الدين', 'تكريت']
             };
-            
             matchedKey = Object.keys(company.rates).find(rKey => {
               const aliases = GOV_ALIASES[rKey] || [rKey];
-              return aliases.some(alias => oGov.includes(alias) || alias.includes(oGov));
+              return aliases.some(alias => oGov.includes(alias.toLowerCase()) || alias.toLowerCase().includes(oGov));
             });
           }
           if (matchedKey) {
@@ -1601,7 +1761,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
           }
 
           const batch = writeBatch(db);
-          const orderRef = doc(db, 'users', auth.currentUser?.uid || 'anonymous', 'orders', orderData.id);
+          const orderRef = doc(db, 'users', uid, 'orders', orderData.id);
           
           const updateData: any = {
              status: 'shipped',
@@ -1625,7 +1785,6 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
             updateData.shipmentCompany = companyName;
           }
 
-          // Deduct delivery cost if not already deducted
           if (deliveryCostToDeduct > 0 && !orderData.deliveryCost) {
              updateData.deliveryCost = deliveryCostToDeduct;
              const currentTotal = orderData.totalAmount || orderData.price || 0;
@@ -1633,7 +1792,6 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
           }
 
           batch.update(orderRef, updateData);
-          
           addLogToBatch(batch, orderData.id, 'ترحيل الطلب', `تم التحديث إلى مشحون عبر ${companyName}${apiIntegration ? ' (عبر API)' : ''}`);
 
           await syncStockForStatusChange(orderData.items || [], orderData.status, 'shipped', batch);
@@ -1647,7 +1805,9 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
             await new Promise(resolve => setTimeout(resolve, 3000));
           }
         } finally {
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          if (apiIntegration) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
         }
       }
 
@@ -3172,7 +3332,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
         if (g.includes('بابل') || g.includes('حلة') || g.includes('حله')) return 'بابل';
         if (g.includes('كربلاء')) return 'كربلاء';
         if (g.includes('ميسان') || g.includes('عمارة') || g.includes('عماره')) return 'ميسان';
-        if (g.includes('أنبار') || g.includes('انبار') || g.includes('رمادي')) return 'الانبار';
+        if (g.includes('أنبار') || g.includes('انبار') || g.includes('رمادي') || g.includes('فلوجة') || g.includes('فلوجه')) return 'الانبار';
         if (g.includes('نينوى') || g.includes('موصل')) return 'موصل';
         if (g.includes('دهوك')) return 'دهوك';
         if (g.includes('ديالى') || g.includes('بعقوبة') || g.includes('بعقوبه')) return 'ديالى';
@@ -3181,7 +3341,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
         if (g.includes('صلاح الدين') || g.includes('تكريت') || g.includes('سامراء')) return 'صلاح الدين';
         if (g.includes('سليمانية') || g.includes('سليمانيه')) return 'سليمانيه';
         if (g.includes('بصرة') || g.includes('بصره')) return 'بصره';
-        if (g.includes('مثنى') || g.includes('سماوة') || g.includes('سماوه')) return 'السماوة';
+        if (g.includes('مثنى') || g.includes('المثنى') || g.includes('سماوة') || g.includes('سماوه')) return 'سماوه';
         return g;
       };
 
@@ -3221,7 +3381,6 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
           'هاتف الزبون2': phone2,
           'المحافظة': laythGov,
           'المنطقة': order.region || '',
-          'العنوان': order.address || order.region || '',
           'المبلغ الكلي': order.totalAmount || order.price || 0,
           'نوع البضاعة': itemsList,
           'العدد': totalQuantity,
@@ -3378,7 +3537,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
               <!-- Top Date Row -->
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <div style="font-size: 11pt; font-weight: 900; display: flex; align-items: center; gap: 5px;">
-                  سستم تاجر برو <span style="font-size: 12pt;">🛍️</span>
+                  شركة الوساطة للتوصيل السريع <span style="font-size: 12pt;">🛍️</span>
                 </div>
                 <div style="font-size: 9pt; font-weight: bold; direction: rtl; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1;">
                   <div>تاريخ انشاء الشحنة <span style="font-weight: 900; margin-right: 5px; direction: ltr; display: inline-block;">${formattedDate}</span></div>
@@ -3642,7 +3801,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
           </div>
           
           <div class="logo-container">
-            <div class="logo-circle">سستم<br>تاجر برو</div>
+            <div class="logo-circle" style="font-size: 11pt; line-height: 1.3; padding: 4px;">شركة الوساطة<br>للتوصيل السريع</div>
             <div class="company-name">كشف تسليم الطلبات</div>
           </div>
 
@@ -4658,8 +4817,8 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
           </div>
         )}
       </div>
-
-    </div>\n\n{/* Data Table */}
+    </div>
+      {/* Data Table */}
       {activeTab !== 'returns_archive' && (
         <div className={styles.tableWrapper}>
         <table className={styles.table} style={{ minWidth: '100%', width: calculateTableWidth() }}>
