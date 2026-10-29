@@ -3372,7 +3372,7 @@ const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null
 
         const laythGov = mapToLaythGov(order.governorate);
         const orderReceiptNumber = order.orderNumber || order.albarqReceiptNumber || order.shipmentId || (order.id.length > 10 ? order.id.slice(-6).toUpperCase() : order.id);
-        const customerName = order.customerName || order.customer_name || order.bookingEmployeeName || order.employeeName || '';
+        const customerName = order.bookingEmployeeName || order.employeeName || '';
 
         return {
           'رقم الوصل': orderReceiptNumber,
